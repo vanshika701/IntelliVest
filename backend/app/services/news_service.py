@@ -12,7 +12,7 @@ import httpx
 from app.core.config import settings
 from app.core.constants import TICKER_TO_COMPANY_NAME
 from app.data.news_repository import upsert_news_articles
-from app.services.ingestion_types import TickerIngestResult
+from app.services.ingestion_types import IngestResult
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ async def fetch_news_for_ticker(
 
 async def ingest_news_for_ticker(
     client: httpx.AsyncClient, ticker: str, company_name: str
-) -> TickerIngestResult:
+) -> IngestResult:
     """Fetch and store news for a single ticker.
 
     Failures are isolated per-ticker, same reasoning as market data: one
@@ -75,19 +75,19 @@ async def ingest_news_for_ticker(
     try:
         records = await fetch_news_for_ticker(client, ticker, company_name)
         if not records:
-            return TickerIngestResult(ticker, 0, error="No articles found")
+            return IngestResult(ticker, 0, error="No articles found")
 
         upserted = await upsert_news_articles(records)
-        return TickerIngestResult(ticker, upserted)
+        return IngestResult(ticker, upserted)
     except httpx.HTTPStatusError as exc:
         logger.exception("NewsAPI request failed for %s", ticker)
-        return TickerIngestResult(ticker, 0, error=f"HTTP {exc.response.status_code}")
+        return IngestResult(ticker, 0, error=f"HTTP {exc.response.status_code}")
     except Exception as exc:
         logger.exception("Failed to ingest news for %s", ticker)
-        return TickerIngestResult(ticker, 0, error=str(exc))
+        return IngestResult(ticker, 0, error=str(exc))
 
 
-async def ingest_news_for_universe(tickers: list[str]) -> list[TickerIngestResult]:
+async def ingest_news_for_universe(tickers: list[str]) -> list[IngestResult]:
     if not settings.news_api_key:
         logger.warning(
             "NEWS_API_KEY is not set — skipping news ingestion. "

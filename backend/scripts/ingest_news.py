@@ -43,7 +43,7 @@ async def main() -> None:
         total_records,
     )
     if failed:
-        logger.warning("Failed tickers: %s", [(r.ticker, r.error) for r in failed])
+        logger.warning("Failed tickers: %s", [(r.source, r.error) for r in failed])
 
 
 if __name__ == "__main__":

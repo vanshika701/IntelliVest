@@ -57,3 +57,13 @@ TICKER_TO_COMPANY_NAME: dict[str, str] = {
     "LT.NS": "Larsen & Toubro",
     "ULTRACEMCO.NS": "UltraTech Cement",
 }
+
+# Reddit ingestion pulls general finance-discussion posts from these
+# subreddits (not per-ticker like news — this is broad market sentiment,
+# not company-specific search).
+FINANCE_SUBREDDITS: list[str] = [
+    "IndianStreetBets",
+    "IndiaInvestments",
+    "stocks",
+    "wallstreetbets",
+]

@@ -13,7 +13,7 @@ import pandas as pd
 import yfinance as yf
 
 from app.data.prices_repository import upsert_prices
-from app.services.ingestion_types import TickerIngestResult
+from app.services.ingestion_types import IngestResult
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def clean_history(ticker: str, history: pd.DataFrame) -> list[dict]:
     return records
 
 
-async def ingest_ticker(ticker: str, period: str = "2y") -> TickerIngestResult:
+async def ingest_ticker(ticker: str, period: str = "2y") -> IngestResult:
     """Fetch and store OHLCV history for a single ticker.
 
     Failures are isolated per-ticker on purpose — one delisted/renamed
@@ -62,19 +62,19 @@ async def ingest_ticker(ticker: str, period: str = "2y") -> TickerIngestResult:
         )
 
         if history.empty:
-            return TickerIngestResult(ticker, 0, error="No data returned")
+            return IngestResult(ticker, 0, error="No data returned")
 
         records = clean_history(ticker, history)
         upserted = await upsert_prices(records)
-        return TickerIngestResult(ticker, upserted)
+        return IngestResult(ticker, upserted)
     except Exception as exc:
         logger.exception("Failed to ingest %s", ticker)
-        return TickerIngestResult(ticker, 0, error=str(exc))
+        return IngestResult(ticker, 0, error=str(exc))
 
 
 async def ingest_stock_universe(
     tickers: list[str], period: str = "2y"
-) -> list[TickerIngestResult]:
+) -> list[IngestResult]:
     results = []
     for ticker in tickers:
         result = await ingest_ticker(ticker, period=period)
@@ -82,7 +82,7 @@ async def ingest_stock_universe(
         status = f"error: {result.error}" if result.error else "ok"
         logger.info(
             "Ingested %s: %d records upserted (%s)",
-            result.ticker,
+            result.source,
             result.records_upserted,
             status,
         )
