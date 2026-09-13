@@ -8,21 +8,14 @@ either of those.
 
 import asyncio
 import logging
-from dataclasses import dataclass
 
 import pandas as pd
 import yfinance as yf
 
 from app.data.prices_repository import upsert_prices
+from app.services.ingestion_types import TickerIngestResult
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class TickerIngestResult:
-    ticker: str
-    records_upserted: int
-    error: str | None = None
 
 
 def clean_history(ticker: str, history: pd.DataFrame) -> list[dict]:

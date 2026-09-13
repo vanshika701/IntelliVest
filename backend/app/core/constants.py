@@ -32,3 +32,28 @@ STOCK_UNIVERSE: list[str] = [
     "LT.NS",  # Infrastructure
     "ULTRACEMCO.NS",  # Cement/materials
 ]
+
+# NewsAPI searches by keyword, not ticker symbol — this maps each ticker
+# to the search term that actually finds its news.
+TICKER_TO_COMPANY_NAME: dict[str, str] = {
+    "RELIANCE.NS": "Reliance Industries",
+    "TCS.NS": "Tata Consultancy Services",
+    "INFY.NS": "Infosys",
+    "WIPRO.NS": "Wipro",
+    "HDFCBANK.NS": "HDFC Bank",
+    "ICICIBANK.NS": "ICICI Bank",
+    "SBIN.NS": "State Bank of India",
+    "KOTAKBANK.NS": "Kotak Mahindra Bank",
+    "AXISBANK.NS": "Axis Bank",
+    "BAJFINANCE.NS": "Bajaj Finance",
+    "HINDUNILVR.NS": "Hindustan Unilever",
+    "ITC.NS": "ITC Limited",
+    "NESTLEIND.NS": "Nestle India",
+    "MARUTI.NS": "Maruti Suzuki",
+    "TMPV.NS": "Tata Motors Passenger Vehicles",
+    "SUNPHARMA.NS": "Sun Pharma",
+    "TITAN.NS": "Titan Company",
+    "ASIANPAINT.NS": "Asian Paints",
+    "LT.NS": "Larsen & Toubro",
+    "ULTRACEMCO.NS": "UltraTech Cement",
+}
