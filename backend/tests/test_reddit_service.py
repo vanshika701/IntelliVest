@@ -1,7 +1,7 @@
 """Unit test — exercises submission parsing alone, with fabricated
 extracted-field dicts instead of real asyncpraw Submission objects."""
 
-from datetime import timezone
+from datetime import UTC
 
 from app.services.reddit_service import parse_submissions
 
@@ -36,5 +36,5 @@ def test_parse_submissions_skips_entries_missing_post_id_or_created_utc() -> Non
     record = records[0]
     assert record["post_id"] == "abc123"
     assert record["subreddit"] == "stocks"
-    assert record["created_utc"].tzinfo == timezone.utc
+    assert record["created_utc"].tzinfo == UTC
     assert record["score"] == 42

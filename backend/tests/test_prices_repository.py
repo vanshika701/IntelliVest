@@ -3,7 +3,7 @@ a real MongoDB instance, which is the core property Phase 1's ingestion
 depends on (re-running a pull must not create duplicate rows).
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.data.collections import get_prices_collection
 from app.data.prices_repository import upsert_prices
@@ -12,7 +12,7 @@ from app.data.prices_repository import upsert_prices
 async def test_upsert_prices_updates_in_place_instead_of_duplicating(mongo_test_db) -> None:
     record = {
         "ticker": "TEST.NS",
-        "date": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "date": datetime(2026, 1, 1, tzinfo=UTC),
         "open": 100.0,
         "high": 101.0,
         "low": 99.0,

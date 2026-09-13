@@ -3,7 +3,7 @@ duplicate url instead of overwriting, which is what lets the same article
 correctly show up under every ticker it's actually relevant to.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.data.collections import get_news_collection
 from app.data.news_repository import upsert_news_articles
@@ -16,7 +16,7 @@ async def test_upsert_news_articles_merges_tickers_on_duplicate_url(mongo_test_d
         "description": "desc",
         "content": "content",
         "source": "Example News",
-        "published_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "published_at": datetime(2026, 1, 1, tzinfo=UTC),
         "tickers": ["RELIANCE.NS"],
     }
 

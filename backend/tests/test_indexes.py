@@ -4,12 +4,16 @@ enforces idempotent ingestion (a duplicate insert gets rejected, which is
 what lets the ingestion job safely re-run without creating duplicate rows).
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pymongo.errors import DuplicateKeyError
 
-from app.data.collections import get_news_collection, get_prices_collection, get_reddit_collection
+from app.data.collections import (
+    get_news_collection,
+    get_prices_collection,
+    get_reddit_collection,
+)
 
 
 async def test_all_collections_have_expected_index_names(mongo_test_db) -> None:
@@ -28,7 +32,7 @@ async def test_duplicate_ticker_date_insert_is_rejected(mongo_test_db) -> None:
     prices = get_prices_collection()
     doc = {
         "ticker": "TEST.NS",
-        "date": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "date": datetime(2026, 1, 1, tzinfo=UTC),
         "open": 100.0,
         "high": 101.0,
         "low": 99.0,

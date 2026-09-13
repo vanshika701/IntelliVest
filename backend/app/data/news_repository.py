@@ -7,7 +7,7 @@ TCS) — so upserting here has to *merge* the tickers list on a duplicate
 first ticker's association.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pymongo import UpdateOne
 
@@ -24,7 +24,7 @@ async def upsert_news_articles(records: list[dict]) -> int:
     if not records:
         return 0
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     operations = []
     for record in records:
         tickers = record["tickers"]

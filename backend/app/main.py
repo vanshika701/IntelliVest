@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging
+from app.core.scheduler import start_scheduler, stop_scheduler
 from app.data.indexes import ensure_indexes
 from app.data.mongo import close_mongo_connection, connect_to_mongo
 
@@ -17,15 +18,19 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Manage startup/shutdown resources — currently just the DB connection.
+    """Manage startup/shutdown resources: DB connection + ingestion scheduler.
 
-    This runs once per process (not per request), which is why the DB
-    connection lives here instead of being opened inside a route.
+    This runs once per process (not per request), which is why both the
+    DB connection and the scheduler live here instead of inside a route.
     """
     await connect_to_mongo()
     await ensure_indexes()
+    if settings.enable_scheduler:
+        start_scheduler()
     logger.info("%s starting up (env=%s)", settings.app_name, settings.environment)
     yield
+    if settings.enable_scheduler:
+        stop_scheduler()
     await close_mongo_connection()
     logger.info("%s shutting down", settings.app_name)
 

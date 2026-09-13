@@ -71,7 +71,7 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 **What gets built:**
 - Market data ingestion (historical OHLCV — open/high/low/close/volume — for a starter list of stocks)
 - News ingestion pipeline (headlines + article text for a starter set of tickers/sectors)
-- Reddit ingestion pipeline (posts/comments from finance-relevant subreddits)
+- Reddit ingestion pipeline (posts/comments from finance-relevant subreddits) — **paused, not dropped:** code is fully built and tested, but Reddit closed self-service API registration in late 2025 (their "Responsible Builder Policy"). A request is in/pending with Reddit; until it's approved, News is the working sentiment source and Reddit gets wired in later with no code changes needed.
 - Basic data storage schema in MongoDB for prices, news, and social posts
 - A scheduled/refreshable pull mechanism (not necessarily real-time yet)
 
@@ -81,7 +81,7 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 **Hardware:** CPU-OK.
 
-**Exit criteria:** MongoDB collections populated with real historical price data, real news articles, and real Reddit posts for your initial stock universe (sources decided as this phase starts, not pre-selected here).
+**Exit criteria:** MongoDB collections populated with real historical price data and real news articles for your initial stock universe (sources decided as this phase starts, not pre-selected here). Reddit posts join once Reddit's access request is approved — paused, not a blocker for calling this phase done.
 
 ---
 
@@ -160,7 +160,7 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 - FinBERT-based sentiment scoring applied to the news pipeline from Phase 1
 - Optional fine-tuning of FinBERT on a labeled financial sentiment dataset for closer alignment with your data
 - LLM-based news summarization producing concise market updates from ingested articles
-- Multi-source sentiment aggregation combining news sentiment with Reddit discussion sentiment (Novelty item from the proposal)
+- Multi-source sentiment aggregation combining news sentiment with Reddit discussion sentiment (Novelty item from the proposal) — depends on Reddit's access request from Phase 1 having come through by now; if not, this phase runs on news sentiment alone and Reddit folds in later with no rework
 
 **Concepts to learn:** what a pretrained transformer is and why FinBERT beats general-purpose sentiment models on financial text, zero-shot/inference-only use vs. fine-tuning, prompt design for summarization, aggregating signals from heterogeneous sources (news vs. social) into one sentiment measure.
 
@@ -168,7 +168,7 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 **Hardware:** Using FinBERT purely for inference (no fine-tuning) is CPU-OK, just slower per document than on GPU. Fine-tuning FinBERT, or running summarization with a larger local LLM, is GPU-heavy — plan to batch that for a GPU session; inference-only can proceed on the M1 in the meantime.
 
-**Exit criteria:** News articles and Reddit posts in your database carry sentiment scores; the dashboard shows AI-generated news summaries and a combined sentiment view per stock/sector; if FinBERT was fine-tuned, its classification accuracy is reported and documented.
+**Exit criteria:** News articles (and Reddit posts, if access has come through by now) carry sentiment scores; the dashboard shows AI-generated news summaries and a sentiment view per stock/sector; if FinBERT was fine-tuned, its classification accuracy is reported and documented.
 
 ---
 

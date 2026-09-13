@@ -1,7 +1,7 @@
 """Unit test — exercises article parsing alone, with a fabricated NewsAPI
 response instead of a real HTTP call."""
 
-from datetime import timezone
+from datetime import UTC
 
 from app.services.news_service import parse_articles
 
@@ -35,4 +35,4 @@ def test_parse_articles_skips_entries_missing_url_or_published_at() -> None:
     assert record["url"] == "https://example.com/a"
     assert record["source"] == "Example News"
     assert record["tickers"] == ["RELIANCE.NS"]
-    assert record["published_at"].tzinfo == timezone.utc
+    assert record["published_at"].tzinfo == UTC

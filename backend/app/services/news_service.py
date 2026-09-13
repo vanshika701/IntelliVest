@@ -11,6 +11,7 @@ import httpx
 
 from app.core.config import settings
 from app.core.constants import TICKER_TO_COMPANY_NAME
+from app.core.retry import with_retry
 from app.data.news_repository import upsert_news_articles
 from app.services.ingestion_types import IngestResult
 
@@ -31,7 +32,7 @@ def parse_articles(ticker: str, raw_articles: list[dict]) -> list[dict]:
         if not url or not published_at_raw:
             continue
 
-        published_at = datetime.fromisoformat(published_at_raw.replace("Z", "+00:00"))
+        published_at = datetime.fromisoformat(published_at_raw)
         records.append(
             {
                 "url": url,
@@ -46,6 +47,7 @@ def parse_articles(ticker: str, raw_articles: list[dict]) -> list[dict]:
     return records
 
 
+@with_retry
 async def fetch_news_for_ticker(
     client: httpx.AsyncClient, ticker: str, company_name: str, page_size: int = 20
 ) -> list[dict]:

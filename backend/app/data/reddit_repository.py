@@ -1,6 +1,6 @@
 """Data-access layer for the `reddit_posts` collection."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pymongo import UpdateOne
 
@@ -17,7 +17,7 @@ async def upsert_reddit_posts(records: list[dict]) -> int:
     if not records:
         return 0
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     operations = [
         UpdateOne(
             {"post_id": record["post_id"]},

@@ -12,10 +12,20 @@ import logging
 import pandas as pd
 import yfinance as yf
 
+from app.core.retry import with_retry
 from app.data.prices_repository import upsert_prices
 from app.services.ingestion_types import IngestResult
 
 logger = logging.getLogger(__name__)
+
+
+@with_retry
+async def _fetch_history(ticker: str, period: str) -> pd.DataFrame:
+    # yfinance's .history() is a blocking network call; run it on a
+    # worker thread so it doesn't freeze the event loop this coroutine is
+    # running on (this matters once ingestion runs inside the same
+    # process as the API, driven by the scheduler below).
+    return await asyncio.to_thread(yf.Ticker(ticker).history, period=period, interval="1d")
 
 
 def clean_history(ticker: str, history: pd.DataFrame) -> list[dict]:
@@ -53,13 +63,7 @@ async def ingest_ticker(ticker: str, period: str = "2y") -> IngestResult:
     ticker in a 20-ticker universe shouldn't abort the whole run.
     """
     try:
-        # yfinance's .history() is a blocking network call; run it on a
-        # worker thread so it doesn't freeze the event loop this
-        # coroutine is running on (this matters once Section 5 wires this
-        # into a scheduled background job in the same process as the API).
-        history = await asyncio.to_thread(
-            yf.Ticker(ticker).history, period=period, interval="1d"
-        )
+        history = await _fetch_history(ticker, period)
 
         if history.empty:
             return IngestResult(ticker, 0, error="No data returned")

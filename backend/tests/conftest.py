@@ -11,7 +11,12 @@ TEST_DB_NAME = "intellivest_test"
 
 
 @pytest.fixture
-def client() -> TestClient:
+def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    # Scheduler off: a real AsyncIOScheduler can't cleanly restart across
+    # multiple tests' TestClient lifespans, and nothing here needs actual
+    # scheduled ingestion running — see test_scheduler.py for that.
+    monkeypatch.setattr(settings, "enable_scheduler", False)
+
     # Using the context-manager form runs the app's lifespan (connects to
     # Mongo on entry, closes it on exit) instead of just importing the app.
     with TestClient(app) as test_client:

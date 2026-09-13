@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     mongodb_uri: str = "mongodb://localhost:27017"
     mongodb_db_name: str = "intellivest"
 
+    # Off in tests (see tests/conftest.py) so the test suite doesn't spin
+    # up a real background scheduler on every TestClient-based test.
+    enable_scheduler: bool = True
+
     # Frontend origins allowed to call this API (CORS)
     cors_origins: list[str] = ["http://localhost:5173"]
 

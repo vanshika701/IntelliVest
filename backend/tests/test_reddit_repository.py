@@ -2,7 +2,7 @@
 on re-ingestion (e.g. score/num_comments changed) instead of duplicating.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from app.data.collections import get_reddit_collection
 from app.data.reddit_repository import upsert_reddit_posts
@@ -15,7 +15,7 @@ async def test_upsert_reddit_posts_updates_in_place_instead_of_duplicating(mongo
         "title": "Thoughts on Reliance Q3?",
         "body": "Discussion body",
         "author": "some_user",
-        "created_utc": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "created_utc": datetime(2026, 1, 1, tzinfo=UTC),
         "score": 10,
         "num_comments": 2,
         "url": "https://reddit.com/r/stocks/abc123",

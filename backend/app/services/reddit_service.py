@@ -5,11 +5,12 @@ Seam between the external API (Reddit, via asyncpraw) and storage
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import asyncpraw
 
 from app.core.config import settings
+from app.core.retry import with_retry
 from app.data.reddit_repository import upsert_reddit_posts
 from app.services.ingestion_types import IngestResult
 
@@ -53,7 +54,7 @@ def parse_submissions(subreddit_name: str, raw_posts: list[dict]) -> list[dict]:
                 "title": post.get("title"),
                 "body": post.get("body") or "",
                 "author": post.get("author"),
-                "created_utc": datetime.fromtimestamp(created_utc_raw, tz=timezone.utc),
+                "created_utc": datetime.fromtimestamp(created_utc_raw, tz=UTC),
                 "score": post.get("score", 0),
                 "num_comments": post.get("num_comments", 0),
                 "url": post.get("url"),
@@ -62,6 +63,7 @@ def parse_submissions(subreddit_name: str, raw_posts: list[dict]) -> list[dict]:
     return records
 
 
+@with_retry
 async def fetch_posts_for_subreddit(
     reddit_client: asyncpraw.Reddit, subreddit_name: str, limit: int = 25
 ) -> list[dict]:

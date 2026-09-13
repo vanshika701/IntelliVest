@@ -35,12 +35,42 @@ Check it's alive: `curl http://localhost:8000/api/v1/health` should return
 `{"status": "ok", "database": "connected"}` (MongoDB must be running for
 `database` to say `connected`).
 
-Run backend tests:
+Run backend tests and lint:
 
 ```bash
 cd backend
 pytest
+ruff check .
 ```
+
+### Data ingestion (Phase 1)
+
+Three pipelines pull real data into MongoDB — market data (yfinance, no
+key needed), news (NewsAPI), and Reddit (asyncpraw). Each has a manual
+entry point for one-off runs, and all three also run automatically on a
+schedule (daily for prices, hourly for news/Reddit) whenever the backend
+is running, via `app/core/scheduler.py`:
+
+```bash
+cd backend
+python -m scripts.ingest_market_data   # works immediately, no API key
+python -m scripts.ingest_news          # needs NEWS_API_KEY in .env
+python -m scripts.ingest_reddit        # needs REDDIT_CLIENT_ID/SECRET/USER_AGENT in .env
+```
+
+News and Reddit log a warning and exit cleanly if their credentials
+aren't set yet, rather than failing — safe to leave unconfigured until
+you're ready. Get a NewsAPI key at [newsapi.org](https://newsapi.org).
+
+**Reddit is currently blocked on Reddit's own approval process**, not on
+anything in this codebase. Since November 2025, new API apps require
+manual approval under Reddit's
+["Responsible Builder Policy"](https://support.reddithelp.com/hc/en-us/articles/42728983564564-Responsible-Builder-Policy)
+before you get credentials — `/prefs/apps` no longer issues them
+instantly. Submit that request whenever you get to it; the ingestion
+code is already built and tested, so once Reddit approves you and hands
+over `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`/`REDDIT_USER_AGENT`,
+nothing else needs to change.
 
 ## Frontend setup
 
@@ -73,7 +103,21 @@ Two people, one `main` branch — to avoid stepping on each other:
 
 ## Current status
 
-Phase 0 (this setup) is done — empty-but-running React app talking to an
-empty-but-running FastAPI backend, backend talking to local MongoDB. See
-`PROJECT_PLAN.md` for what's next (Phase 1) and the phase-by-phase
+- **Phase 0** — done. Empty-but-running React app talking to an
+  empty-but-running FastAPI backend, backend talking to local MongoDB.
+- **Phase 1** — built and tested, partially verified live:
+  - Market data (yfinance): fully live — 20-stock universe, ~10k real
+    price records in MongoDB, confirmed idempotent on re-runs
+  - News (NewsAPI): fully live — 301 real articles across the 20-stock
+    universe, tickers correctly merged on shared articles, confirmed
+    idempotent across repeated runs
+  - Reddit (asyncpraw): **paused, not dropped** — pipeline is fully
+    built and tested against fabricated data, waiting on Reddit's own
+    access approval (see "Data ingestion" above). News is the working
+    sentiment source in the meantime; Reddit slots in later with zero
+    code changes once approved
+  - Scheduler wraps all three into a real background job, retries
+    transient failures with backoff, fails fast on permanent ones
+
+See `PROJECT_PLAN.md` for what's next (Phase 2) and the phase-by-phase
 ownership split as you two divide the work.
