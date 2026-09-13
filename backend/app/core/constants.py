@@ -25,7 +25,7 @@ STOCK_UNIVERSE: list[str] = [
     "ITC.NS",  # FMCG
     "NESTLEIND.NS",  # FMCG
     "MARUTI.NS",  # Auto
-    "TATAMOTORS.NS",  # Auto
+    "TMPV.NS",  # Auto (Tata Motors Passenger Vehicles, post-demerger — old TATAMOTORS.NS is delisted)
     "SUNPHARMA.NS",  # Pharma
     "TITAN.NS",  # Consumer goods
     "ASIANPAINT.NS",  # Consumer goods
