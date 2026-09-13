@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import configure_logging
+from app.data.indexes import ensure_indexes
 from app.data.mongo import close_mongo_connection, connect_to_mongo
 
 configure_logging()
@@ -22,6 +23,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     connection lives here instead of being opened inside a route.
     """
     await connect_to_mongo()
+    await ensure_indexes()
     logger.info("%s starting up (env=%s)", settings.app_name, settings.environment)
     yield
     await close_mongo_connection()
