@@ -1,0 +1,29 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+
+# Env files (never commit secrets — only .env.example files are tracked)
+.env
+*.local
+
+# ML artifacts
+ml/models/*
+!ml/models/.gitkeep
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# Personal Claude Code instructions — local working preferences, not
+# something the whole team/repo should inherit.
+claude.md
+CLAUDE.md
