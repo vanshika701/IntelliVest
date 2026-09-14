@@ -9,9 +9,13 @@ is safe and cheap once the indexes already exist.
 import logging
 
 from app.data.collections import (
+    get_alerts_collection,
+    get_expenses_collection,
     get_news_collection,
     get_prices_collection,
     get_reddit_collection,
+    get_users_collection,
+    get_watchlist_collection,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,4 +53,44 @@ async def ensure_indexes() -> None:
         name="subreddit_created_utc",
     )
 
-    logger.info("MongoDB indexes ensured (prices, news_articles, reddit_posts)")
+    # --- Phase 2 collections ---
+
+    users = get_users_collection()
+    # Email is the login identifier — must be unique across users.
+    await users.create_index("email", name="uniq_email", unique=True)
+
+    expenses = get_expenses_collection()
+    # "All expenses for user X in a date range" — the most common budget
+    # query pattern: filtering by user_id then sorting/ranging by date.
+    await expenses.create_index(
+        [("user_id", 1), ("date", -1)],
+        name="user_expenses_by_date",
+    )
+
+    watchlist = get_watchlist_collection()
+    # A user can only have a ticker in their watchlist once.
+    await watchlist.create_index(
+        [("user_id", 1), ("ticker", 1)],
+        name="uniq_user_ticker",
+        unique=True,
+    )
+
+    alerts = get_alerts_collection()
+    # "All active alerts for user X" — the dashboard and alert-check job
+    # both need this.
+    await alerts.create_index(
+        [("user_id", 1), ("is_active", 1)],
+        name="user_active_alerts",
+    )
+    # The background alert-check job needs to find all active alerts
+    # for a given ticker quickly (check price against all users' rules).
+    await alerts.create_index(
+        [("ticker", 1), ("is_active", 1)],
+        name="ticker_active_alerts",
+    )
+
+    logger.info(
+        "MongoDB indexes ensured (prices, news_articles, reddit_posts, "
+        "users, expenses, watchlist, alerts)"
+    )
+

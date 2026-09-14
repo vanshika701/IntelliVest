@@ -20,3 +20,19 @@ def get_news_collection() -> AsyncIOMotorCollection:
 
 def get_reddit_collection() -> AsyncIOMotorCollection:
     return get_database()["reddit_posts"]
+
+
+def get_users_collection() -> AsyncIOMotorCollection:
+    return get_database()["users"]
+
+
+def get_expenses_collection() -> AsyncIOMotorCollection:
+    return get_database()["expenses"]
+
+
+def get_watchlist_collection() -> AsyncIOMotorCollection:
+    return get_database()["watchlist"]
+
+
+def get_alerts_collection() -> AsyncIOMotorCollection:
+    return get_database()["alerts"]

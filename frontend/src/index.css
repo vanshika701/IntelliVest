@@ -1,1 +1,40 @@
 @import "tailwindcss";
+
+@theme {
+  --color-brand: #6366f1;
+  --color-brand-hover: #4f46e5;
+  --color-brand-light: rgba(99, 102, 241, 0.1);
+  --color-gains: #10B981;
+  --color-gains-hover: #059669;
+  --color-gains-light: rgba(16, 185, 129, 0.1);
+  --color-losses: #f43f5e;
+  --color-losses-hover: #e11d48;
+  --color-losses-light: rgba(244, 63, 94, 0.1);
+  
+  --color-background-primary: #020617; /* slate-950 */
+  --color-background-secondary: #0f172a; /* slate-900 */
+  --color-background-tertiary: #1e293b; /* slate-800 */
+  
+  --color-text-primary: #f8fafc; /* slate-50 */
+  --color-text-secondary: #94a3b8; /* slate-400 */
+  --color-text-muted: #64748b; /* slate-500 */
+  
+  --color-border-subtle: #1e293b; /* slate-800 */
+  --color-border-strong: #334155; /* slate-700 */
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--color-background-primary)] text-[var(--color-text-primary)] antialiased selection:bg-brand selection:text-white;
+  }
+}
+
+@layer utilities {
+  .glass-card {
+    @apply bg-[var(--color-background-secondary)] border border-[var(--color-border-subtle)] shadow-xl backdrop-blur-sm rounded-xl;
+  }
+  
+  .interactive-element {
+    @apply transition-all duration-200 ease-in-out active:scale-[0.98];
+  }
+}

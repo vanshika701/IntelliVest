@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # Frontend origins allowed to call this API (CORS)
     cors_origins: list[str] = ["http://localhost:5173"]
 
+    # JWT authentication — Phase 2
+    jwt_secret_key: str = "CHANGE-ME-IN-PRODUCTION-USE-A-REAL-SECRET"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 60 * 24  # 24 hours for dev convenience
+
     # External API keys — needed from Phase 1 onward, optional for now so
     # the app still boots without them during Phase 0.
     news_api_key: str | None = None

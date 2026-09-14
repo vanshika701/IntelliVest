@@ -103,6 +103,9 @@ Two people, one `main` branch — to avoid stepping on each other:
 
 ## Current status
 
+Phase 2 is the active build. Track remaining work in
+[`PHASE_2_EXECUTION_PLAN.md`](./PHASE_2_EXECUTION_PLAN.md) (source of truth).
+
 - **Phase 0** — done. Empty-but-running React app talking to an
   empty-but-running FastAPI backend, backend talking to local MongoDB.
 - **Phase 1** — built and tested, partially verified live:
@@ -119,5 +122,5 @@ Two people, one `main` branch — to avoid stepping on each other:
   - Scheduler wraps all three into a real background job, retries
     transient failures with backoff, fails fast on permanent ones
 
-See `PROJECT_PLAN.md` for what's next (Phase 2) and the phase-by-phase
-ownership split as you two divide the work.
+See `PHASE_2_EXECUTION_PLAN.md` for remaining Phase 2 work, and
+`PROJECT_PLAN.md` for later phases and ownership.
