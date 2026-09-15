@@ -4,7 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import get_current_user_id
 from app.schemas.watchlist import WatchlistItemCreate, WatchlistItemResponse, WatchlistItemUpdate
-from app.services.watchlist_service import add_to_watchlist, get_enriched_watchlist, remove_item, update_item
+from app.services.watchlist_service import (
+    add_to_watchlist,
+    get_enriched_watchlist,
+    remove_item,
+    update_item,
+)
 
 router = APIRouter(prefix="/watchlist", tags=["watchlist"])
 

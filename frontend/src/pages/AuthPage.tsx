@@ -3,8 +3,16 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { LogIn, UserPlus } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { useAuth } from '../AuthContext';
-import { apiPost } from '../api/client';
+import { useAuth, type User } from '../AuthContext';
+import { apiGet, apiPost } from '../api/client';
+
+// apiGet reads its Bearer token from localStorage — the token has to be
+// written there before the /me call below, since AuthContext's login()
+// (which normally does that write) isn't called until we already have
+// the profile to hand it.
+function storeTokenForApiClient(token: string) {
+  localStorage.setItem('intellivest_token', token);
+}
 
 export function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
@@ -28,32 +36,16 @@ export function AuthPage() {
     setIsLoading(true);
 
     try {
-      if (isLogin) {
-        const data = await apiPost<{ access_token: string }>('/api/v1/auth/login', { email, password });
-        // After login, we fetch the /me profile manually
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'}/api/v1/auth/me`, {
-          headers: { 'Authorization': `Bearer ${data.access_token}` }
-        });
-        if (res.ok) {
-          const userProfile = await res.json();
-          login(data.access_token, userProfile);
-          navigate('/dashboard');
-        } else {
-          setError('Failed to fetch user profile');
-        }
-      } else {
+      if (!isLogin) {
         await apiPost('/api/v1/auth/register', { email, password, full_name: fullName });
-        // Log them in immediately after registration
-        const data = await apiPost<{ access_token: string }>('/api/v1/auth/login', { email, password });
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'}/api/v1/auth/me`, {
-          headers: { 'Authorization': `Bearer ${data.access_token}` }
-        });
-        if (res.ok) {
-          const userProfile = await res.json();
-          login(data.access_token, userProfile);
-          navigate('/dashboard');
-        }
+        // Fall through to log them in immediately after registration.
       }
+
+      const data = await apiPost<{ access_token: string }>('/api/v1/auth/login', { email, password });
+      storeTokenForApiClient(data.access_token);
+      const userProfile = await apiGet<User>('/api/v1/auth/me');
+      login(data.access_token, userProfile);
+      navigate('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
     } finally {

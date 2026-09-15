@@ -2,9 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { apiGet, apiPost, apiDelete } from '../api/client';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Upload, Plus, Trash2, ArrowUpRight, ArrowDownRight, FileText } from 'lucide-react';
+import { Upload, Plus, Trash2, ArrowUpRight, ArrowDownRight, FileText, Download } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
 export function BudgetingPage() {
   const [expenses, setExpenses] = useState<any[]>([]);
@@ -112,6 +114,13 @@ export function BudgetingPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <h2 className="text-xl font-semibold text-[var(--color-text-primary)] tracking-tight">Overview</h2>
         <div className="flex items-center gap-3 w-full sm:w-auto">
+          <a
+            href={`${API_BASE_URL}/api/v1/expenses/sample-csv`}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
+            title="Download a sample CSV showing the columns the importer recognizes"
+          >
+            <Download className="w-3.5 h-3.5" /> Sample CSV
+          </a>
           <Button variant="outline" className="flex-1 sm:flex-none h-9 text-xs" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
             {uploading ? <div className="h-4 w-4 border-2 border-current border-t-transparent rounded-full animate-spin"></div> : <Upload className="w-4 h-4 mr-2" />}
             {uploading ? 'Uploading...' : 'Import CSV'}
@@ -149,7 +158,7 @@ export function BudgetingPage() {
                     <Pie data={chartData} cx="50%" cy="40%" innerRadius={60} outerRadius={80} paddingAngle={2} dataKey="value" stroke="none">
                       {chartData.map((_, index) => <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
                     </Pie>
-                    <RechartsTooltip formatter={(value: number) => `₹${value.toLocaleString()}`} contentStyle={{ backgroundColor: 'var(--color-background-secondary)', borderColor: 'var(--color-border-subtle)', borderRadius: '0.5rem', color: 'var(--color-text-primary)' }} itemStyle={{ color: 'var(--color-text-primary)' }}/>
+                    <RechartsTooltip formatter={(value) => `₹${Number(value).toLocaleString()}`} contentStyle={{ backgroundColor: 'var(--color-background-secondary)', borderColor: 'var(--color-border-subtle)', borderRadius: '0.5rem', color: 'var(--color-text-primary)' }} itemStyle={{ color: 'var(--color-text-primary)' }}/>
                   </PieChart>
                 </ResponsiveContainer>
               </div>

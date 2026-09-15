@@ -7,15 +7,22 @@ from bson import ObjectId
 from app.data.collections import get_expenses_collection
 
 
-async def insert_expense(user_id: str, expense: dict) -> str:
-    """Insert a single expense record and return its string ID."""
+async def insert_expense(user_id: str, expense: dict) -> dict:
+    """Insert a single expense record and return the full stored document.
+
+    Returns the full doc (not just the ID) so the route layer can build a
+    valid ExpenseResponse without reconstructing fields itself and
+    risking drift from what's actually stored (created_at, resolved date).
+    """
     doc = {
         **expense,
         "user_id": user_id,
         "created_at": datetime.now(UTC),
     }
     result = await get_expenses_collection().insert_one(doc)
-    return str(result.inserted_id)
+    doc["id"] = str(result.inserted_id)
+    doc.pop("_id", None)
+    return doc
 
 
 async def insert_many_expenses(records: list[dict]) -> int:

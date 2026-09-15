@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { apiGet } from './api/client';
+import { apiGet, ApiError } from './api/client';
 
 export interface User {
   id: string;
@@ -30,24 +30,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        // We temporarily intercept the global fetch to add the token just for this check
-        // Real implementation should update the api client to always include this token
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'}/api/v1/auth/me`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        
-        if (res.ok) {
-          const userData = await res.json();
-          setUser(userData);
-        } else {
-          // Token invalid or expired
+        // apiGet already attaches the token from localStorage (see
+        // api/client.ts's getDefaultHeaders) — no need to duplicate that
+        // here with a manual fetch + Authorization header.
+        const userData = await apiGet<User>('/api/v1/auth/me');
+        setUser(userData);
+      } catch (e) {
+        if (e instanceof ApiError) {
+          // Token invalid or expired — clear it so ProtectedRoute
+          // redirects to /auth instead of retrying forever.
           setToken(null);
           localStorage.removeItem('intellivest_token');
+        } else {
+          // A network hiccup isn't proof the token is bad — don't log
+          // the user out just because a request failed to go through.
+          console.error('Failed to load user profile', e);
         }
-      } catch (e) {
-        console.error("Failed to load user profile", e);
       } finally {
         setIsLoading(false);
       }

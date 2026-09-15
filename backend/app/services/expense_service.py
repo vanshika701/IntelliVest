@@ -19,13 +19,24 @@ from app.data.expense_repository import (
 
 logger = logging.getLogger(__name__)
 
+# Given to users via GET /expenses/sample-csv, showing exactly the
+# columns import_csv recognizes — so "download sample" and "what does
+# the parser accept" never drift apart.
+SAMPLE_CSV_CONTENT = (
+    "Date,Description,Category,Type,Amount\n"
+    "2026-01-05,Monthly salary,Salary,Income,75000\n"
+    "2026-01-07,Grocery shopping,Groceries,Expense,2450.50\n"
+    "2026-01-10,Electricity bill,Utilities,Expense,1800\n"
+    "2026-01-15,Freelance project,Freelance,Income,12000\n"
+)
+
 
 # ---------------------------------------------------------------------------
 # Manual expense entry
 # ---------------------------------------------------------------------------
 
-async def add_expense(user_id: str, data: dict) -> str:
-    """Validate and store a single expense. Returns the new expense ID."""
+async def add_expense(user_id: str, data: dict) -> dict:
+    """Validate and store a single expense. Returns the full stored record."""
     if data.get("date") is None:
         data["date"] = datetime.now(UTC)
     return await insert_expense(user_id, data)
@@ -59,7 +70,14 @@ _DESC_COLS = {"description", "narration", "particulars", "remarks", "memo"}
 _AMOUNT_COLS = {"amount", "transaction amount", "txn amount"}
 _DEBIT_COLS = {"debit", "withdrawal", "withdrawals"}
 _CREDIT_COLS = {"credit", "deposit", "deposits"}
-_CATEGORY_COLS = {"category", "type", "expense type"}
+_CATEGORY_COLS = {"category"}
+# A "Type" column is ambiguous in the wild: some statements use it for
+# transaction direction ("Income"/"Expense", "Debit"/"Credit"), others use
+# it as a category label ("Groceries", "Rent"). We check the actual cell
+# values against known direction words before deciding which it is.
+_TYPE_COLS = {"type", "expense type", "transaction type"}
+_INCOME_WORDS = {"income", "credit", "cr", "deposit"}
+_EXPENSE_WORDS = {"expense", "debit", "dr", "withdrawal", "spend"}
 
 
 def _find_col(headers: list[str], synonyms: set[str]) -> int | None:
@@ -67,6 +85,17 @@ def _find_col(headers: list[str], synonyms: set[str]) -> int | None:
     for i, h in enumerate(headers):
         if h.strip().lower() in synonyms:
             return i
+    return None
+
+
+def _classify_type_value(raw: str) -> str | None:
+    """Return 'income'/'expense' if a Type column value is a direction
+    word, or None if it's actually a category label in disguise."""
+    value = raw.strip().lower()
+    if value in _INCOME_WORDS:
+        return "income"
+    if value in _EXPENSE_WORDS:
+        return "expense"
     return None
 
 
@@ -108,6 +137,7 @@ async def import_csv(user_id: str, file_bytes: bytes) -> dict:
     debit_idx = _find_col(headers, _DEBIT_COLS)
     credit_idx = _find_col(headers, _CREDIT_COLS)
     category_idx = _find_col(headers, _CATEGORY_COLS)
+    type_idx = _find_col(headers, _TYPE_COLS)
 
     if date_idx is None:
         return {"imported": 0, "skipped": 0, "errors": ["No date column found"]}
@@ -134,10 +164,18 @@ async def import_csv(user_id: str, file_bytes: bytes) -> dict:
         # Description
         description = row[desc_idx].strip() if desc_idx is not None and desc_idx < len(row) else "Imported"
 
+        # Type column, if present — may indicate direction (income/expense)
+        # or just be a category label; _classify_type_value tells them apart.
+        type_value = row[type_idx].strip() if type_idx is not None and type_idx < len(row) else ""
+        type_direction = _classify_type_value(type_value) if type_value else None
+
         # Amount & type
         if amount_idx is not None and amount_idx < len(row):
             amount = _parse_amount(row[amount_idx])
-            expense_type = "expense"  # Will be overridden if category column says otherwise
+            # A dedicated Type column indicating direction wins; otherwise
+            # a single "Amount" column with no direction signal defaults
+            # to expense (can't tell income from spend from amount alone).
+            expense_type = type_direction or "expense"
         elif debit_idx is not None and debit_idx < len(row) and row[debit_idx].strip():
             amount = _parse_amount(row[debit_idx])
             expense_type = "expense"
@@ -154,12 +192,16 @@ async def import_csv(user_id: str, file_bytes: bytes) -> dict:
             skipped += 1
             continue
 
-        # Category (optional)
+        # Category (optional). Prefer an explicit Category column; if the
+        # Type column turned out to be a category label in disguise (not
+        # a direction word), fall back to that instead.
         category = "Uncategorized"
         if category_idx is not None and category_idx < len(row):
             cat = row[category_idx].strip()
             if cat:
                 category = cat
+        elif type_value and type_direction is None:
+            category = type_value
 
         records.append(
             {

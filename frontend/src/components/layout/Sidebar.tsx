@@ -1,4 +1,3 @@
-import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -41,7 +40,7 @@ export function Sidebar() {
               ) : (
                 <NavLink
                   to={item.path}
-                  className={({ isActive }) =>
+                  className={({ isActive }: { isActive: boolean }) =>
                     cn(
                       "flex items-center rounded-lg p-2 text-sm font-medium transition-colors interactive-element group",
                       isActive 
@@ -61,7 +60,7 @@ export function Sidebar() {
         <div className="mt-auto pt-4 border-t border-[var(--color-border-subtle)] space-y-2">
           <button
             onClick={logout}
-            className="flex w-full items-center rounded-lg p-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-[var(--color-losses-light)])] hover:text-[var(--color-losses)] interactive-element group"
+            className="flex w-full items-center rounded-lg p-2 text-sm font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-losses-light)] hover:text-[var(--color-losses)] interactive-element group"
           >
             <LogOut className="h-5 w-5 mr-3 shrink-0" />
             Sign Out

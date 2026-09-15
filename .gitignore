@@ -8,6 +8,10 @@ __pycache__/
 node_modules/
 dist/
 dist-ssr/
+*.log
+
+# Ruff cache
+.ruff_cache/
 
 # Env files (never commit secrets — only .env.example files are tracked)
 .env

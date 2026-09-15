@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { Newspaper, BellRing, TrendingUp, TrendingDown, Clock, ArrowRight } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Newspaper, BellRing, TrendingUp, TrendingDown, Clock, ArrowRight, LineChart } from 'lucide-react';
 import { apiGet } from '../api/client';
 import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';

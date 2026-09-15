@@ -1,10 +1,18 @@
 """Expense routes — CRUD + CSV upload + spending summary."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi.responses import Response
 
 from app.api.deps import get_current_user_id
 from app.schemas.expense import CsvUploadResult, ExpenseCreate, ExpenseResponse, ExpenseSummary
-from app.services.expense_service import add_expense, import_csv, list_expenses, remove_expense, summarize_expenses
+from app.services.expense_service import (
+    SAMPLE_CSV_CONTENT,
+    add_expense,
+    import_csv,
+    list_expenses,
+    remove_expense,
+    summarize_expenses,
+)
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 
@@ -20,12 +28,7 @@ async def get_expenses(
 
 @router.post("", response_model=ExpenseResponse, status_code=status.HTTP_201_CREATED)
 async def create_expense(body: ExpenseCreate, user_id: str = Depends(get_current_user_id)):
-    expense_id = await add_expense(user_id, body.model_dump())
-    return {
-        "id": expense_id,
-        "user_id": user_id,
-        **body.model_dump(),
-    }
+    return await add_expense(user_id, body.model_dump())
 
 
 @router.delete("/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -46,3 +49,13 @@ async def upload_csv(file: UploadFile, user_id: str = Depends(get_current_user_i
 @router.get("/summary", response_model=ExpenseSummary)
 async def get_summary(user_id: str = Depends(get_current_user_id)):
     return await summarize_expenses(user_id)
+
+
+@router.get("/sample-csv")
+async def download_sample_csv():
+    """A template CSV showing exactly the columns the parser recognizes."""
+    return Response(
+        content=SAMPLE_CSV_CONTENT,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sample_transactions.csv"},
+    )

@@ -27,7 +27,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 cd backend
-cp .env.example .env           # fill in API keys as later phases need them
+cp .env.example .env           # JWT_SECRET_KEY works out of the box for local dev;
+                                # fill in API keys as later phases need them
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -49,7 +50,8 @@ Three pipelines pull real data into MongoDB — market data (yfinance, no
 key needed), news (NewsAPI), and Reddit (asyncpraw). Each has a manual
 entry point for one-off runs, and all three also run automatically on a
 schedule (daily for prices, hourly for news/Reddit) whenever the backend
-is running, via `app/core/scheduler.py`:
+is running, via `app/core/scheduler.py` (which also runs price-alert
+evaluation every 5 minutes, for Phase 2's watchlist alerts):
 
 ```bash
 cd backend
@@ -103,7 +105,7 @@ Two people, one `main` branch — to avoid stepping on each other:
 
 ## Current status
 
-Phase 2 is the active build. Track remaining work in
+Phase 2's exit criteria are met. Track remaining polish items in
 [`PHASE_2_EXECUTION_PLAN.md`](./PHASE_2_EXECUTION_PLAN.md) (source of truth).
 
 - **Phase 0** — done. Empty-but-running React app talking to an
@@ -121,6 +123,13 @@ Phase 2 is the active build. Track remaining work in
     code changes once approved
   - Scheduler wraps all three into a real background job, retries
     transient failures with backoff, fails fast on permanent ones
+- **Phase 2** — exit criteria verified live: register/login, add an
+  expense, upload a CSV statement, add a watchlist item with notes, and
+  get a rule-based alert when a price crosses a threshold, all confirmed
+  end-to-end against the real backend and MongoDB. 39/39 backend tests,
+  7/7 frontend tests, `npm run build` green. Refresh tokens, a ticker
+  marquee, and a shared modal component library are explicitly deferred
+  polish — see `PHASE_2_EXECUTION_PLAN.md` Section 7.
 
-See `PHASE_2_EXECUTION_PLAN.md` for remaining Phase 2 work, and
+See `PHASE_2_EXECUTION_PLAN.md` for remaining Phase 2 polish, and
 `PROJECT_PLAN.md` for later phases and ownership.
