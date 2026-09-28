@@ -112,6 +112,8 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 **Owner:** _unassigned_
 
+**Status: done (2026-09-20).** Paper + public dataset picked, model trained, backend + frontend integrated, verified live.
+
 **Goal:** First taste of supervised ML, on the simplest and most self-contained module.
 
 **What gets built:**
@@ -125,6 +127,14 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 **Hardware:** CPU-OK — this is a lightweight classical ML or small-model problem, not a deep learning problem.
 
 **Exit criteria:** Uploaded/entered transactions get auto-categorized with a visible accuracy metric, and the budgeting UI from Phase 2 shows categorized spending.
+
+**What was actually built:**
+- **Dataset:** [`mitulshah/transaction-categorization`](https://huggingface.co/datasets/mitulshah/transaction-categorization) (Hugging Face, MIT license, 4.5M rows, 10 categories, 5 countries incl. India) — gated (free HF account + one-click access agreement, no manual review); trained on a stratified 100,000-row subsample (10,000/category)
+- **Paper (benchmark reference):** DFTSen, *Discover Artificial Intelligence* (Springer, 2026) — reports 95.3% accuracy / 95.4% macro-F1 on this same dataset with a Transformer+BiLSTM deep multi-task model
+- **Model:** classical TF-IDF + Logistic Regression (Random Forest scored marginally higher — 98.33% vs 98.31% macro-F1 — but at 129MB vs 782KB for a 0.02-point gain; Logistic Regression was the correct production choice)
+- **Result: 98.3% accuracy / 98.3% macro-F1** on held-out test data — numerically *above* DFTSen's reported deep-learning number, which is a dataset-cleanliness artifact (this dataset's descriptions are template-generated, e.g. "Exxon - CANADA Store" — cleaner than real bank statement text), documented honestly rather than presented as "our simple model beat a deep model," see `ml/models/expense_categorizer/metrics.json`
+- **Integration:** `category` is now optional on manual entry and CSV import — omit it and the trained model predicts one; every expense records `category_source` (`user`/`ml`/`default`) and `category_confidence`; `GET /api/v1/expenses/categorization-model-info` exposes the real metrics; the Budgeting page shows a live accuracy badge and a ✨ icon on auto-categorized transactions
+- **Verified live**, not just in tests: real descriptions through the running API returned correct categories with real confidence scores (e.g. "Starbucks Coffee - USA Branch" → Food & Dining, 91.3%; a non-templated description "Electric Bill Payment - INDIA" → still correct at only 47% confidence, empirically confirming the dataset-cleanliness caveat above)
 
 ---
 

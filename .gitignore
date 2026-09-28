@@ -17,9 +17,13 @@ dist-ssr/
 .env
 *.local
 
-# ML artifacts
-ml/models/*
-!ml/models/.gitkeep
+# ML model binaries — regenerable via each ml/train_*.py script.
+# metrics.json is NOT ignored (tracked deliberately): it's small and is
+# the actual documented result of training, not a build artifact.
+ml/models/**/*.joblib
+ml/models/**/*.pkl
+ml/models/**/*.h5
+ml/models/**/*.pt
 
 # Editor / OS
 .vscode/*

@@ -2,7 +2,10 @@
 the full route -> service -> repository -> DB stack.
 """
 
+import pytest
 from fastapi.testclient import TestClient
+
+from app.services import expense_service
 
 
 def test_create_expense_returns_a_valid_response(
@@ -22,9 +25,53 @@ def test_create_expense_returns_a_valid_response(
     assert body["amount"] == 500
     assert body["category"] == "Food"
     assert body["expense_type"] == "expense"
+    assert body["category_source"] == "user"
+    assert body["category_confidence"] is None
     assert "id" in body
     assert "created_at" in body
     assert "date" in body
+
+
+def test_create_expense_without_category_gets_ml_auto_categorized(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Phase 3: omitting category should trigger the ML categorizer, not
+    fail validation. Mocked so this test doesn't depend on whether the
+    real model has been trained on this machine."""
+    monkeypatch.setattr(
+        expense_service, "_categorize", lambda description: ("Food & Dining", "ml", 0.87)
+    )
+
+    response = client.post(
+        "/api/v1/expenses",
+        headers=auth_headers,
+        json={"amount": 250, "description": "Starbucks - USA Store"},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["category"] == "Food & Dining"
+    assert body["category_source"] == "ml"
+    assert body["category_confidence"] == 0.87
+
+
+def test_create_expense_falls_back_to_uncategorized_when_model_unavailable(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If the model isn't trained yet, auto-categorization should degrade
+    gracefully to 'Uncategorized' rather than the request failing."""
+    monkeypatch.setattr(expense_service, "predict_category", lambda description: None)
+
+    response = client.post(
+        "/api/v1/expenses",
+        headers=auth_headers,
+        json={"amount": 100, "description": "Some unrecognizable merchant"},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["category"] == "Uncategorized"
+    assert body["category_source"] == "default"
 
 
 def test_list_expenses_returns_created_expense(
@@ -134,6 +181,31 @@ def test_csv_upload_uses_type_column_as_category_when_not_a_direction_word(
     listed = client.get("/api/v1/expenses", headers=auth_headers).json()
     assert listed["items"][0]["category"] == "Fitness"
     assert listed["items"][0]["expense_type"] == "expense"
+
+
+def test_csv_upload_ml_categorizes_rows_with_no_category_column(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No Category column and no usable Type-as-category fallback should
+    trigger the ML categorizer per row, not a blind 'Uncategorized'."""
+    monkeypatch.setattr(
+        expense_service, "_categorize", lambda description: ("Transportation", "ml", 0.91)
+    )
+
+    csv_content = "Date,Description,Amount\n2026-01-05,Uber ride,350\n"
+    response = client.post(
+        "/api/v1/expenses/upload-csv",
+        headers=auth_headers,
+        files={"file": ("statement.csv", csv_content, "text/csv")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["imported"] == 1
+
+    listed = client.get("/api/v1/expenses", headers=auth_headers).json()
+    assert listed["items"][0]["category"] == "Transportation"
+    assert listed["items"][0]["category_source"] == "ml"
+    assert listed["items"][0]["category_confidence"] == 0.91
 
 
 def test_csv_upload_rejects_non_csv_files(client: TestClient, auth_headers: dict[str, str]) -> None:

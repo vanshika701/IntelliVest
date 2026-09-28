@@ -130,6 +130,36 @@ Phase 2's exit criteria are met. Track remaining polish items in
   7/7 frontend tests, `npm run build` green. Refresh tokens, a ticker
   marquee, and a shared modal component library are explicitly deferred
   polish — see `PHASE_2_EXECUTION_PLAN.md` Section 7.
+- **Phase 3** — done. Expense categorizer trained on the public
+  `mitulshah/transaction-categorization` dataset (Hugging Face),
+  benchmarked against the DFTSen paper (95.3% accuracy reported) —
+  **98.3% accuracy / 98.3% macro-F1** achieved with a classical TF-IDF +
+  Logistic Regression model, honestly caveated (this dataset's synthetic
+  text is cleaner than real bank statements, which is almost certainly
+  why the classical model's number came in above the paper's deep-model
+  one — documented in `ml/models/expense_categorizer/metrics.json`, not
+  hidden). Manual entry and CSV import both auto-categorize when no
+  category is given; the Budgeting page shows the live accuracy metric
+  and marks ML-categorized transactions. See `PROJECT_PLAN.md` Phase 3
+  for the full writeup.
 
 See `PHASE_2_EXECUTION_PLAN.md` for remaining Phase 2 polish, and
 `PROJECT_PLAN.md` for later phases and ownership.
+
+### Training the expense categorizer (Phase 3)
+
+```bash
+cd ml
+cp .env.example .env   # needs a free Hugging Face token — see that file
+python3 train_expense_categorizer.py
+```
+
+Needs a Hugging Face account + accepting the dataset's access conditions
+once at [huggingface.co/datasets/mitulshah/transaction-categorization](https://huggingface.co/datasets/mitulshah/transaction-categorization)
+(instant, no review), then a token from
+[huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+Writes `vectorizer.joblib` + `model.joblib` (gitignored — regenerate
+locally) and `metrics.json` (tracked — the real reported results) to
+`ml/models/expense_categorizer/`. The backend auto-categorization
+feature degrades gracefully (falls back to "Uncategorized") if this
+hasn't been run yet on a given machine.

@@ -16,8 +16,25 @@ from app.data.expense_repository import (
     insert_expense,
     insert_many_expenses,
 )
+from app.services.expense_categorization_service import predict_category
 
 logger = logging.getLogger(__name__)
+
+# Used whenever the ML categorizer isn't available (model not trained
+# yet) — matches the CSV importer's long-standing fallback so behavior
+# is consistent whether an expense is missing a category via the API or
+# via a CSV row that had no Category column.
+_FALLBACK_CATEGORY = "Uncategorized"
+
+
+def _categorize(description: str) -> tuple[str, str, float | None]:
+    """Return (category, category_source, category_confidence) for a
+    transaction description with no user-provided category."""
+    prediction = predict_category(description)
+    if prediction is None:
+        return _FALLBACK_CATEGORY, "default", None
+    category, confidence = prediction
+    return category, "ml", confidence
 
 # Given to users via GET /expenses/sample-csv, showing exactly the
 # columns import_csv recognizes — so "download sample" and "what does
@@ -36,9 +53,25 @@ SAMPLE_CSV_CONTENT = (
 # ---------------------------------------------------------------------------
 
 async def add_expense(user_id: str, data: dict) -> dict:
-    """Validate and store a single expense. Returns the full stored record."""
+    """Validate and store a single expense. Returns the full stored record.
+
+    If the caller didn't supply a category, the ML categorizer (Phase 3)
+    predicts one from the description instead of requiring the user to
+    pick — category_source/category_confidence record whether that
+    happened, so the UI can show it was a guess, not a fact.
+    """
     if data.get("date") is None:
         data["date"] = datetime.now(UTC)
+
+    if data.get("category"):
+        data["category_source"] = "user"
+        data["category_confidence"] = None
+    else:
+        category, source, confidence = _categorize(data["description"])
+        data["category"] = category
+        data["category_source"] = source
+        data["category_confidence"] = confidence
+
     return await insert_expense(user_id, data)
 
 
@@ -192,16 +225,22 @@ async def import_csv(user_id: str, file_bytes: bytes) -> dict:
             skipped += 1
             continue
 
-        # Category (optional). Prefer an explicit Category column; if the
-        # Type column turned out to be a category label in disguise (not
-        # a direction word), fall back to that instead.
-        category = "Uncategorized"
+        # Category. Prefer an explicit Category column; if the Type
+        # column turned out to be a category label in disguise (not a
+        # direction word), fall back to that; otherwise let the ML
+        # categorizer (Phase 3) predict one from the description rather
+        # than blindly labeling every uncategorized row "Uncategorized".
+        category_source = "user"
+        category_confidence = None
+        category = None
         if category_idx is not None and category_idx < len(row):
             cat = row[category_idx].strip()
             if cat:
                 category = cat
-        elif type_value and type_direction is None:
+        if category is None and type_value and type_direction is None:
             category = type_value
+        if category is None:
+            category, category_source, category_confidence = _categorize(description)
 
         records.append(
             {
@@ -209,6 +248,8 @@ async def import_csv(user_id: str, file_bytes: bytes) -> dict:
                 "amount": amount,
                 "description": description,
                 "category": category,
+                "category_source": category_source,
+                "category_confidence": category_confidence,
                 "expense_type": expense_type,
                 "date": date,
                 "created_at": now,

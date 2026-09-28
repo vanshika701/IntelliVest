@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { apiGet, apiPost, apiDelete } from '../api/client';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Upload, Plus, Trash2, ArrowUpRight, ArrowDownRight, FileText, Download } from 'lucide-react';
+import { Upload, Plus, Trash2, ArrowUpRight, ArrowDownRight, FileText, Download, Sparkles } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 
@@ -12,7 +12,8 @@ export function BudgetingPage() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  
+  const [modelInfo, setModelInfo] = useState<any>(null);
+
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -24,6 +25,11 @@ export function BudgetingPage() {
 
   useEffect(() => {
     loadData();
+    // Fetched once, separately from expenses/summary — this doesn't
+    // change per-request and shouldn't block the main loading state.
+    apiGet<any>('/api/v1/expenses/categorization-model-info')
+      .then(setModelInfo)
+      .catch(() => setModelInfo(null));
   }, []);
 
   async function loadData() {
@@ -42,13 +48,21 @@ export function BudgetingPage() {
     }
   }
 
+  // Phase 3's exit criteria calls for a "visible accuracy metric" —
+  // this is that: the real number from ml/train_expense_categorizer.py's
+  // metrics.json, not a hardcoded claim.
+  const modelAccuracy =
+    modelInfo?.selected_model && modelInfo?.models_compared?.[modelInfo.selected_model]?.accuracy;
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     try {
       await apiPost('/api/v1/expenses', {
         amount: parseFloat(amount),
         description,
-        category,
+        // Omit entirely (not empty string) when left blank, so the
+        // backend's Phase 3 ML categorizer predicts one instead.
+        ...(category.trim() ? { category: category.trim() } : {}),
         expense_type: expenseType
       });
       setIsAddOpen(false);
@@ -112,7 +126,18 @@ export function BudgetingPage() {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h2 className="text-xl font-semibold text-[var(--color-text-primary)] tracking-tight">Overview</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-[var(--color-text-primary)] tracking-tight">Overview</h2>
+          {typeof modelAccuracy === 'number' && (
+            <p
+              className="mt-1 inline-flex items-center gap-1.5 text-xs text-[var(--color-brand)]"
+              title="Trained on mitulshah/transaction-categorization (Hugging Face); see ml/models/expense_categorizer/metrics.json for full results"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              AI auto-categorization: {(modelAccuracy * 100).toFixed(1)}% accuracy
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
           <a
             href={`${API_BASE_URL}/api/v1/expenses/sample-csv`}
@@ -193,6 +218,18 @@ export function BudgetingPage() {
                           <p className="font-medium text-[var(--color-text-primary)]">{exp.description}</p>
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-xs bg-[var(--color-background-secondary)] border border-[var(--color-border-strong)] px-2 py-0.5 rounded text-[var(--color-text-secondary)]">{exp.category}</span>
+                            {exp.category_source === 'ml' && (
+                              <span
+                                className="inline-flex items-center gap-1 text-xs text-[var(--color-brand)]"
+                                title={
+                                  exp.category_confidence != null
+                                    ? `AI-categorized, ${(exp.category_confidence * 100).toFixed(0)}% confidence`
+                                    : 'AI-categorized'
+                                }
+                              >
+                                <Sparkles className="w-3 h-3" />
+                              </span>
+                            )}
                             <span className="text-xs text-[var(--color-text-muted)]">{new Date(exp.date).toLocaleDateString()}</span>
                           </div>
                         </div>
@@ -236,8 +273,10 @@ export function BudgetingPage() {
               </div>
               
               <div>
-                <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider">Category</label>
-                <Input required value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Food, Utilities, Income" />
+                <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider">
+                  Category <span className="text-[var(--color-text-muted)] font-normal normal-case">(optional — leave blank to auto-categorize with AI)</span>
+                </label>
+                <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Food, Utilities, Income" />
               </div>
               
               <div className="flex gap-3 pt-4 border-t border-[var(--color-border-subtle)] mt-2">
