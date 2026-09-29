@@ -1,11 +1,11 @@
 {
   "selected_model": "logistic_regression",
-  "selection_reasoning": "Among models within 0.005 macro-F1 of the top score, picked the fastest-training one as a proxy for a lighter, faster-at-inference artifact (saved model is 0.76MB).",
+  "selection_reasoning": "Among models within 0.005 macro-F1 of the top score, picked the fastest-training one as a proxy for a lighter, faster-at-inference artifact (saved model is 6.89MB).",
   "dataset": {
     "source": "mitulshah/transaction-categorization (Hugging Face, MIT license)",
     "total_rows_available": 4501043,
-    "rows_used_for_training": 100000,
-    "rows_per_category": 10000,
+    "rows_used_for_training": 4501043,
+    "rows_per_category": "all available (no subsampling)",
     "categories": [
       "Charity & Donations",
       "Entertainment & Recreation",
@@ -19,6 +19,25 @@
       "Utilities & Services"
     ]
   },
+  "supplementary_real_vocabulary": {
+    "sources": [
+      "ml/real_merchant_vocabulary.py (hand-curated national/global brands)",
+      "ml/data/bharatpoi_supplementary.csv (real Indian business names, derived from BharatPOI/OpenStreetMap, ODbL 1.0 license)"
+    ],
+    "rows_added": 13480,
+    "sample_weight_per_row": 13.4,
+    "target_fraction_of_category_weight": 0.05,
+    "added_to": "training only \u2014 never the held-out test split",
+    "brand_tokens_in_vocabulary": {
+      "swiggy": true,
+      "zerodha": true,
+      "bescom": true,
+      "irctc": true,
+      "practo": true
+    },
+    "vocabulary_construction": "Union of the main corpus's top max_features tokens by frequency and every token appearing in the supplementary corpus (see build_vectorizer) \u2014 guarantees real-brand tokens survive regardless of how large the main corpus is. An earlier max_features-only approach passed this check at a 500k-row diagnostic scale but silently failed at the full ~4.5M-row scale (all sample brand tokens pruned, realistic-text accuracy back to 54%) \u2014 see ml/log.md.",
+    "reason": "A stress test (see realistic_text_stress_test) measured only 50% accuracy on realistic text before this was added, because the main dataset's merchant names are template placeholders with no real brand-name overlap. This mixes in real vocabulary without diluting the main dataset's signal, by weighting rather than duplicating rows."
+  },
   "benchmark_reference": {
     "paper": "DFTSen (Discover Artificial Intelligence, Springer, 2026)",
     "reported_accuracy": 0.953,
@@ -27,95 +46,276 @@
   },
   "models_compared": {
     "logistic_regression": {
-      "accuracy": 0.98315,
-      "macro_f1": 0.9831369963753879,
-      "weighted_f1": 0.983136996375388,
-      "train_seconds": 1.06
+      "accuracy": 0.9873207221878475,
+      "macro_f1": 0.9873051862213525,
+      "weighted_f1": 0.987306028659038,
+      "train_seconds": 80.99
     },
     "random_forest": {
-      "accuracy": 0.9833,
-      "macro_f1": 0.9833056279281669,
-      "weighted_f1": 0.9833056279281667,
-      "train_seconds": 4.79
+      "accuracy": 0.9882971621034671,
+      "macro_f1": 0.9883020224303051,
+      "weighted_f1": 0.9883021617864343,
+      "train_seconds": 3218.41
     }
+  },
+  "sample_size_justification": {
+    "method": "Trained Logistic Regression at several sample sizes (2k/5k/10k/25k/50k/100k per category) before picking one, to check whether 4.5M rows were actually needed.",
+    "learning_curve_accuracy": {
+      "2000_per_category": 0.9848,
+      "5000_per_category": 0.9849,
+      "10000_per_category": 0.9831,
+      "25000_per_category": 0.9843,
+      "50000_per_category": 0.9851,
+      "100000_per_category": 0.9858
+    },
+    "conclusion": "Accuracy is essentially flat across a 50x increase in training data (98.48% -> 98.58%) \u2014 this dataset's template-generated text saturates fast, so more rows don't meaningfully help. 100k/category was still chosen over the smaller sizes that scored identically, so the shipped model uses a substantial fraction (~22%) of the public dataset rather than the smallest sample that happened to work."
   },
   "selected_model_full_report": {
     "Charity & Donations": {
-      "precision": 1.0,
+      "precision": 0.9999666777740753,
       "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 2000.0
+      "f1-score": 0.9999833386094403,
+      "support": 90027.0
     },
     "Entertainment & Recreation": {
       "precision": 1.0,
       "recall": 1.0,
       "f1-score": 1.0,
-      "support": 2000.0
+      "support": 89899.0
     },
     "Financial Services": {
-      "precision": 1.0,
+      "precision": 0.9998337157870232,
       "recall": 1.0,
-      "f1-score": 1.0,
-      "support": 2000.0
+      "f1-score": 0.9999168509803269,
+      "support": 90192.0
     },
     "Food & Dining": {
-      "precision": 0.9969558599695586,
-      "recall": 0.9825,
-      "f1-score": 0.9896751447997986,
-      "support": 2000.0
+      "precision": 0.9912301255230126,
+      "recall": 0.9916616435603778,
+      "f1-score": 0.9914458375880945,
+      "support": 89586.0
     },
     "Government & Legal": {
-      "precision": 0.9828022255943348,
-      "recall": 0.9715,
-      "f1-score": 0.9771184309781242,
-      "support": 2000.0
+      "precision": 0.9882047652748289,
+      "recall": 0.9750282636164128,
+      "f1-score": 0.98157229651698,
+      "support": 90222.0
     },
     "Healthcare & Medical": {
-      "precision": 0.9692695214105793,
-      "recall": 0.962,
-      "f1-score": 0.9656210790464241,
-      "support": 2000.0
+      "precision": 0.9691399644092713,
+      "recall": 0.9745473541474475,
+      "f1-score": 0.9718361375274324,
+      "support": 89971.0
     },
     "Income": {
-      "precision": 0.976039119804401,
-      "recall": 0.998,
-      "f1-score": 0.9868974042027194,
-      "support": 2000.0
+      "precision": 0.9842732535869458,
+      "recall": 0.9980801029863832,
+      "f1-score": 0.9911285967754377,
+      "support": 90109.0
     },
     "Shopping & Retail": {
-      "precision": 0.9394697348674337,
-      "recall": 0.939,
-      "f1-score": 0.9392348087021756,
-      "support": 2000.0
+      "precision": 0.9568838146406985,
+      "recall": 0.9499933324443259,
+      "f1-score": 0.9534261241970021,
+      "support": 89988.0
     },
     "Transportation": {
-      "precision": 0.9815737051792829,
-      "recall": 0.9855,
-      "f1-score": 0.9835329341317365,
-      "support": 2000.0
+      "precision": 0.9946830540537516,
+      "recall": 0.9890369183166939,
+      "f1-score": 0.9918519510670596,
+      "support": 89847.0
     },
     "Utilities & Services": {
-      "precision": 0.9856079404466501,
-      "recall": 0.993,
-      "f1-score": 0.9892901618929016,
-      "support": 2000.0
+      "precision": 0.9889556244912328,
+      "recall": 0.9948433073654391,
+      "f1-score": 0.9918907289517526,
+      "support": 90368.0
     },
-    "accuracy": 0.98315,
+    "accuracy": 0.9873207221878475,
     "macro avg": {
-      "precision": 0.9831718107272239,
-      "recall": 0.98315,
-      "f1-score": 0.9831369963753879,
-      "support": 20000.0
+      "precision": 0.9873170995540841,
+      "recall": 0.9873190922437081,
+      "f1-score": 0.9873051862213525,
+      "support": 900209.0
     },
     "weighted avg": {
-      "precision": 0.9831718107272239,
-      "recall": 0.98315,
-      "f1-score": 0.983136996375388,
-      "support": 20000.0
+      "precision": 0.9873171854988908,
+      "recall": 0.9873207221878475,
+      "f1-score": 0.987306028659038,
+      "support": 900209.0
     }
   },
+  "realistic_text_stress_test": {
+    "num_examples": 150,
+    "accuracy": 0.92,
+    "macro_f1": 0.9200454870491022,
+    "macro_precision": 0.9232530704589529,
+    "macro_recall": 0.9200000000000002,
+    "weighted_f1": 0.9200454870491022,
+    "average_confidence": 0.9019817089980539,
+    "per_category": {
+      "Charity & Donations": {
+        "precision": 1.0,
+        "recall": 0.9333333333333333,
+        "f1-score": 0.9655172413793104,
+        "support": 15.0
+      },
+      "Entertainment & Recreation": {
+        "precision": 0.8823529411764706,
+        "recall": 1.0,
+        "f1-score": 0.9375,
+        "support": 15.0
+      },
+      "Financial Services": {
+        "precision": 0.9285714285714286,
+        "recall": 0.8666666666666667,
+        "f1-score": 0.896551724137931,
+        "support": 15.0
+      },
+      "Food & Dining": {
+        "precision": 0.9333333333333333,
+        "recall": 0.9333333333333333,
+        "f1-score": 0.9333333333333333,
+        "support": 15.0
+      },
+      "Government & Legal": {
+        "precision": 0.9230769230769231,
+        "recall": 0.8,
+        "f1-score": 0.8571428571428571,
+        "support": 15.0
+      },
+      "Healthcare & Medical": {
+        "precision": 1.0,
+        "recall": 0.9333333333333333,
+        "f1-score": 0.9655172413793104,
+        "support": 15.0
+      },
+      "Income": {
+        "precision": 0.875,
+        "recall": 0.9333333333333333,
+        "f1-score": 0.9032258064516129,
+        "support": 15.0
+      },
+      "Shopping & Retail": {
+        "precision": 0.8235294117647058,
+        "recall": 0.9333333333333333,
+        "f1-score": 0.875,
+        "support": 15.0
+      },
+      "Transportation": {
+        "precision": 0.9333333333333333,
+        "recall": 0.9333333333333333,
+        "f1-score": 0.9333333333333333,
+        "support": 15.0
+      },
+      "Utilities & Services": {
+        "precision": 0.9333333333333333,
+        "recall": 0.9333333333333333,
+        "f1-score": 0.9333333333333333,
+        "support": 15.0
+      },
+      "macro avg": {
+        "precision": 0.9232530704589529,
+        "recall": 0.9200000000000002,
+        "f1-score": 0.9200454870491022,
+        "support": 150.0
+      },
+      "weighted avg": {
+        "precision": 0.9232530704589529,
+        "recall": 0.92,
+        "f1-score": 0.9200454870491022,
+        "support": 150.0
+      }
+    },
+    "misclassified": [
+      {
+        "description": "MCD DRIVE THRU 00234",
+        "expected": "Food & Dining",
+        "predicted": "Shopping & Retail",
+        "confidence": 0.22022967902784807,
+        "correct": false
+      },
+      {
+        "description": "HP PETROL PUMP BILL",
+        "expected": "Transportation",
+        "predicted": "Shopping & Retail",
+        "confidence": 0.323413575456581,
+        "correct": false
+      },
+      {
+        "description": "FLIPKART INTERNET PVT LTD",
+        "expected": "Shopping & Retail",
+        "predicted": "Utilities & Services",
+        "confidence": 0.4960227516748796,
+        "correct": false
+      },
+      {
+        "description": "AMBULANCE SERVICE CHARGE",
+        "expected": "Healthcare & Medical",
+        "predicted": "Government & Legal",
+        "confidence": 0.999999999880471,
+        "correct": false
+      },
+      {
+        "description": "DTH RECHARGE TATA PLAY",
+        "expected": "Utilities & Services",
+        "predicted": "Entertainment & Recreation",
+        "confidence": 0.34198678658537307,
+        "correct": false
+      },
+      {
+        "description": "UPSTOX TRADING CHARGES",
+        "expected": "Financial Services",
+        "predicted": "Shopping & Retail",
+        "confidence": 0.6153067400613529,
+        "correct": false
+      },
+      {
+        "description": "CREDIT CARD EMI AUTO PAY",
+        "expected": "Financial Services",
+        "predicted": "Income",
+        "confidence": 0.9244037000881767,
+        "correct": false
+      },
+      {
+        "description": "UPI-CR-CLIENT INVOICE",
+        "expected": "Income",
+        "predicted": "Food & Dining",
+        "confidence": 0.29141936888407993,
+        "correct": false
+      },
+      {
+        "description": "INCOME TAX REFUND ADJ",
+        "expected": "Government & Legal",
+        "predicted": "Income",
+        "confidence": 0.9973418123008484,
+        "correct": false
+      },
+      {
+        "description": "PAN CARD APPLICATION FEE",
+        "expected": "Government & Legal",
+        "predicted": "Transportation",
+        "confidence": 0.5598792133113476,
+        "correct": false
+      },
+      {
+        "description": "VEHICLE FITNESS CERT FEE",
+        "expected": "Government & Legal",
+        "predicted": "Entertainment & Recreation",
+        "confidence": 0.9828330790643982,
+        "correct": false
+      },
+      {
+        "description": "DISASTER RELIEF FUND DONATE",
+        "expected": "Charity & Donations",
+        "predicted": "Financial Services",
+        "confidence": 0.5964621841802855,
+        "correct": false
+      }
+    ]
+  },
   "known_limitations": [
-    "Transaction descriptions in this dataset are template-generated (e.g. 'Exxon - CANADA Store'), cleaner and more regular than real messy bank statement text \u2014 real-world accuracy is likely lower than the number reported here.",
-    "Trained on a 10,000-per-category stratified subsample (100,000 of 4,501,043 available rows), not the full dataset."
+    "Transaction descriptions in this dataset are template-generated (e.g. 'Exxon - CANADA Store'), cleaner and more regular than real messy bank statement text. Supplementary real-brand-name data (see supplementary_real_vocabulary above) was mixed into training to address this. Current measured accuracy on hand-written realistic text (different exact strings than the supplementary training data) is 92.0% vs. 98.7% on the held-out template-style test split \u2014 see realistic_text_stress_test above for whether this fix actually closed the gap.",
+    "Trained on the full dataset (4,501,043 rows) \u2014 no subsampling."
   ]
 }

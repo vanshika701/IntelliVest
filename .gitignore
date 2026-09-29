@@ -25,6 +25,11 @@ ml/models/**/*.pkl
 ml/models/**/*.h5
 ml/models/**/*.pt
 
+# Raw downloaded source data (regenerable via each ml/download_*.py
+# script) — only the small, processed CSVs derived from these are
+# committed (e.g. ml/data/bharatpoi_supplementary.csv).
+ml/data/raw/
+
 # Editor / OS
 .vscode/*
 !.vscode/extensions.json
