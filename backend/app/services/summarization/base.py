@@ -20,6 +20,11 @@ class SummaryInput:
     url: str | None = None
     # Lets an implementation favour sentences about the instrument.
     instrument_name: str | None = None
+    # Multi-document input (e.g. the top 5 articles): the same content as
+    # `text`, split per source document. Implementations may ignore it and
+    # use `text`; the extractive baseline uses it to treat each article's
+    # opening sentences as a lead.
+    documents: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

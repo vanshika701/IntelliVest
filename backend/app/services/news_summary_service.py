@@ -1,9 +1,11 @@
-"""Per-article news summaries for the instrument detail page (Phase 5).
+"""Combined news summary for the instrument detail page (Phase 5).
 
 Flow: gather recent candidate articles -> pick the top 5 by relevance +
 recency (near-duplicate headlines removed) -> get each article's text
 (publisher full text when robots.txt allows, else the RSS snippet, else
-just the headline) -> summarize via `get_summarizer()` -> cache per article.
+just the headline) -> ONE multi-document summary of all five via
+`get_summarizer()`, plus a sentiment tag per article for the list shown
+beneath it.
 
 Only the Summarizer interface and factory are used here; swapping the
 extractive baseline for our trained model is a config change.
@@ -28,9 +30,13 @@ from app.data.news_repository import get_recent_articles_for_ticker
 from app.services.article_fetcher import USER_AGENT, fetch_article_text
 from app.services.instrument_service import get_instrument, parse_instrument_id
 from app.services.news_service import search_bing_news, search_news
-from app.services.sentiment_service import fund_news_phrase
+from app.services.sentiment_service import (
+    article_text,
+    fund_news_phrase,
+    score_texts,
+    sentiment_from_probabilities,
+)
 from app.services.summarization import SummaryFailure, SummaryInput, get_summarizer
-from app.services.summarization.textutils import count_words, trim_to_words
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +48,9 @@ RECENCY_WEIGHT = 1.0
 HAS_TEXT_BONUS = 0.5  # prefer articles with text to summarize over headline-only ones
 HEADLINE_DUPLICATE_THRESHOLD = 0.6
 FETCH_CONCURRENCY = 5
+# Each article contributes at most its first N words: leads carry the key
+# facts, and it stops one long article from dominating the combined summary.
+MAX_WORDS_PER_ARTICLE = 300
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _TOKEN = re.compile(r"[a-z0-9]+")
@@ -49,7 +58,8 @@ _HEADLINE_STOP = {"the", "a", "an", "of", "to", "in", "on", "for", "and", "at", 
 
 _ttl_seconds = settings.summarizer_cache_ttl_min * 60
 _candidate_cache = TTLCache(ttl_seconds=_ttl_seconds, max_items=256)
-_summary_cache = TTLCache(ttl_seconds=_ttl_seconds, max_items=2048)
+_input_cache = TTLCache(ttl_seconds=_ttl_seconds, max_items=2048)  # url -> (text, input_kind)
+_digest_cache = TTLCache(ttl_seconds=_ttl_seconds, max_items=512)  # article set -> response
 _log_lock = threading.Lock()
 
 
@@ -153,24 +163,31 @@ async def _gather_candidates(instrument_id: str) -> tuple[str, list[dict]]:
 
 # --- Inputs, cache, log ---------------------------------------------------------------
 
-def summary_cache_key(url: str, fingerprint: str, max_words: int) -> str:
-    return hashlib.sha256(f"{url}|{fingerprint}|{max_words}".encode()).hexdigest()
+def digest_cache_key(urls: list[str], fingerprint: str, max_words: int) -> str:
+    return hashlib.sha256(f"{'|'.join(sorted(urls))}|{fingerprint}|{max_words}".encode()).hexdigest()
 
 
 async def _article_inputs(articles: list[dict]) -> list[tuple[str, str]]:
-    """(text, input_kind) per article: full_text > snippet > headline."""
+    """(text, input_kind) per article: full_text > snippet > headline.
+    Each article's result is cached, so a changed top-5 only fetches the new ones."""
     semaphore = asyncio.Semaphore(FETCH_CONCURRENCY)
 
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
 
         async def one(article: dict) -> tuple[str, str]:
+            cached = _input_cache.get(article["url"])
+            if cached is not MISSING:
+                return cached
             async with semaphore:
                 full_text = await fetch_article_text(article["url"], client)
             if full_text:
-                return full_text, "full_text"
-            if article.get("description"):
-                return article["description"], "snippet"
-            return "", "headline"
+                result = (full_text, "full_text")
+            elif article.get("description"):
+                result = (article["description"], "snippet")
+            else:
+                result = (article["title"], "headline")
+            _input_cache.set(article["url"], result)
+            return result
 
         return await asyncio.gather(*(one(a) for a in articles))
 
@@ -191,76 +208,113 @@ def log_summary(record: dict) -> None:
             fh.write(line + "\n")
 
 
+def _limit_words(text: str, max_words: int) -> str:
+    words = text.split()
+    return text if len(words) <= max_words else " ".join(words[:max_words])
+
+
+def _tag_articles(articles: list[dict]) -> tuple[list[dict], str]:
+    """Per-article sentiment tags with the same engine as the sentiment section."""
+    probabilities, engine = score_texts([article_text(a) for a in articles])
+    tagged = []
+    for article, probs in zip(articles, probabilities, strict=True):
+        sentiment = sentiment_from_probabilities(probs)
+        tagged.append({**article, "label": sentiment["label"], "score": sentiment["score"]})
+    return tagged, engine
+
+
 # --- Entry point -------------------------------------------------------------------------
 
-async def get_news_summaries(instrument_id: str) -> dict:
+async def get_news_digest(instrument_id: str) -> dict:
+    """One combined summary of the top 5 articles, plus those 5 articles
+    (headline, source, date, sentiment tag) for the list beneath it."""
     summarizer = get_summarizer()
     max_words = settings.summarizer_max_words
     fingerprint = summarizer.cache_fingerprint()
 
     name, candidates = await _gather_candidates(instrument_id)
     top = pick_top_articles(candidates, name, datetime.now(UTC))
-
-    items: list[dict | None] = [None] * len(top)
-    pending: list[int] = []
-    for i, article in enumerate(top):
-        cached = _summary_cache.get(summary_cache_key(article["url"], fingerprint, max_words))
-        if cached is MISSING:
-            pending.append(i)
-        else:
-            items[i] = cached
-
-    if pending:
-        inputs = await _article_inputs([top[i] for i in pending])
-        requests = [
-            SummaryInput(title=top[i]["title"], text=text, max_words=max_words, url=top[i]["url"], instrument_name=name)
-            for i, (text, _) in zip(pending, inputs, strict=True)
-        ]
-        results = await asyncio.to_thread(summarizer.summarize_batch, requests)
-
-        for i, (text, input_kind), result in zip(pending, inputs, results, strict=True):
-            article = top[i]
-            base = {
-                "title": article["title"],
-                "url": article["url"],
-                "source": article.get("source"),
-                "published_at": article["published_at"],
-                "input_kind": input_kind,
-                "used_fallback": input_kind != "full_text",
-            }
-            if isinstance(result, SummaryFailure):
-                # Don't cache failures; show the headline so the card still renders.
-                headline = trim_to_words(article["title"], max_words)
-                items[i] = {**base, "summary": headline, "word_count": count_words(headline), "summary_failed": True}
-                continue
-
-            item = {**base, "summary": result.summary, "word_count": result.word_count, "summary_failed": False}
-            items[i] = item
-            _summary_cache.set(summary_cache_key(article["url"], fingerprint, max_words), item)
-            if settings.log_summaries:
-                await asyncio.to_thread(
-                    log_summary,
-                    {
-                        "timestamp": datetime.now(UTC).isoformat(),
-                        "instrument_id": instrument_id,
-                        "url": article["url"],
-                        "title": article["title"],
-                        "input_kind": input_kind,
-                        "article_text": text,
-                        "summary": result.summary,
-                        "provider": result.provider,
-                        "method": result.method,
-                        "algorithm_version": fingerprint,
-                        "max_words": max_words,
-                        "latency_ms": result.latency_ms,
-                    },
-                )
-
-    return {
+    result = {
         "instrument_id": instrument_id,
         "provider": summarizer.provider,
         "method": summarizer.method,
         "max_words": max_words,
-        "items": items,
+        "summary": None,
+        "word_count": 0,
+        "summary_failed": False,
+        "sources": {"full_text": 0, "snippet": 0, "headline": 0},
+        "sentiment_engine": None,
+        "articles": [],
         "generated_at": datetime.now(UTC),
     }
+    if not top:
+        return result
+
+    key = digest_cache_key([a["url"] for a in top], fingerprint, max_words)
+    cached = _digest_cache.get(key)
+    if cached is not MISSING:
+        return {**cached, "generated_at": datetime.now(UTC)}
+
+    inputs = await _article_inputs(top)
+    # Summarize the articles that have text; headline-only articles stay in
+    # the list but only feed the summary when nothing else has any text.
+    with_text = [text for text, kind in inputs if kind != "headline"]
+    documents = tuple(_limit_words(text, MAX_WORDS_PER_ARTICLE) for text in (with_text or [t for t, _ in inputs]))
+    request = SummaryInput(
+        title=name,
+        text="\n".join(documents),
+        max_words=max_words,
+        instrument_name=name,
+        documents=documents,
+    )
+    (summary,), (tagged, engine) = await asyncio.gather(
+        asyncio.to_thread(summarizer.summarize_batch, [request]),
+        asyncio.to_thread(_tag_articles, top),
+    )
+
+    for _, kind in inputs:
+        result["sources"][kind] += 1
+    result["sentiment_engine"] = engine
+    result["articles"] = [
+        {
+            "title": a["title"],
+            "url": a["url"],
+            "source": a.get("source"),
+            "published_at": a["published_at"],
+            "input_kind": kind,
+            "label": a["label"],
+            "score": a["score"],
+        }
+        for a, (_, kind) in zip(tagged, inputs, strict=True)
+    ]
+
+    if isinstance(summary, SummaryFailure):
+        # Still show the article list; failures aren't cached so the next request retries.
+        result["summary_failed"] = True
+        return result
+
+    result["summary"] = summary.summary
+    result["word_count"] = summary.word_count
+    _digest_cache.set(key, result)
+    if settings.log_summaries:
+        await asyncio.to_thread(
+            log_summary,
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "kind": "multi_article_digest",
+                "instrument_id": instrument_id,
+                "url": key,  # stable id for this set of articles (eval script dedupes on it)
+                "article_urls": [a["url"] for a in top],
+                "input_kinds": [kind for _, kind in inputs],
+                "title": name,
+                "article_text": request.text,
+                "documents": list(documents),
+                "summary": summary.summary,
+                "provider": summary.provider,
+                "method": summary.method,
+                "algorithm_version": fingerprint,
+                "max_words": max_words,
+                "latency_ms": summary.latency_ms,
+            },
+        )
+    return result

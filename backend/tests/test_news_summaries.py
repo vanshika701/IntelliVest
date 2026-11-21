@@ -14,7 +14,7 @@ from app.core.config import settings
 from app.services import article_fetcher, news_summary_service
 from app.services.article_fetcher import extract_article_text, fetch_article_text
 from app.services.news_service import resolve_bing_link
-from app.services.news_summary_service import get_news_summaries, is_listing_page, pick_top_articles
+from app.services.news_summary_service import get_news_digest, is_listing_page, pick_top_articles
 from app.services.summarization import Summarizer, SummaryInput, SummaryResult
 
 NOW = datetime(2026, 11, 21, 12, 0, tzinfo=UTC)
@@ -27,7 +27,8 @@ BODY = " ".join(
 def _fresh_state():
     article_fetcher._robots_cache.clear()
     news_summary_service._candidate_cache.clear()
-    news_summary_service._summary_cache.clear()
+    news_summary_service._input_cache.clear()
+    news_summary_service._digest_cache.clear()
     instruments_routes._summaries_limiter.reset()
 
 
@@ -169,108 +170,136 @@ class FakeSummarizer(Summarizer):
     provider = "fake"
     method = "fake@1"
 
-    def __init__(self) -> None:
-        self.calls = 0
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+        self.requests: list[SummaryInput] = []
 
     def summarize(self, item: SummaryInput) -> SummaryResult:
-        self.calls += 1
-        if "explode" in item.title:
+        self.requests.append(item)
+        if self.fail:
             raise RuntimeError("model failure")
-        summary = f"summary of {item.text or item.title}"[:200]
+        summary = "combined summary of " + str(len(item.documents)) + " articles"
         return SummaryResult(summary, len(summary.split()), self.provider, self.method, 1.0)
 
 
 @pytest.fixture
 def pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path):
+    now = datetime.now(UTC)
     articles = [
-        _article("Infosys wins deal", 1, url="https://a.example/1"),
-        _article("Infosys margins explode higher", 2, url="https://a.example/2", description="A snippet."),
-        _article("Infosys hires", 3, url="https://a.example/3", description="Another snippet."),
+        {"title": "Infosys wins deal", "url": "https://a.example/1", "source": "Mint", "description": None, "published_at": now - timedelta(hours=1)},
+        {"title": "Infosys margins improve", "url": "https://a.example/2", "source": "ET", "description": "A snippet.", "published_at": now - timedelta(hours=2)},
+        {"title": "Infosys hires freshers", "url": "https://a.example/3", "source": "BL", "description": None, "published_at": now - timedelta(hours=3)},
     ]
-    for a in articles:
-        a["published_at"] = datetime.now(UTC) - (NOW - a["published_at"])
-    summarizer = FakeSummarizer()
-    input_calls: list = []
+    state = {"summarizer": FakeSummarizer(), "input_calls": [], "log": tmp_path / "log.jsonl"}
 
     async def fake_candidates(instrument_id: str):
         return "Infosys", articles
 
     async def fake_inputs(batch: list[dict]):
-        input_calls.append([a["url"] for a in batch])
-        return [
-            ("Full article body text.", "full_text") if a["url"].endswith("/1")
-            else (a["description"], "snippet") if a.get("description")
-            else ("", "headline")
-            for a in batch
-        ]
+        state["input_calls"].append([a["url"] for a in batch])
+        kinds = {"https://a.example/1": ("Full article body text.", "full_text"),
+                 "https://a.example/2": ("A snippet.", "snippet"),
+                 "https://a.example/3": ("Infosys hires freshers", "headline")}
+        return [kinds[a["url"]] for a in batch]
+
+    def fake_scores(texts: list[str]):
+        return [{"positive": 0.8, "negative": 0.1, "neutral": 0.1} for _ in texts], "fake-finbert"
 
     monkeypatch.setattr(news_summary_service, "_gather_candidates", fake_candidates)
     monkeypatch.setattr(news_summary_service, "_article_inputs", fake_inputs)
-    monkeypatch.setattr(news_summary_service, "get_summarizer", lambda: summarizer)
-    monkeypatch.setattr(settings, "summary_log_path", str(tmp_path / "log.jsonl"))
-    return {"summarizer": summarizer, "input_calls": input_calls, "log": tmp_path / "log.jsonl"}
-
-
-async def test_service_marks_input_kinds_and_isolates_failures(pipeline, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(news_summary_service, "score_texts", fake_scores)
+    monkeypatch.setattr(news_summary_service, "get_summarizer", lambda: state["summarizer"])
+    monkeypatch.setattr(settings, "summary_log_path", str(state["log"]))
     monkeypatch.setattr(settings, "log_summaries", False)
-    result = await get_news_summaries("stock-INFY.NS")
-    items = {i["url"]: i for i in result["items"]}
-
-    assert items["https://a.example/1"]["input_kind"] == "full_text"
-    assert items["https://a.example/1"]["used_fallback"] is False
-    assert items["https://a.example/3"]["input_kind"] == "snippet"
-    assert items["https://a.example/3"]["used_fallback"] is True
-    # The failing item falls back to its headline; the others are unaffected.
-    failed = items["https://a.example/2"]
-    assert failed["summary_failed"] is True
-    assert failed["summary"] == "Infosys margins explode higher"
-    assert sum(not i["summary_failed"] for i in result["items"]) == 2
-    assert result["provider"] == "fake" and result["max_words"] == settings.summarizer_max_words
-    assert not pipeline["log"].exists()
+    return state
 
 
-async def test_service_caches_successes_but_retries_failures(pipeline, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "log_summaries", False)
-    await get_news_summaries("stock-INFY.NS")
-    await get_news_summaries("stock-INFY.NS")
-    # Second call only re-processes the item whose summary failed.
-    assert pipeline["input_calls"][1] == ["https://a.example/2"]
+async def test_digest_is_one_summary_plus_tagged_articles(pipeline) -> None:
+    result = await get_news_digest("stock-INFY.NS")
+
+    assert result["summary"] == "combined summary of 2 articles"
+    assert result["summary_failed"] is False
+    assert result["sources"] == {"full_text": 1, "snippet": 1, "headline": 1}
+    assert result["sentiment_engine"] == "fake-finbert"
+    # Ranked by relevance + recency + has-text, so the snippet article leads.
+    assert [a["url"] for a in result["articles"]] == ["https://a.example/2", "https://a.example/1", "https://a.example/3"]
+    assert all(a["label"] == "positive" for a in result["articles"])
+    assert [a["input_kind"] for a in result["articles"]] == ["snippet", "full_text", "headline"]
 
 
-async def test_service_logs_jsonl_when_enabled(pipeline, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_headline_only_articles_stay_out_of_the_summary_when_others_have_text(pipeline) -> None:
+    await get_news_digest("stock-INFY.NS")
+    request = pipeline["summarizer"].requests[0]
+    assert request.documents == ("A snippet.", "Full article body text.")
+    assert request.instrument_name == "Infosys"
+    assert request.max_words == settings.summarizer_max_words
+
+
+async def test_headlines_are_used_when_nothing_has_text(pipeline, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def headlines_only(batch: list[dict]):
+        return [(a["title"], "headline") for a in batch]
+
+    monkeypatch.setattr(news_summary_service, "_article_inputs", headlines_only)
+    await get_news_digest("stock-INFY.NS")
+    assert pipeline["summarizer"].requests[0].documents == ("Infosys margins improve", "Infosys wins deal", "Infosys hires freshers")
+
+
+async def test_summarizer_failure_still_returns_the_article_list(pipeline) -> None:
+    pipeline["summarizer"].fail = True
+    result = await get_news_digest("stock-INFY.NS")
+    assert result["summary"] is None
+    assert result["summary_failed"] is True
+    assert len(result["articles"]) == 3
+    # Failures aren't cached: the next request tries again.
+    await get_news_digest("stock-INFY.NS")
+    assert len(pipeline["summarizer"].requests) == 2
+
+
+async def test_digest_is_cached_by_article_set(pipeline) -> None:
+    await get_news_digest("stock-INFY.NS")
+    await get_news_digest("stock-INFY.NS")
+    assert len(pipeline["input_calls"]) == 1
+    assert len(pipeline["summarizer"].requests) == 1
+
+
+async def test_digest_logs_one_jsonl_line_when_enabled(pipeline, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(settings, "log_summaries", True)
-    await get_news_summaries("stock-INFY.NS")
+    await get_news_digest("stock-INFY.NS")
     lines = [json.loads(line) for line in pipeline["log"].read_text(encoding="utf-8").splitlines()]
-    assert len(lines) == 2  # failures aren't logged
-    assert {"article_text", "summary", "method", "algorithm_version", "timestamp"} <= lines[0].keys()
+    assert len(lines) == 1
+    assert lines[0]["kind"] == "multi_article_digest"
+    assert lines[0]["article_urls"] == ["https://a.example/2", "https://a.example/1", "https://a.example/3"]
+    assert {"article_text", "documents", "summary", "method", "algorithm_version", "timestamp", "url"} <= lines[0].keys()
+    assert lines[0]["documents"] == ["A snippet.", "Full article body text."]
 
 
-async def test_service_returns_empty_items_when_no_news(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_digest_without_news(monkeypatch: pytest.MonkeyPatch) -> None:
     async def no_candidates(instrument_id: str):
         return "Infosys", []
 
     monkeypatch.setattr(news_summary_service, "_gather_candidates", no_candidates)
-    result = await get_news_summaries("stock-INFY.NS")
-    assert result["items"] == []
+    result = await get_news_digest("stock-INFY.NS")
+    assert result["summary"] is None and result["articles"] == [] and result["summary_failed"] is False
 
 
 # --- Endpoint ------------------------------------------------------------------------------
 
 def test_endpoint_404_for_unknown_instrument(client: TestClient, auth_headers: dict) -> None:
-    assert client.get("/api/v1/instruments/stock-FAKE.NS/news-summaries", headers=auth_headers).status_code == 404
+    assert client.get("/api/v1/instruments/stock-FAKE.NS/news-summary", headers=auth_headers).status_code == 404
 
 
-def test_endpoint_returns_summaries_and_is_rate_limited(
+def test_endpoint_returns_digest_and_is_rate_limited(
     client: TestClient, auth_headers: dict, pipeline, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(settings, "log_summaries", False)
     monkeypatch.setattr(instruments_routes._summaries_limiter, "max_requests", 2)
 
-    first = client.get("/api/v1/instruments/stock-INFY.NS/news-summaries", headers=auth_headers)
+    first = client.get("/api/v1/instruments/stock-INFY.NS/news-summary", headers=auth_headers)
     assert first.status_code == 200
-    assert len(first.json()["items"]) == 3
-    assert client.get("/api/v1/instruments/stock-INFY.NS/news-summaries", headers=auth_headers).status_code == 200
+    body = first.json()
+    assert body["summary"] == "combined summary of 2 articles"
+    assert len(body["articles"]) == 3
+    assert client.get("/api/v1/instruments/stock-INFY.NS/news-summary", headers=auth_headers).status_code == 200
 
-    limited = client.get("/api/v1/instruments/stock-INFY.NS/news-summaries", headers=auth_headers)
+    limited = client.get("/api/v1/instruments/stock-INFY.NS/news-summary", headers=auth_headers)
     assert limited.status_code == 429
     assert int(limited.headers["Retry-After"]) >= 1

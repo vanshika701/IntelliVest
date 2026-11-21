@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.api.deps import get_current_user_id
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.schemas.instrument import InstrumentDetail, InstrumentSearchResponse, PriceHistory
-from app.schemas.news_summary import NewsSummaries
+from app.schemas.news_summary import NewsDigest
 from app.schemas.sentiment import InstrumentSentiment
 from app.services.instrument_service import (
     DataProviderError,
@@ -15,7 +15,7 @@ from app.services.instrument_service import (
     get_intraday_history,
     search_instruments,
 )
-from app.services.news_summary_service import get_news_summaries
+from app.services.news_summary_service import get_news_digest
 from app.services.sentiment_service import get_instrument_sentiment
 
 router = APIRouter(prefix="/instruments", tags=["instruments"], dependencies=[Depends(get_current_user_id)])
@@ -78,13 +78,14 @@ def _rate_limit_summaries(user_id: str = Depends(get_current_user_id)) -> None:
 
 
 @router.get(
-    "/{instrument_id}/news-summaries",
-    response_model=NewsSummaries,
+    "/{instrument_id}/news-summary",
+    response_model=NewsDigest,
     dependencies=[Depends(_rate_limit_summaries)],
 )
-async def news_summaries(instrument_id: str):
+async def news_summary(instrument_id: str):
+    """One combined summary of the top 5 recent articles, plus the articles."""
     try:
-        return await get_news_summaries(instrument_id)
+        return await get_news_digest(instrument_id)
     except InstrumentNotFound:
         raise _not_found() from None
     except DataProviderError as exc:

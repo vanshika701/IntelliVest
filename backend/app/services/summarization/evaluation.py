@@ -68,8 +68,17 @@ def evaluate(
     """Run `summarizer` over logged records ({title, article_text, url}) and
     report word-limit compliance, latency, compression and — when
     reference summaries are given (by url) — mean ROUGE F1."""
+    # Multi-article records carry their per-article split so evaluation sees
+    # exactly what the app summarized.
     inputs = [
-        SummaryInput(title=r.get("title") or "", text=r.get("article_text") or "", max_words=max_words, url=r.get("url"))
+        SummaryInput(
+            title=r.get("title") or "",
+            text=r.get("article_text") or "",
+            max_words=max_words,
+            url=r.get("url"),
+            instrument_name=r.get("title") if r.get("documents") else None,
+            documents=tuple(r.get("documents") or ()),
+        )
         for r in records
     ]
     results = summarizer.summarize_batch(inputs)

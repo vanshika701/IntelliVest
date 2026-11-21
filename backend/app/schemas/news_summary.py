@@ -1,33 +1,39 @@
-"""Pydantic schemas for per-article news summaries."""
+"""Pydantic schemas for the combined news summary (news digest)."""
 
 from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel
 
-# What the summary was built from: the publisher's full article, the RSS
+from app.schemas.sentiment import SentimentLabel
+
+# What an article contributed: the publisher's full text, the RSS
 # description snippet, or only the headline.
 InputKind = Literal["full_text", "snippet", "headline"]
 
 
-class NewsSummaryItem(BaseModel):
+class DigestArticle(BaseModel):
     title: str
     url: str
     source: str | None = None
     published_at: datetime
-    summary: str
-    word_count: int
     input_kind: InputKind
-    # True when the full article couldn't be used (snippet or headline only).
-    used_fallback: bool
-    # True when the summarizer itself failed for this item; summary is then the headline.
-    summary_failed: bool = False
+    label: SentimentLabel
+    score: float
 
 
-class NewsSummaries(BaseModel):
+class NewsDigest(BaseModel):
     instrument_id: str
     provider: str
     method: str
     max_words: int
-    items: list[NewsSummaryItem]
+    # One summary of the top articles; None when there's no news or the
+    # summarizer failed (see summary_failed).
+    summary: str | None = None
+    word_count: int
+    summary_failed: bool = False
+    # How many of the articles contributed full text / a snippet / a headline.
+    sources: dict[InputKind, int]
+    sentiment_engine: str | None = None
+    articles: list[DigestArticle]
     generated_at: datetime

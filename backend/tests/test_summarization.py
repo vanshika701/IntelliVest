@@ -303,3 +303,76 @@ def test_evaluate_counts_failures_for_the_ml_placeholder() -> None:
 
     report = evaluate(get_summarizer("ml"), [{"url": "u", "title": "t", "article_text": "x"}], 100)
     assert report == {"provider": "ml", "method": "ml-model@unreleased", "max_words": 100, "items": 1, "failures": 1}
+
+
+# --- Multi-document input (combined summary of several articles) -------------------------
+
+DOCS = (
+    (
+        "Reliance promoters bought 4.26 lakh shares in open-market purchases. The stock has rallied 13% this month. "
+        "Analysts see further upside as refining margins improve."
+    ),
+    (
+        "JPMorgan sees 23% upside in Reliance Industries to Rs 1,675 on better earnings. The broker raised estimates. "
+        "It cited strong retail growth."
+    ),
+    (
+        "Reliance plans to invest Rs 15,000 crore in 100 biogas plants by 2030. The plants will use farm waste. "
+        "Construction starts next year."
+    ),
+)
+
+
+def test_document_sentences_resets_position_per_document() -> None:
+    from app.services.summarization.extractive import document_sentences
+
+    sentences, positions = document_sentences(DOCS)
+    assert positions == [0, 1, 2, 0, 1, 2, 0, 1, 2]
+    assert sentences[3].startswith("JPMorgan")
+
+
+def test_multi_document_summary_covers_several_articles_one_sentence_each() -> None:
+    result = ExtractiveSummarizer().summarize(
+        SummaryInput(title="Reliance", text="\n".join(DOCS), documents=DOCS, instrument_name="Reliance")
+    )
+    summary = result.summary
+    assert result.word_count <= 100
+    # Each article's lead makes it in, in document order; never two from one article.
+    assert [s.split()[0] for s in split_sentences(summary)] == ["Reliance", "JPMorgan", "Reliance"]
+    assert "rallied 13%" not in summary
+
+
+def test_paraphrased_sentences_across_articles_count_as_duplicates() -> None:
+    from app.services.summarization.extractive import is_near_duplicate
+
+    a = set(tokenize("Infosys will invest JPY 1.59 billion for a 10.1% stake in NTT Docomo Playspace"))
+    b = set(tokenize("Infosys is acquiring a 10.1% stake in NTT Docomo Playspace to build a metaverse"))
+    c = set(tokenize("Infosys shares fell 2% on weak IT demand"))
+    assert jaccard(a, b) < CONFIG.duplicate_jaccard_threshold  # Jaccard alone misses it
+    assert is_near_duplicate(a, b)
+    assert not is_near_duplicate(a, c)
+
+
+def test_clean_text_unwraps_markdown_links() -> None:
+    assert clean_text("[Infosys](https://www.infosys.com) signed a deal.") == "Infosys signed a deal."
+
+
+def test_questions_are_penalised_and_headlines_get_full_stops() -> None:
+    from app.services.summarization.extractive import end_sentence
+
+    weights = {"bank": 1.0, "visit": 0.5, "today": 0.5, "holiday": 0.5, "planning": 0.5, "customers": 0.5}
+    tokens = ["planning", "visit", "bank", "today", "holiday", "customers"]
+    question = score_sentence(3, "Planning to visit a bank today, customers, on this holiday?", tokens, weights, set())
+    statement = score_sentence(3, "Planning to visit a bank today, customers, on this holiday.", tokens, weights, set())
+    assert question == pytest.approx(statement * CONFIG.question_multiplier)
+    assert end_sentence("Titan shares fall 5%") == "Titan shares fall 5%."
+    assert end_sentence("Gold rallies.") == "Gold rallies."
+    assert end_sentence("Gold rallies…") == "Gold rallies…"
+
+
+def test_evaluate_uses_logged_documents_for_multi_article_records() -> None:
+    from app.services.summarization.evaluation import evaluate
+
+    record = {"url": "digest-1", "title": "Reliance", "article_text": "\n".join(DOCS), "documents": list(DOCS)}
+    report = evaluate(get_summarizer("extractive"), [record], 100)
+    assert report["failures"] == 0 and report["word_limit_compliance"] == 1.0

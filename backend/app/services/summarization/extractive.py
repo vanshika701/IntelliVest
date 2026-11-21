@@ -28,7 +28,7 @@ from app.services.summarization.textutils import count_words, trim_to_words
 
 # Bump whenever output can change: it is part of the summary cache key and
 # is recorded with every logged summary.
-ALGORITHM_VERSION = "1.1.0"
+ALGORITHM_VERSION = "1.2.0"
 
 
 @dataclass(frozen=True)
@@ -46,11 +46,19 @@ class ExtractiveConfig:
     short_sentence_multiplier: float = 0.5
     long_sentence_multiplier: float = 0.7
     quote_multiplier: float = 0.7
+    question_multiplier: float = 0.6  # "Planning to visit a bank today?" teasers
     boilerplate_multiplier: float = 0.1
-    # Step 6 — selection
+    # Step 6 — selection. Near-duplicate if token Jaccard >= threshold, OR
+    # (paraphrases across articles) they share >= N content words that make
+    # up >= the given share of the shorter sentence.
     duplicate_jaccard_threshold: float = 0.5
+    duplicate_min_shared_words: int = 4
+    duplicate_overlap_coefficient: float = 0.5
     min_relative_score: float = 0.3  # skip sentences scoring under 30% of the best
     max_sentences: int = 4
+    # Multi-document input only: cap per source article so a combined
+    # summary covers several stories instead of retelling one.
+    max_sentences_per_document: int = 1
 
 
 CONFIG = ExtractiveConfig()
@@ -91,6 +99,7 @@ _MULTI_DOT_ABBREV_RE = re.compile(r"\b(?:e\.g|i\.e|a\.m|p\.m|U\.S|U\.K|U\.A\.E|e
 _INITIAL_RE = re.compile(r"\b([A-Z])\.(?=\s*[A-Z])")
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])[\"'”’)\]]*\s+(?=[\"'“‘(\[]?[A-Z0-9₹$])")
 
+_MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]*\)")
 _URL_RE = re.compile(r"\b(?:https?://|www\.)\S+", re.IGNORECASE)
 _ENDS_SENTENCE = re.compile(r"[.!?:;\"'”’)]$")
 
@@ -109,6 +118,7 @@ def clean_text(raw: str | None) -> str:
         text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r"<br\s*/?>|</p>|</div>|</li>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"<[^>]+>", " ", text)
+    text = _MARKDOWN_LINK_RE.sub(r"\1", text)
     text = _URL_RE.sub(" ", text)
     lines = [line.strip() for line in text.splitlines()]
     kept = [line for line in lines if line and not (_BOILERPLATE.search(line) and count_words(line) < 30)]
@@ -194,6 +204,8 @@ def score_sentence(
         score *= config.long_sentence_multiplier
     if _QUOTE_RE.search(sentence):
         score *= config.quote_multiplier
+    if sentence.rstrip().endswith("?"):
+        score *= config.question_multiplier
     if _BOILERPLATE.search(sentence):
         score *= config.boilerplate_multiplier
     return score
@@ -207,32 +219,69 @@ def jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(a | b)
 
 
+def is_near_duplicate(a: set[str], b: set[str], config: ExtractiveConfig = CONFIG) -> bool:
+    if not a or not b:
+        return False
+    if jaccard(a, b) >= config.duplicate_jaccard_threshold:
+        return True
+    shared = len(a & b)
+    return shared >= config.duplicate_min_shared_words and shared / min(len(a), len(b)) >= config.duplicate_overlap_coefficient
+
+
 def select_sentences(
     sentences: list[str],
     scores: list[float],
     token_sets: list[set[str]],
     max_words: int,
     config: ExtractiveConfig = CONFIG,
+    document_ids: list[int] | None = None,
 ) -> list[int]:
     """Greedy: best score first, skip weak sentences, near-duplicates of
     anything already chosen, and anything that would break the word limit.
+    With `document_ids` (multi-document input), at most
+    `max_sentences_per_document` come from any one document.
     Returns indices in original (reading) order."""
     if not sentences:
         return []
     floor = max(scores) * config.min_relative_score
     chosen: list[int] = []
+    per_document: Counter = Counter()
     used_words = 0
     for i in sorted(range(len(sentences)), key=lambda k: scores[k], reverse=True):
         if len(chosen) >= config.max_sentences or scores[i] < floor or scores[i] <= 0:
             continue
+        if document_ids is not None and per_document[document_ids[i]] >= config.max_sentences_per_document:
+            continue
         words = count_words(sentences[i])
         if used_words + words > max_words:
             continue
-        if any(jaccard(token_sets[i], token_sets[j]) >= config.duplicate_jaccard_threshold for j in chosen):
+        if any(is_near_duplicate(token_sets[i], token_sets[j], config) for j in chosen):
             continue
         chosen.append(i)
         used_words += words
+        if document_ids is not None:
+            per_document[document_ids[i]] += 1
     return sorted(chosen)
+
+
+def end_sentence(sentence: str) -> str:
+    """Headlines and captions often lack a full stop; add one so joined
+    sentences don't run together."""
+    return sentence if _ENDS_SENTENCE.search(sentence) or sentence.endswith("…") else f"{sentence}."
+
+
+def document_sentences(documents: tuple[str, ...] | list[str]) -> tuple[list[str], list[int]]:
+    """Clean and split each document; return all sentences plus each
+    sentence's position *within its own document*, so every article's lead
+    earns the position bonus in multi-document input. Boilerplate can hide
+    inside a paragraph, so it is filtered per sentence too."""
+    sentences: list[str] = []
+    positions: list[int] = []
+    for document in documents:
+        doc_sentences = [s for s in split_sentences(clean_text(document)) if not _BOILERPLATE.search(s)]
+        sentences.extend(doc_sentences)
+        positions.extend(range(len(doc_sentences)))
+    return sentences, positions
 
 
 # --- The summarizer -------------------------------------------------------------
@@ -262,10 +311,7 @@ class ExtractiveSummarizer(Summarizer):
     def _summarize_text(self, item: SummaryInput) -> str:
         max_words = item.max_words
         title = clean_text(item.title)
-        body = clean_text(item.text)
-
-        # Boilerplate can hide inside a paragraph, so filter per sentence too.
-        sentences = [s for s in split_sentences(body) if not _BOILERPLATE.search(s)]
+        sentences, positions = document_sentences(item.documents or (item.text,))
         # Step 9: nothing usable -> headline. A short snippet still goes
         # through selection (drops duplicates) and comes out ~unchanged.
         if not sentences:
@@ -276,14 +322,19 @@ class ExtractiveSummarizer(Summarizer):
         instrument_tokens = set(tokenize(item.instrument_name or ""))
         weights = word_weights(sentence_tokens, set(tokenize(title)), instrument_tokens, self.config)
         scores = [
-            score_sentence(i, s, sentence_tokens[i], weights, instrument_tokens, self.config)
+            score_sentence(positions[i], s, sentence_tokens[i], weights, instrument_tokens, self.config)
             for i, s in enumerate(sentences)
         ]
 
-        picked = select_sentences(sentences, scores, token_sets, max_words, self.config)
+        multi_document = len(item.documents) > 1
+        # A sentence's position resets to 0 at the start of each document.
+        document_ids = [sum(1 for p in positions[: k + 1] if p == 0) - 1 for k in range(len(positions))]
+        picked = select_sentences(
+            sentences, scores, token_sets, max_words, self.config, document_ids if multi_document else None
+        )
         if not picked:
             # Every sentence alone is over the limit: trim the best one (step 8).
             best = max(range(len(sentences)), key=lambda k: scores[k])
             return trim_to_words(sentences[best], max_words)
         # Step 8: the selection already fits, but enforce the limit in code regardless.
-        return trim_to_words(" ".join(sentences[i] for i in picked), max_words)
+        return trim_to_words(" ".join(end_sentence(sentences[i]) for i in picked), max_words)
