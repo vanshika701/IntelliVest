@@ -5,7 +5,8 @@ import {
   Wallet, 
   BellRing, 
   Bot,
-  LogOut
+  LogOut,
+  PiggyBank
 } from 'lucide-react';
 import { useAuth } from '../../AuthContext';
 import { cn } from '../../lib/utils';
@@ -20,6 +21,7 @@ export function Sidebar() {
     { icon: LineChart, label: 'Watchlist', path: '/watchlist' },
     { icon: Wallet, label: 'Budgeting', path: '/budget' },
     { icon: BellRing, label: 'Alerts', path: '/alerts' },
+    { icon: PiggyBank, label: 'Investments', path: '/investments' },
     { icon: Bot, label: 'AI Advisor', path: '/ai', disabled: true },
   ];
 

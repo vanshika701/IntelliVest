@@ -11,14 +11,19 @@ interface LayoutContextType {
 const LayoutContext = createContext<LayoutContextType | undefined>(undefined);
 
 export function LayoutProvider({ children }: { children: React.ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Start closed on phones, where the sidebar overlays the page content.
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => typeof window === 'undefined' || window.matchMedia('(min-width: 640px)').matches,
+  );
   const [pageTitle, setPageTitle] = useState('Dashboard');
   const location = useLocation();
 
   useEffect(() => {
     // Determine page title based on path
     const path = location.pathname;
-    if (path.includes('watchlist')) setPageTitle('Watchlist & Markets');
+    if (path.startsWith('/instrument/')) setPageTitle('Instrument Details');
+    else if (path.startsWith('/investments')) setPageTitle('My Investments');
+    else if (path.includes('watchlist')) setPageTitle('Watchlist & Markets');
     else if (path.includes('budget')) setPageTitle('Budgeting & Expenses');
     else if (path.includes('alerts')) setPageTitle('Price Alerts');
     else if (path.includes('ai')) setPageTitle('AI Insights');

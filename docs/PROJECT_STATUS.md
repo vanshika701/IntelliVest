@@ -111,11 +111,11 @@ Alerts. Layout: `AppShell` = `Navbar` (page title, notifications bell, user chip
       collection/index + tests
 - [x] 5. Frontend: API wrappers, `useDebouncedValue`, `GlobalSearch` combobox in the navbar
       (desktop + mobile), tests
-- [ ] 6. Frontend: range/YTD logic + returns formulas (+ tests); instrument page with header,
+- [x] 6. Frontend: range/YTD logic + returns formulas (+ tests); instrument page with header,
       chart, stats strip, sentiment section, return calculator; skeletons/empty/error states
-- [ ] 7. Frontend: `paymentService` (interface + mock), invest panel (One-time / Start SIP),
+- [x] 7. Frontend: `paymentService` (interface + mock), invest panel (One-time / Start SIP),
       confirmation screen, "My Investments" page + sidebar link
-- [ ] 8. Lint, type-check, all tests; run the app and walk the full flow
+- [x] 8. Lint, type-check, all tests; run the app and walk the full flow
 - [ ] 9. Update this document with what was built, what's mocked, what's left
 
 ## 6. Decisions log
