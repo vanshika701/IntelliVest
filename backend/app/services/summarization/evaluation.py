@@ -6,6 +6,9 @@ being compared."""
 import re
 from collections import Counter
 
+from app.services.summarization.base import Summarizer, SummaryFailure, SummaryInput
+from app.services.summarization.textutils import count_words
+
 _TOKEN = re.compile(r"[a-z0-9]+")
 
 
@@ -51,3 +54,52 @@ def rouge_scores(candidate: str, reference: str) -> dict[str, float]:
         "rouge2": rouge_n(candidate, reference, 2),
         "rougeL": rouge_l(candidate, reference),
     }
+
+
+def _percentile(values: list[float], pct: float) -> float:
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, max(0, round(pct / 100 * (len(ordered) - 1))))
+    return ordered[index]
+
+
+def evaluate(
+    summarizer: Summarizer, records: list[dict], max_words: int, references: dict[str, str] | None = None
+) -> dict:
+    """Run `summarizer` over logged records ({title, article_text, url}) and
+    report word-limit compliance, latency, compression and — when
+    reference summaries are given (by url) — mean ROUGE F1."""
+    inputs = [
+        SummaryInput(title=r.get("title") or "", text=r.get("article_text") or "", max_words=max_words, url=r.get("url"))
+        for r in records
+    ]
+    results = summarizer.summarize_batch(inputs)
+    ok = [(item, result) for item, result in zip(inputs, results, strict=True) if not isinstance(result, SummaryFailure)]
+
+    report: dict = {
+        "provider": summarizer.provider,
+        "method": summarizer.method,
+        "max_words": max_words,
+        "items": len(inputs),
+        "failures": len(inputs) - len(ok),
+    }
+    if not ok:
+        return report
+
+    latencies = [r.latency_ms for _, r in ok]
+    ratios = [r.word_count / count_words(i.text) for i, r in ok if count_words(i.text) > 0]
+    report.update(
+        {
+            "word_limit_compliance": sum(r.word_count <= max_words for _, r in ok) / len(ok),
+            "avg_summary_words": sum(r.word_count for _, r in ok) / len(ok),
+            "latency_ms_avg": sum(latencies) / len(latencies),
+            "latency_ms_p95": _percentile(latencies, 95),
+            "compression_ratio_avg": sum(ratios) / len(ratios) if ratios else None,
+        }
+    )
+    if references:
+        scored = [rouge_scores(r.summary, references[i.url]) for i, r in ok if i.url in references]
+        if scored:
+            report["rouge_items"] = len(scored)
+            for metric in ("rouge1", "rouge2", "rougeL"):
+                report[metric] = sum(s[metric] for s in scored) / len(scored)
+    return report

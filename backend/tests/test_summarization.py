@@ -263,3 +263,28 @@ def test_rouge_scores_match_hand_computed_values() -> None:
     assert rouge_l(candidate, reference) == pytest.approx(5 / 6)
     assert rouge_scores(reference, reference) == {"rouge1": 1.0, "rouge2": 1.0, "rougeL": 1.0}
     assert rouge_scores("", reference)["rouge1"] == 0.0
+
+
+# --- Evaluation harness -----------------------------------------------------------------
+
+def test_evaluate_reports_compliance_latency_compression_and_rouge() -> None:
+    from app.services.summarization.evaluation import evaluate
+
+    records = [
+        {"url": "u1", "title": "Infosys Q2 profit rises 7.5%", "article_text": ARTICLE},
+        {"url": "u2", "title": "Gold hits record", "article_text": ""},
+    ]
+    references = {"u1": "Infosys net profit rose 7.5% to Rs 7,364 crore in the September quarter."}
+    report = evaluate(get_summarizer("extractive"), records, 100, references)
+    assert report["items"] == 2 and report["failures"] == 0
+    assert report["word_limit_compliance"] == 1.0
+    assert 0 < report["compression_ratio_avg"] < 1
+    assert report["latency_ms_avg"] >= 0
+    assert report["rouge_items"] == 1 and 0 < report["rouge1"] <= 1
+
+
+def test_evaluate_counts_failures_for_the_ml_placeholder() -> None:
+    from app.services.summarization.evaluation import evaluate
+
+    report = evaluate(get_summarizer("ml"), [{"url": "u", "title": "t", "article_text": "x"}], 100)
+    assert report == {"provider": "ml", "method": "ml-model@unreleased", "max_words": 100, "items": 1, "failures": 1}
