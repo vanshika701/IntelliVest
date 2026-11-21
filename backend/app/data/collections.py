@@ -36,3 +36,7 @@ def get_watchlist_collection() -> AsyncIOMotorCollection:
 
 def get_alerts_collection() -> AsyncIOMotorCollection:
     return get_database()["alerts"]
+
+
+def get_investments_collection() -> AsyncIOMotorCollection:
+    return get_database()["investments"]

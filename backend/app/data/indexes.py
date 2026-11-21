@@ -11,6 +11,7 @@ import logging
 from app.data.collections import (
     get_alerts_collection,
     get_expenses_collection,
+    get_investments_collection,
     get_news_collection,
     get_prices_collection,
     get_reddit_collection,
@@ -89,8 +90,15 @@ async def ensure_indexes() -> None:
         name="ticker_active_alerts",
     )
 
+    investments = get_investments_collection()
+    # "My investments", newest first — the only read pattern so far.
+    await investments.create_index(
+        [("user_id", 1), ("created_at", -1)],
+        name="user_investments_by_created",
+    )
+
     logger.info(
         "MongoDB indexes ensured (prices, news_articles, reddit_posts, "
-        "users, expenses, watchlist, alerts)"
+        "users, expenses, watchlist, alerts, investments)"
     )
 

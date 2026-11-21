@@ -12,6 +12,7 @@ from pymongo.errors import DuplicateKeyError
 from app.data.collections import (
     get_alerts_collection,
     get_expenses_collection,
+    get_investments_collection,
     get_news_collection,
     get_prices_collection,
     get_reddit_collection,
@@ -39,6 +40,7 @@ async def test_all_collections_have_expected_index_names(mongo_test_db) -> None:
     assert "uniq_user_ticker" in watchlist_indexes
     assert "user_active_alerts" in alerts_indexes
     assert "ticker_active_alerts" in alerts_indexes
+    assert "user_investments_by_created" in await get_investments_collection().index_information()
 
 
 async def test_duplicate_ticker_date_insert_is_rejected(mongo_test_db) -> None:

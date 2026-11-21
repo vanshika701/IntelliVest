@@ -7,6 +7,7 @@ from app.api.v1.routes import (
     expenses,
     health,
     instruments,
+    investments,
     sentiment,
     watchlist,
 )
@@ -20,3 +21,4 @@ api_router.include_router(alerts.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(sentiment.router)
 api_router.include_router(instruments.router)
+api_router.include_router(investments.router)
