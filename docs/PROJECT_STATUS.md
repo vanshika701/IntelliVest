@@ -254,7 +254,7 @@ Guarantee every implementation must keep: `word_count <= max_words`, plain text,
 ### Plan (checklist)
 - [x] S1. This section
 - [x] S2. `summarization` package: interface, extractive algorithm + config, ML placeholder, factory, ROUGE helpers; unit tests
-- [ ] S3. Article fetcher (robots-aware) + Bing News search; candidate selection (relevance + recency, near-duplicate removal); summary service with cache, JSONL logging; endpoint + rate limit; tests
+- [x] S3. Article fetcher (robots-aware) + Bing News search; candidate selection (relevance + recency, near-duplicate removal); summary service with cache, JSONL logging; endpoint + rate limit; tests
 - [ ] S4. `scripts/eval_summarizer.py`
 - [ ] S5. Frontend "Top stories · Auto-summary" cards with skeleton/empty/error states; tests
 - [ ] S6. Lint, type-check, all tests, manual check in the browser; update this section with results

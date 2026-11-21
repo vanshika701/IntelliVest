@@ -15,8 +15,8 @@ Two kinds of feed:
 import calendar
 import logging
 import re
-from datetime import UTC, datetime
-from urllib.parse import quote_plus
+from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, quote_plus, urlparse
 
 import feedparser
 import httpx
@@ -142,6 +142,42 @@ async def ingest_feed(
 
 def google_news_url(company_name: str, days: int = 7) -> str:
     return GOOGLE_NEWS_SEARCH_URL.format(query=quote_plus(f'"{company_name}" when:{days}d'))
+
+
+BING_NEWS_SEARCH_URL = "https://www.bing.com/news/search?q={query}&format=rss&mkt=en-in"
+
+
+def resolve_bing_link(link: str) -> str | None:
+    """Bing RSS links are click-trackers carrying the publisher URL in their
+    `url` query parameter; decode it locally (no request to Bing)."""
+    params = parse_qs(urlparse(link).query)
+    target = (params.get("url") or [None])[0]
+    return target if target and target.startswith(("http://", "https://")) else None
+
+
+def _normalise_bing_entries(entries: list[dict]) -> list[dict]:
+    normalised = []
+    for entry in entries:
+        url = resolve_bing_link(entry.get("link") or "")
+        if not url:
+            continue
+        normalised.append({**entry, "link": url, "source": {"title": entry.get("news_source")}})
+    return normalised
+
+
+async def search_bing_news(phrase: str, days: int = 30, limit: int = 15) -> list[dict]:
+    """On-demand Bing News search (allowed by bing.com/robots.txt). Unlike
+    Google News, items carry the publisher's real URL and a short
+    description, so there's text to summarize. Not stored. Raises httpx
+    errors on failure."""
+    url = BING_NEWS_SEARCH_URL.format(query=quote_plus(f'"{phrase}"'))
+    async with httpx.AsyncClient(timeout=10.0, headers=_HEADERS, follow_redirects=True) as client:
+        entries = await fetch_feed(client, url)
+    records = parse_feed_entries(_normalise_bing_entries(entries), None, keep_untagged=True)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    records = [r for r in records if r["published_at"] >= cutoff]
+    records.sort(key=lambda r: r["published_at"], reverse=True)
+    return records[:limit]
 
 
 async def search_news(phrase: str, days: int = 30, limit: int = 15) -> list[dict]:

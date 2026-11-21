@@ -3,7 +3,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import get_current_user_id
+from app.core.rate_limit import SlidingWindowRateLimiter
 from app.schemas.instrument import InstrumentDetail, InstrumentSearchResponse, PriceHistory
+from app.schemas.news_summary import NewsSummaries
 from app.schemas.sentiment import InstrumentSentiment
 from app.services.instrument_service import (
     DataProviderError,
@@ -13,6 +15,7 @@ from app.services.instrument_service import (
     get_intraday_history,
     search_instruments,
 )
+from app.services.news_summary_service import get_news_summaries
 from app.services.sentiment_service import get_instrument_sentiment
 
 router = APIRouter(prefix="/instruments", tags=["instruments"], dependencies=[Depends(get_current_user_id)])
@@ -55,6 +58,33 @@ async def history(instrument_id: str):
 async def sentiment(instrument_id: str):
     try:
         return await get_instrument_sentiment(instrument_id)
+    except InstrumentNotFound:
+        raise _not_found() from None
+    except DataProviderError as exc:
+        raise _provider_down(exc) from None
+
+
+_summaries_limiter = SlidingWindowRateLimiter(max_requests=20, window_seconds=60)
+
+
+def _rate_limit_summaries(user_id: str = Depends(get_current_user_id)) -> None:
+    retry_after = _summaries_limiter.hit(user_id)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many summary requests — try again shortly.",
+            headers={"Retry-After": str(max(1, round(retry_after)))},
+        )
+
+
+@router.get(
+    "/{instrument_id}/news-summaries",
+    response_model=NewsSummaries,
+    dependencies=[Depends(_rate_limit_summaries)],
+)
+async def news_summaries(instrument_id: str):
+    try:
+        return await get_news_summaries(instrument_id)
     except InstrumentNotFound:
         raise _not_found() from None
     except DataProviderError as exc:

@@ -65,6 +65,21 @@ async def set_article_sentiments(updates: list[tuple[ObjectId, dict]]) -> int:
     return result.modified_count
 
 
+async def get_recent_articles_for_ticker(ticker: str, since: datetime, limit: int = 40) -> list[dict]:
+    """Stored articles for one ticker since `since`, newest first (scored
+    or not). Served by the (tickers, published_at) index."""
+    cursor = (
+        get_news_collection()
+        .find(
+            {"tickers": ticker, "published_at": {"$gte": since}},
+            {"_id": 0, "url": 1, "title": 1, "description": 1, "source": 1, "published_at": 1},
+        )
+        .sort("published_at", -1)
+        .limit(limit)
+    )
+    return await cursor.to_list(length=limit)
+
+
 async def get_scored_articles_for_ticker(ticker: str, since: datetime) -> list[dict]:
     """Scored articles for one ticker since `since`, newest first. Served
     by the (tickers, published_at) index."""
