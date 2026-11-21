@@ -3,8 +3,7 @@
 Run from backend/ with the venv active:
     python -m scripts.ingest_news
 
-Requires NEWS_API_KEY set in backend/.env — without it, this logs a
-warning and exits cleanly rather than failing.
+Pulls from public RSS feeds — no API key needed.
 """
 
 import asyncio
@@ -29,21 +28,18 @@ async def main() -> None:
     finally:
         await close_mongo_connection()
 
-    if not results:
-        return
-
     succeeded = [r for r in results if r.error is None]
     failed = [r for r in results if r.error is not None]
     total_records = sum(r.records_upserted for r in succeeded)
 
     logger.info(
-        "News ingestion complete: %d/%d tickers succeeded, %d articles upserted",
+        "News ingestion complete: %d/%d feeds succeeded, %d articles upserted",
         len(succeeded),
         len(results),
         total_records,
     )
     if failed:
-        logger.warning("Failed tickers: %s", [(r.source, r.error) for r in failed])
+        logger.warning("Failed feeds: %s", [(r.source, r.error) for r in failed])
 
 
 if __name__ == "__main__":

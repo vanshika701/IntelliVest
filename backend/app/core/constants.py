@@ -33,8 +33,9 @@ STOCK_UNIVERSE: list[str] = [
     "ULTRACEMCO.NS",  # Cement/materials
 ]
 
-# NewsAPI searches by keyword, not ticker symbol — this maps each ticker
-# to the search term that actually finds its news.
+# News search works by keyword, not ticker symbol — this maps each ticker
+# to the search term that actually finds its news (used for the per-company
+# Google News feed).
 TICKER_TO_COMPANY_NAME: dict[str, str] = {
     "RELIANCE.NS": "Reliance Industries",
     "TCS.NS": "Tata Consultancy Services",
@@ -57,6 +58,47 @@ TICKER_TO_COMPANY_NAME: dict[str, str] = {
     "LT.NS": "Larsen & Toubro",
     "ULTRACEMCO.NS": "UltraTech Cement",
 }
+
+# How headlines actually refer to each company, used to tag articles from
+# the general market feeds with tickers. Values are regex fragments
+# (matched case-insensitively, as whole words); the negative lookaheads
+# keep group companies that are separately listed from being misattributed
+# (e.g. "SBI Life" is not SBIN, "L&T Finance" is not LT).
+TICKER_ALIASES: dict[str, list[str]] = {
+    "RELIANCE.NS": [
+        r"Reliance(?! (?:Power|Infra|Infrastructure|Capital|Communications|Home|Naval))",
+        r"RIL",
+    ],
+    "TCS.NS": [r"TCS", r"Tata Consultancy"],
+    "INFY.NS": [r"Infosys"],
+    "WIPRO.NS": [r"Wipro"],
+    "HDFCBANK.NS": [r"HDFC Bank"],
+    "ICICIBANK.NS": [r"ICICI Bank"],
+    "SBIN.NS": [r"SBI(?! (?:Life|Card|Cards|Mutual|MF|General))", r"State Bank of India"],
+    "KOTAKBANK.NS": [r"Kotak Mahindra Bank", r"Kotak Bank"],
+    "AXISBANK.NS": [r"Axis Bank"],
+    "BAJFINANCE.NS": [r"Bajaj Finance"],
+    "HINDUNILVR.NS": [r"Hindustan Unilever", r"HUL"],
+    "ITC.NS": [r"ITC(?! Hotels)"],
+    "NESTLEIND.NS": [r"Nestl[eé] India"],
+    "MARUTI.NS": [r"Maruti"],
+    "TMPV.NS": [r"Tata Motors Passenger Vehicles", r"Tata Motors PV", r"TMPV"],
+    "SUNPHARMA.NS": [r"Sun Pharma(?:ceutical)?"],
+    "TITAN.NS": [r"Titan"],
+    "ASIANPAINT.NS": [r"Asian Paints"],
+    "LT.NS": [r"Larsen & Toubro", r"Larsen and Toubro", r"L&T(?! (?:Finance|Technology|Tech))"],
+    "ULTRACEMCO.NS": [r"UltraTech"],
+}
+
+# General Indian market news feeds (publisher name, RSS URL). Moneycontrol
+# and Business Standard were left out deliberately: their feeds return 403
+# to automated requests.
+NEWS_RSS_FEEDS: list[tuple[str, str]] = [
+    ("Economic Times", "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"),
+    ("Economic Times", "https://economictimes.indiatimes.com/markets/stocks/news/rssfeeds/2146842.cms"),
+    ("Livemint", "https://www.livemint.com/rss/markets"),
+    ("Livemint", "https://www.livemint.com/rss/companies"),
+]
 
 # Reddit ingestion pulls general finance-discussion posts from these
 # subreddits (not per-ticker like news — this is broad market sentiment,

@@ -1,112 +1,163 @@
 """Service layer for news ingestion.
 
-Seam between the external API (NewsAPI, called here over HTTP) and
-storage (app/data/news_repository.py) — parsing/validation lives here.
+Seam between Indian financial news RSS feeds and storage
+(app/data/news_repository.py) — parsing/validation lives here. No API
+key and no daily quota, unlike the NewsAPI pipeline this replaced.
+
+Two kinds of feed:
+- General market feeds (Economic Times, Livemint): each item is tagged
+  with every tracked company its headline/description mentions (via
+  TICKER_ALIASES); items mentioning none are dropped.
+- One Google News search per company: targeted coverage for each ticker,
+  including outlets whose own feeds block automated requests.
 """
 
+import calendar
 import logging
-from datetime import datetime
+import re
+from datetime import UTC, datetime
+from urllib.parse import quote_plus
 
+import feedparser
 import httpx
+from bs4 import BeautifulSoup
 
-from app.core.config import settings
-from app.core.constants import TICKER_TO_COMPANY_NAME
+from app.core.constants import NEWS_RSS_FEEDS, TICKER_ALIASES, TICKER_TO_COMPANY_NAME
 from app.core.retry import with_retry
 from app.data.news_repository import upsert_news_articles
 from app.services.ingestion_types import IngestResult
 
 logger = logging.getLogger(__name__)
 
-NEWSAPI_URL = "https://newsapi.org/v2/everything"
+GOOGLE_NEWS_SEARCH_URL = "https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+
+# Some publishers reject httpx's default User-Agent outright.
+_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; IntelliVestBot/0.1)"}
+
+# Auto-generated price-tracker pages (mostly Economic Times) that look like
+# articles but carry no news — they'd skew sentiment and summaries.
+_PRICE_TRACKER_TITLE = re.compile(
+    r"Share Price (?:Live Updates|Highlights|Today)|Stock Price History", re.IGNORECASE
+)
+
+_TICKER_PATTERNS: dict[str, re.Pattern] = {
+    ticker: re.compile(rf"(?<!\w)(?:{'|'.join(aliases)})(?!\w)", re.IGNORECASE)
+    for ticker, aliases in TICKER_ALIASES.items()
+}
 
 
-def parse_articles(ticker: str, raw_articles: list[dict]) -> list[dict]:
-    """Turn NewsAPI's raw article payload into clean, storage-ready records."""
+def match_tickers(text: str) -> list[str]:
+    return [ticker for ticker, pattern in _TICKER_PATTERNS.items() if pattern.search(text)]
+
+
+def _clean_text(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    text = BeautifulSoup(raw, "html.parser").get_text(" ", strip=True) if "<" in raw else raw.strip()
+    return text or None
+
+
+def parse_feed_entries(
+    entries: list[dict], feed_source: str | None, ticker: str | None = None
+) -> list[dict]:
+    """Turn RSS entries (as parsed by feedparser) into storage-ready records.
+
+    `ticker` is set for a per-company search feed: every entry is tagged
+    with it, on top of any other companies the text mentions.
+    """
     records = []
-    for article in raw_articles:
-        url = article.get("url")
-        published_at_raw = article.get("publishedAt")
-        # Both fields are load-bearing: url is our dedup key, published_at
-        # is what every later "recent news" query sorts on. An article
-        # missing either isn't usable.
-        if not url or not published_at_raw:
+    for entry in entries:
+        url = entry.get("link")
+        published = entry.get("published_parsed")
+        # url is our dedup key, published_at is what every "recent news"
+        # query sorts on — an entry missing either isn't usable.
+        if not url or not published:
             continue
 
-        published_at = datetime.fromisoformat(published_at_raw)
+        # Google News names the real publisher per entry and appends it to
+        # the title ("Headline - Publisher").
+        source = (entry.get("source") or {}).get("title") or feed_source
+        title = (entry.get("title") or "").strip()
+        if source:
+            title = title.removesuffix(f" - {source}")
+        if _PRICE_TRACKER_TITLE.search(title):
+            continue
+
+        description = _clean_text(entry.get("summary"))
+        # Google News descriptions are just a link back to the headline.
+        if title and description and description.startswith(title):
+            description = None
+
+        tickers = set(match_tickers(f"{title} {description or ''}"))
+        if ticker:
+            tickers.add(ticker)
+        if not tickers:
+            continue
+
         records.append(
             {
                 "url": url,
-                "title": article.get("title"),
-                "description": article.get("description"),
-                "content": article.get("content"),
-                "source": (article.get("source") or {}).get("name"),
-                "published_at": published_at,
-                "tickers": [ticker],
+                "title": title,
+                "description": description,
+                "source": source,
+                "published_at": datetime.fromtimestamp(calendar.timegm(published), tz=UTC),
+                "tickers": sorted(tickers),
             }
         )
     return records
 
 
 @with_retry
-async def fetch_news_for_ticker(
-    client: httpx.AsyncClient, ticker: str, company_name: str, page_size: int = 20
-) -> list[dict]:
-    response = await client.get(
-        NEWSAPI_URL,
-        params={
-            "q": company_name,
-            "language": "en",
-            "sortBy": "publishedAt",
-            "pageSize": page_size,
-            "apiKey": settings.news_api_key,
-        },
-    )
+async def fetch_feed(client: httpx.AsyncClient, url: str) -> list[dict]:
+    response = await client.get(url)
     response.raise_for_status()
-    payload = response.json()
-    return parse_articles(ticker, payload.get("articles", []))
+    return feedparser.parse(response.content).entries
 
 
-async def ingest_news_for_ticker(
-    client: httpx.AsyncClient, ticker: str, company_name: str
+async def ingest_feed(
+    client: httpx.AsyncClient,
+    label: str,
+    url: str,
+    feed_source: str | None,
+    ticker: str | None = None,
 ) -> IngestResult:
-    """Fetch and store news for a single ticker.
-
-    Failures are isolated per-ticker, same reasoning as market data: one
-    ticker hitting a transient error shouldn't abort the whole run.
-    """
+    """Fetch and store one feed. Failures are isolated per feed: one
+    publisher being down shouldn't abort the whole run."""
     try:
-        records = await fetch_news_for_ticker(client, ticker, company_name)
-        if not records:
-            return IngestResult(ticker, 0, error="No articles found")
-
+        entries = await fetch_feed(client, url)
+        records = parse_feed_entries(entries, feed_source, ticker)
         upserted = await upsert_news_articles(records)
-        return IngestResult(ticker, upserted)
+        return IngestResult(label, upserted)
     except httpx.HTTPStatusError as exc:
-        logger.exception("NewsAPI request failed for %s", ticker)
-        return IngestResult(ticker, 0, error=f"HTTP {exc.response.status_code}")
+        logger.exception("News feed request failed for %s", label)
+        return IngestResult(label, 0, error=f"HTTP {exc.response.status_code}")
     except Exception as exc:
-        logger.exception("Failed to ingest news for %s", ticker)
-        return IngestResult(ticker, 0, error=str(exc))
+        logger.exception("Failed to ingest news feed %s", label)
+        return IngestResult(label, 0, error=str(exc))
+
+
+def google_news_url(company_name: str) -> str:
+    return GOOGLE_NEWS_SEARCH_URL.format(query=quote_plus(f'"{company_name}" when:7d'))
 
 
 async def ingest_news_for_universe(tickers: list[str]) -> list[IngestResult]:
-    if not settings.news_api_key:
-        logger.warning(
-            "NEWS_API_KEY is not set — skipping news ingestion. "
-            "Add it to backend/.env to enable this."
-        )
-        return []
+    feeds: list[tuple[str, str, str | None, str | None]] = [
+        (url, url, publisher, None) for publisher, url in NEWS_RSS_FEEDS
+    ]
+    feeds += [
+        (ticker, google_news_url(TICKER_TO_COMPANY_NAME.get(ticker, ticker)), None, ticker)
+        for ticker in tickers
+    ]
 
     results = []
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        for ticker in tickers:
-            company_name = TICKER_TO_COMPANY_NAME.get(ticker, ticker)
-            result = await ingest_news_for_ticker(client, ticker, company_name)
+    async with httpx.AsyncClient(timeout=15.0, headers=_HEADERS, follow_redirects=True) as client:
+        for label, url, feed_source, ticker in feeds:
+            result = await ingest_feed(client, label, url, feed_source, ticker)
             results.append(result)
             status = f"error: {result.error}" if result.error else "ok"
             logger.info(
-                "Ingested news for %s: %d articles upserted (%s)",
-                ticker,
+                "Ingested news feed %s: %d articles upserted (%s)",
+                label,
                 result.records_upserted,
                 status,
             )

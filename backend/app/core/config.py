@@ -33,7 +33,6 @@ class Settings(BaseSettings):
 
     # External API keys — needed from Phase 1 onward, optional for now so
     # the app still boots without them during Phase 0.
-    news_api_key: str | None = None
     alpha_vantage_api_key: str | None = None
     reddit_client_id: str | None = None
     reddit_client_secret: str | None = None

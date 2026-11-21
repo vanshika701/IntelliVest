@@ -17,13 +17,15 @@ docs/        Written docs/evaluation reports produced as phases complete
 
 - Python 3.12 (pinned in `.python-version`)
 - Node 24 (pinned in `.nvmrc`)
-- MongoDB running locally on the default port (`27017`) — `brew install mongodb-community` and `brew services start mongodb-community`, or run `mongod` yourself
+- Docker Desktop, for MongoDB: `docker compose up -d` from the repo root
+  starts MongoDB 8.0 on `localhost:27017`, with data kept in a Docker
+  volume across restarts (`docker compose down` stops it)
 
 ## Backend setup
 
 ```bash
-python3 -m venv .venv          # once, from the repo root
-source .venv/bin/activate
+python3 -m venv .venv          # once, from the repo root (Windows: py -3.12 -m venv .venv)
+source .venv/bin/activate      # Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
 cd backend
@@ -46,7 +48,7 @@ ruff check .
 ### Data ingestion (Phase 1)
 
 Three pipelines pull real data into MongoDB — market data (yfinance, no
-key needed), news (NewsAPI), and Reddit (asyncpraw). Each has a manual
+key needed), news (Indian financial RSS feeds, no key needed), and Reddit (asyncpraw). Each has a manual
 entry point for one-off runs, and all three also run automatically on a
 schedule (daily for prices, hourly for news/Reddit) whenever the backend
 is running, via `app/core/scheduler.py`:
@@ -54,13 +56,15 @@ is running, via `app/core/scheduler.py`:
 ```bash
 cd backend
 python -m scripts.ingest_market_data   # works immediately, no API key
-python -m scripts.ingest_news          # needs NEWS_API_KEY in .env
+python -m scripts.ingest_news          # works immediately, no API key
 python -m scripts.ingest_reddit        # needs REDDIT_CLIENT_ID/SECRET/USER_AGENT in .env
 ```
 
-News and Reddit log a warning and exit cleanly if their credentials
-aren't set yet, rather than failing — safe to leave unconfigured until
-you're ready. Get a NewsAPI key at [newsapi.org](https://newsapi.org).
+News comes from Economic Times and Livemint market feeds (headlines are
+matched to tickers via `TICKER_ALIASES` in `app/core/constants.py`) plus
+one Google News search per company. Moneycontrol and Business Standard
+are not used: their feeds return 403 to automated requests. Reddit logs a
+warning and exits cleanly if its credentials aren't set yet.
 
 **Reddit is currently blocked on Reddit's own approval process**, not on
 anything in this codebase. Since November 2025, new API apps require
@@ -111,9 +115,10 @@ Phase 2 is the active build. Track remaining work in
 - **Phase 1** — built and tested, partially verified live:
   - Market data (yfinance): fully live — 20-stock universe, ~10k real
     price records in MongoDB, confirmed idempotent on re-runs
-  - News (NewsAPI): fully live — 301 real articles across the 20-stock
-    universe, tickers correctly merged on shared articles, confirmed
-    idempotent across repeated runs
+  - News: switched from NewsAPI (free plan's ~100 requests/day and
+    truncated article text didn't fit hourly ingestion) to Indian
+    financial RSS feeds — Economic Times, Livemint, and Google News
+    per-company search. No API key or daily quota
   - Reddit (asyncpraw): **paused, not dropped** — pipeline is fully
     built and tested against fabricated data, waiting on Reddit's own
     access approval (see "Data ingestion" above). News is the working
