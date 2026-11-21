@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import get_current_user_id
 from app.schemas.instrument import InstrumentDetail, InstrumentSearchResponse, PriceHistory
+from app.schemas.sentiment import InstrumentSentiment
 from app.services.instrument_service import (
     DataProviderError,
     InstrumentNotFound,
@@ -12,6 +13,7 @@ from app.services.instrument_service import (
     get_intraday_history,
     search_instruments,
 )
+from app.services.sentiment_service import get_instrument_sentiment
 
 router = APIRouter(prefix="/instruments", tags=["instruments"], dependencies=[Depends(get_current_user_id)])
 
@@ -43,6 +45,16 @@ async def detail(instrument_id: str):
 async def history(instrument_id: str):
     try:
         return await get_daily_history(instrument_id)
+    except InstrumentNotFound:
+        raise _not_found() from None
+    except DataProviderError as exc:
+        raise _provider_down(exc) from None
+
+
+@router.get("/{instrument_id}/sentiment", response_model=InstrumentSentiment)
+async def sentiment(instrument_id: str):
+    try:
+        return await get_instrument_sentiment(instrument_id)
     except InstrumentNotFound:
         raise _not_found() from None
     except DataProviderError as exc:

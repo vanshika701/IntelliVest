@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -11,6 +12,7 @@ from app.core.logging import configure_logging
 from app.core.scheduler import start_scheduler, stop_scheduler
 from app.data.indexes import ensure_indexes
 from app.data.mongo import close_mongo_connection, connect_to_mongo
+from app.services.sentiment_service import warm_up_model
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -25,10 +27,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     await connect_to_mongo()
     await ensure_indexes()
+    warm_up_task = None
     if settings.enable_scheduler:
         start_scheduler()
+        # Off the event loop and not awaited: the API is usable immediately.
+        warm_up_task = asyncio.create_task(asyncio.to_thread(warm_up_model))
     logger.info("%s starting up (env=%s)", settings.app_name, settings.environment)
     yield
+    if warm_up_task is not None and not warm_up_task.done():
+        warm_up_task.cancel()
     if settings.enable_scheduler:
         stop_scheduler()
     await close_mongo_connection()

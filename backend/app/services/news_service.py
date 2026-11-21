@@ -58,12 +58,16 @@ def _clean_text(raw: str | None) -> str | None:
 
 
 def parse_feed_entries(
-    entries: list[dict], feed_source: str | None, ticker: str | None = None
+    entries: list[dict],
+    feed_source: str | None,
+    ticker: str | None = None,
+    keep_untagged: bool = False,
 ) -> list[dict]:
     """Turn RSS entries (as parsed by feedparser) into storage-ready records.
 
     `ticker` is set for a per-company search feed: every entry is tagged
-    with it, on top of any other companies the text mentions.
+    with it, on top of any other companies the text mentions. Entries that
+    match no tracked company are dropped unless `keep_untagged` is set.
     """
     records = []
     for entry in entries:
@@ -91,7 +95,7 @@ def parse_feed_entries(
         tickers = set(match_tickers(f"{title} {description or ''}"))
         if ticker:
             tickers.add(ticker)
-        if not tickers:
+        if not tickers and not keep_untagged:
             continue
 
         records.append(
@@ -136,8 +140,18 @@ async def ingest_feed(
         return IngestResult(label, 0, error=str(exc))
 
 
-def google_news_url(company_name: str) -> str:
-    return GOOGLE_NEWS_SEARCH_URL.format(query=quote_plus(f'"{company_name}" when:7d'))
+def google_news_url(company_name: str, days: int = 7) -> str:
+    return GOOGLE_NEWS_SEARCH_URL.format(query=quote_plus(f'"{company_name}" when:{days}d'))
+
+
+async def search_news(phrase: str, days: int = 30, limit: int = 15) -> list[dict]:
+    """On-demand Google News search for an exact phrase (e.g. a fund name),
+    newest first. Not stored. Raises httpx errors on failure."""
+    async with httpx.AsyncClient(timeout=10.0, headers=_HEADERS, follow_redirects=True) as client:
+        entries = await fetch_feed(client, google_news_url(phrase, days))
+    records = parse_feed_entries(entries, None, keep_untagged=True)
+    records.sort(key=lambda r: r["published_at"], reverse=True)
+    return records[:limit]
 
 
 async def ingest_news_for_universe(tickers: list[str]) -> list[IngestResult]:

@@ -18,6 +18,20 @@ class SentimentArticle(BaseModel):
     score: float
 
 
+class InstrumentSentiment(BaseModel):
+    instrument_id: str
+    # None = not enough news to determine sentiment (see min_articles).
+    label: SentimentLabel | None = None
+    average_score: float | None = None
+    article_count: int
+    min_articles: int
+    window_days: int
+    # Which engine scored the headlines, e.g. "ProsusAI/finbert" or "lexicon".
+    engine: str
+    articles: list[SentimentArticle]
+    generated_at: datetime
+
+
 class TickerSentimentSummary(BaseModel):
     ticker: str
     window_days: int

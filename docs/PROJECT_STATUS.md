@@ -105,7 +105,7 @@ Alerts. Layout: `AppShell` = `Navbar` (page title, notifications bell, user chip
 - [x] 1. This document
 - [x] 2. Backend: TTL cache helper; mfapi.in client; `fundMetaProvider` (mock); instrument
       service (search, detail, daily history, intraday) + routes + tests
-- [ ] 3. Backend: instrument sentiment in `sentiment_service` (stored FinBERT scores for stocks,
+- [x] 3. Backend: instrument sentiment in `sentiment_service` (stored FinBERT scores for stocks,
       on-demand Google News + FinBERT for funds, lexicon fallback, 20-min cache) + route + tests
 - [ ] 4. Backend: investments (accounts mock, create one-time/SIP, payment result, list) +
       collection/index + tests
