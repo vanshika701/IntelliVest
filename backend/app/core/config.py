@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60 * 24  # 24 hours for dev convenience
 
+    # Phase 5 sentiment model: a Hugging Face model id, or a local path to
+    # a fine-tuned checkpoint. Changing it makes the scoring job re-score
+    # every article with the new model.
+    sentiment_model: str = "ProsusAI/finbert"
+
     # External API keys — needed from Phase 1 onward, optional for now so
     # the app still boots without them during Phase 0.
     alpha_vantage_api_key: str | None = None

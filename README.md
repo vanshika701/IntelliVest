@@ -78,6 +78,26 @@ code is already built and tested, so once Reddit approves you and hands
 over `REDDIT_CLIENT_ID`/`REDDIT_CLIENT_SECRET`/`REDDIT_USER_AGENT`,
 nothing else needs to change.
 
+### News sentiment (Phase 5)
+
+Every news article is scored with [FinBERT](https://huggingface.co/ProsusAI/finbert)
+(pretrained, inference only, runs on CPU). Scoring runs automatically
+right after each hourly news ingestion, and stores a `sentiment` field
+(`label`, `score` from -1 to 1, class `probabilities`, `model`,
+`scored_at`) on the article itself. For a one-off run:
+
+```bash
+cd backend
+python -m scripts.score_sentiment      # first run downloads FinBERT (~420 MB) into ml/models/hf_cache/
+```
+
+Read endpoints (login required): `GET /api/v1/sentiment` (every tracked
+stock) and `GET /api/v1/sentiment/{ticker}` — label counts, average
+score, overall label and the latest articles over the last `days`
+(default 7). To use a fine-tuned model later, set `SENTIMENT_MODEL` in
+`backend/.env` to its Hugging Face id or local path; the next run
+re-scores every article with it.
+
 ## Frontend setup
 
 ```bash

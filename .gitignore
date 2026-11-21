@@ -24,6 +24,9 @@ ml/models/**/*.joblib
 ml/models/**/*.pkl
 ml/models/**/*.h5
 ml/models/**/*.pt
+# Downloaded Hugging Face models (FinBERT, ~420 MB) — re-downloaded
+# automatically on first use.
+ml/models/hf_cache/
 
 # Raw downloaded source data (regenerable via each ml/download_*.py
 # script) — only the small, processed CSVs derived from these are

@@ -21,7 +21,19 @@ async def _recent_news(limit: int = 10) -> list[dict]:
     """Fetch the most recent news articles across all tickers."""
     cursor = (
         get_news_collection()
-        .find({}, {"_id": 0, "url": 1, "title": 1, "source": 1, "published_at": 1, "tickers": 1})
+        .find(
+            {},
+            {
+                "_id": 0,
+                "url": 1,
+                "title": 1,
+                "source": 1,
+                "published_at": 1,
+                "tickers": 1,
+                "sentiment.label": 1,
+                "sentiment.score": 1,
+            },
+        )
         .sort("published_at", -1)
         .limit(limit)
     )

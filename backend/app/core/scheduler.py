@@ -25,6 +25,7 @@ from app.services.alert_service import evaluate_all_alerts
 from app.services.market_data_service import ingest_stock_universe
 from app.services.news_service import ingest_news_for_universe
 from app.services.reddit_service import ingest_reddit_posts
+from app.services.sentiment_service import score_pending_articles
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,11 @@ async def _run_market_data_ingestion() -> None:
 
 
 async def _run_news_ingestion() -> None:
-    logger.info("Scheduled job starting: news ingestion")
+    logger.info("Scheduled job starting: news ingestion + sentiment scoring")
     await ingest_news_for_universe(STOCK_UNIVERSE)
+    # Score right after ingesting, so new articles carry sentiment within
+    # the same run (Phase 5: "score as new articles arrive").
+    await score_pending_articles()
 
 
 async def _run_reddit_ingestion() -> None:
