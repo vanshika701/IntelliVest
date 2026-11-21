@@ -203,3 +203,58 @@ mobile search → Infosys → 1D intraday chart.
 - No new keys or secrets are needed: mfapi.in, yfinance and Google News RSS are keyless.
 - New optional frontend variable `VITE_PAYMENT_PROVIDER` (default `mock`), added to
   `frontend/.env.example`.
+
+---
+
+## 8. Summarization (Phase 5 — news summaries)
+
+_Status: in progress (planned 2026-11-21)._
+
+### Goal
+On the instrument detail page, show the top 5 most relevant recent articles, each with a summary
+of at most 100 words (headline, source, date, link, summary), next to the sentiment headline. The
+current summarizer is a classical **extractive baseline**; it will be replaced by our own trained
+seq2seq model (BART/T5/Pegasus) for the final submission, and compared against this baseline.
+
+### Architecture
+
+```mermaid
+flowchart LR
+  UI[InstrumentPage<br/>NewsSummaries] -->|GET /api/v1/instruments/:id/news-summaries| R[instruments route<br/>+ rate limit]
+  R --> S[news_summary_service]
+  S --> C1[candidates: stored news (stocks),<br/>Google News + Bing News RSS search]
+  S --> F[article_fetcher<br/>robots.txt + timeout]
+  S --> CACHE[(TTL cache:<br/>sha256 url+algo+config)]
+  S --> G[get_summarizer factory]
+  G -->|SUMMARIZER_PROVIDER=extractive| E[ExtractiveSummarizer]
+  G -->|SUMMARIZER_PROVIDER=ml| M[MlSummarizer → model server]
+  S -->|LOG_SUMMARIES=true| L[(data/summarization_log.jsonl)]
+```
+
+All summarizer code lives in `backend/app/services/summarization/`. Only `factory.py` imports
+the implementations; the rest of the app uses `get_summarizer()` and the `Summarizer` interface.
+
+### Interface contract
+```
+summarize(SummaryInput{title, text, url?, max_words, instrument_name?})
+  -> SummaryResult{summary, word_count, provider, method, latency_ms}
+summarize_batch([SummaryInput]) -> [SummaryResult | SummaryFailure]   # per-item error isolation
+```
+Guarantee every implementation must keep: `word_count <= max_words`, plain text, no markup.
+
+### Decisions
+| Decision | Why |
+|---|---|
+| Extractive baseline first, trained model later, same interface | Assignment requires our own model; baseline gives a comparison point. |
+| No LLM / API calls anywhere in summarization | Requirement; also keeps it free and offline. |
+| Google News links are never fetched | `news.google.com/robots.txt` disallows all crawlers; those items fall back to the headline. 885 of 887 stored articles are Google News links. |
+| Add **Bing News RSS** search as a candidate source (same RSS parsing code) | Its robots.txt allows `/news/search`; items carry the publisher's real URL (decoded from the link, no extra request) and a description snippet, so there is text to summarize. |
+| Full text fetched only where the publisher's robots.txt allows, with a timeout and size cap | Respect robots/ToS; never block the page on fetch failures. |
+
+### Plan (checklist)
+- [ ] S1. This section
+- [ ] S2. `summarization` package: interface, extractive algorithm + config, ML placeholder, factory, ROUGE helpers; unit tests
+- [ ] S3. Article fetcher (robots-aware) + Bing News search; candidate selection (relevance + recency, near-duplicate removal); summary service with cache, JSONL logging; endpoint + rate limit; tests
+- [ ] S4. `scripts/eval_summarizer.py`
+- [ ] S5. Frontend "Top stories · Auto-summary" cards with skeleton/empty/error states; tests
+- [ ] S6. Lint, type-check, all tests, manual check in the browser; update this section with results
