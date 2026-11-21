@@ -25,14 +25,22 @@ function getDefaultHeaders() {
   return headers
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
+export async function apiGet<T>(path: string, init?: { signal?: AbortSignal }): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'GET',
     headers: getDefaultHeaders(),
+    signal: init?.signal,
   })
 
   if (!response.ok) {
-    throw new ApiError(`GET ${path} failed with status ${response.status}`, response.status)
+    let message = `GET ${path} failed with status ${response.status}`
+    try {
+      const errData = await response.json()
+      message = errData.detail || message
+    } catch {
+      // Non-JSON error body — keep the generic message.
+    }
+    throw new ApiError(message, response.status)
   }
 
   return response.json() as Promise<T>

@@ -109,7 +109,7 @@ Alerts. Layout: `AppShell` = `Navbar` (page title, notifications bell, user chip
       on-demand Google News + FinBERT for funds, lexicon fallback, 20-min cache) + route + tests
 - [x] 4. Backend: investments (accounts mock, create one-time/SIP, payment result, list) +
       collection/index + tests
-- [ ] 5. Frontend: API wrappers, `useDebouncedValue`, `GlobalSearch` combobox in the navbar
+- [x] 5. Frontend: API wrappers, `useDebouncedValue`, `GlobalSearch` combobox in the navbar
       (desktop + mobile), tests
 - [ ] 6. Frontend: range/YTD logic + returns formulas (+ tests); instrument page with header,
       chart, stats strip, sentiment section, return calculator; skeletons/empty/error states

@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../../AuthContext';
 import { useLayout } from '../../LayoutContext';
 import { apiGet } from '../../api/client';
+import { GlobalSearch } from '../search/GlobalSearch';
 
 interface Alert {
   id: string;
@@ -76,8 +77,8 @@ export function Navbar() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Future: Marquee or Global Stock Search can go here */}
+          <div className="flex items-center gap-2 sm:gap-4">
+            <GlobalSearch />
 
             <div className="relative" ref={notificationsRef}>
               <button
