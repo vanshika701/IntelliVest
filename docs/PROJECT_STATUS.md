@@ -208,7 +208,7 @@ mobile search → Infosys → 1D intraday chart.
 
 ## 8. Summarization (Phase 5 — news summaries)
 
-_Status: in progress (planned 2026-11-21)._
+_Status: done (2026-11-21) — extractive baseline live; trained model pending (see "Migrating to our ML model")._
 
 ### Goal
 On the instrument detail page, show the top 5 most relevant recent articles, each with a summary
@@ -257,4 +257,86 @@ Guarantee every implementation must keep: `word_count <= max_words`, plain text,
 - [x] S3. Article fetcher (robots-aware) + Bing News search; candidate selection (relevance + recency, near-duplicate removal); summary service with cache, JSONL logging; endpoint + rate limit; tests
 - [x] S4. `scripts/eval_summarizer.py`
 - [x] S5. Frontend "Top stories · Auto-summary" cards with skeleton/empty/error states; tests
-- [ ] S6. Lint, type-check, all tests, manual check in the browser; update this section with results
+- [x] S6. Lint, type-check, all tests, manual check in the browser; update this section with results
+
+### Extractive algorithm (baseline, `tfidf-extractive@1.1.0`)
+Code: `backend/app/services/summarization/extractive.py` — one function per step.
+
+| Step | Function | What it does |
+|---|---|---|
+| 1 | `clean_text` | Strip HTML/entities/URLs; drop boilerplate lines (cookie, subscribe, read more, ads…); end heading lines with a period so they don't merge into the next sentence; collapse whitespace |
+| 2 | `split_sentences` | Split on `.!?` + whitespace + capital/digit; protect abbreviations (Rs., Mr., Dr., Pvt., No., months, e.g., i.e., U.S.) and initials; decimals (7.5%) never split |
+| 3 | `tokenize` | Lowercase, drop ~150 English stop words |
+| 4 | `word_weights` | TF within the article × IDF across its sentences; title words ×2.0, instrument-name words ×2.5; scaled to max 1 |
+| 5 | `score_sentence` | Sum of word weights ÷ length^0.7; +0.30/0.20/0.10 for sentences 1–3; +0.10 for numbers/%/₹/crore; +0.15 for naming the instrument; ×0.5 if < 6 words, ×0.7 if > 45, ×0.7 for quotes, ×0.1 for boilerplate |
+| 6 | `select_sentences` | Greedy by score; skip sentences < 30% of the best score, near-duplicates (token Jaccard ≥ 0.5), and anything over the word budget; max 4 sentences |
+| 7 | (same) | Return picks in original order |
+| 8 | `trim_to_words` | Hard cap: cut at the last clause boundary if it keeps ≥ 60% of the limit, else at a word boundary; "…" added to the last word |
+| 9 | `_summarize_text` | No usable text → headline; a short snippet passes through selection essentially unchanged |
+
+All tunables are fields of `ExtractiveConfig` (one object). Any change that can alter output must
+bump `ALGORITHM_VERSION`, which is part of the cache key and recorded in every log line.
+
+### Article selection and text
+- Candidates (last 14 days): stocks = stored news + Bing News search for the company name; funds =
+  Bing News + Google News search for the fund name. Fund/stock product pages (price/NAV listings)
+  are filtered out.
+- Ranking = name match in headline (×1.0) + recency (half-life 3 days, ×1.0) + 0.5 if the item has
+  text to summarize. Near-duplicate headlines (Jaccard ≥ 0.6) keep only the best. Top 5.
+- Text per article: publisher full text (robots.txt-checked, 6 s timeout, 2 MB cap, JSON-LD
+  `articleBody` first, else the densest paragraph block, capped at 1,200 words) → RSS snippet →
+  headline. The response flags each item (`input_kind`, `used_fallback`, `summary_failed`).
+- Cache: per article by `sha256(url | summarizer fingerprint | max_words)` for
+  `SUMMARIZER_CACHE_TTL_MIN`; candidate lists per instrument for the same TTL. Endpoint limit: 20
+  requests/min per user (429 + `Retry-After`).
+
+### Environment variables (`backend/.env.example`)
+| Variable | Default | Meaning |
+|---|---|---|
+| `SUMMARIZER_PROVIDER` | `extractive` | `extractive` or `ml` |
+| `SUMMARIZER_MAX_WORDS` | `100` | Hard word limit per summary |
+| `SUMMARIZER_CACHE_TTL_MIN` | `60` | Summary + candidate cache lifetime |
+| `ML_SUMMARIZER_URL` | (empty) | Model server for `ml` (unused until it exists) |
+| `LOG_SUMMARIES` | `false` | Append JSONL training/eval data to `data/summarization_log.jsonl` (gitignored) |
+
+### Results (baseline, measured 2026-11-21)
+Manually checked in the browser on Infosys and SBI Gold Fund: up to 5 cards, each ≤ 100 words, with
+correct fallback notes; summaries load after the chart and stats (~2–3 s cold, instant when cached).
+`python -m scripts.eval_summarizer` over 40 logged real articles (8 instruments):
+
+| Metric | All 40 | Full-text only (18) |
+|---|---|---|
+| Word-limit compliance | 100% | 100% |
+| Avg summary length | 49 words | 86 words |
+| Compression (summary ÷ input words) | 0.52 | 0.23 |
+| Latency avg / p95 | 6.2 ms / 23 ms | — |
+| Input kinds | 18 full text · 11 snippet · 11 headline | |
+
+No ROUGE yet: there are no human reference summaries. Writing ~50 references for logged
+full-text articles is the first task before the model comparison.
+
+### Known limitations
+- Google News links (most stored articles) can't be fetched — robots.txt disallows it — so those
+  items show only their headline; Bing items show at least a snippet.
+- JavaScript-rendered pages (MSN) and sites that block bots (e.g. YourStory 403) fall back to snippets.
+- Relevance is heuristic: for funds, general gold/silver market stories can appear alongside
+  fund-specific ones.
+- Extractive summaries reuse the article's sentences verbatim; they can't merge facts or paraphrase
+  (the main thing the trained model should improve).
+- Bing News RSS is used under its public RSS terms for this student project; review before any
+  commercial use.
+
+### Migrating to our ML model (checklist)
+1. Collect data: run with `LOG_SUMMARIES=true` and browse instruments; write reference summaries
+   (`{"url", "reference"}` JSONL) for a held-out set of logged `full_text` articles.
+2. Fine-tune the seq2seq model (BART/T5/Pegasus) on a summarization dataset + our references.
+3. Implement `MlSummarizer.summarize` / `summarize_batch` per the contract in
+   `backend/app/services/summarization/ml.py` (model server `POST /summarize`, or in-process);
+   enforce `trim_to_words`; include the model version in `method`.
+4. Serve the model and set `ML_SUMMARIZER_URL`.
+5. Compare on the same sample:
+   `python -m scripts.eval_summarizer --provider extractive --references refs.jsonl --input-kind full_text --out baseline.json`
+   then `--provider ml ... --out model.json`. **The extractive method is the baseline for the
+   final comparison** (ROUGE-1/2/L, compliance, latency, compression).
+6. Set `SUMMARIZER_PROVIDER=ml`. No other code changes: the service, API and UI only use the
+   `Summarizer` interface and `get_summarizer()`.
