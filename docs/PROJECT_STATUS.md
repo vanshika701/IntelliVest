@@ -208,11 +208,13 @@ mobile search → Infosys → 1D intraday chart.
 
 ## 8. Summarization (Phase 5 — news summaries)
 
-_Status: done (2026-11-21) — extractive baseline live; trained model pending (see "Migrating to our ML model")._
+_Status: done (2026-11-21) — extractive baseline live; trained model pending (see "Migrating to our ML model").
+Revised the same day: one **combined** summary of the top 5 articles instead of one summary per article (see Decisions)._
 
 ### Goal
-On the instrument detail page, show the top 5 most relevant recent articles, each with a summary
-of at most 100 words (headline, source, date, link, summary), next to the sentiment headline. The
+On the instrument detail page, directly beneath "Current market sentiment for X: <label>", show
+**one combined summary (≤ 100 words) of the top 5 most relevant recent articles**, followed by those
+5 articles as a compact list (headline link, source · date, per-article sentiment tag). The
 current summarizer is a classical **extractive baseline**; it will be replaced by our own trained
 seq2seq model (BART/T5/Pegasus) for the final submission, and compared against this baseline.
 
@@ -220,11 +222,12 @@ seq2seq model (BART/T5/Pegasus) for the final submission, and compared against t
 
 ```mermaid
 flowchart LR
-  UI[InstrumentPage<br/>NewsSummaries] -->|GET /api/v1/instruments/:id/news-summaries| R[instruments route<br/>+ rate limit]
+  UI[InstrumentPage<br/>NewsDigest] -->|GET /api/v1/instruments/:id/news-summary| R[instruments route<br/>+ rate limit]
   R --> S[news_summary_service]
   S --> C1[candidates: stored news (stocks),<br/>Google News + Bing News RSS search]
   S --> F[article_fetcher<br/>robots.txt + timeout]
-  S --> CACHE[(TTL cache:<br/>sha256 url+algo+config)]
+  S --> CACHE[(TTL caches: article text per url;<br/>summary per sha256 article-set+algo+config)]
+  S --> SENT[sentiment_service.score_texts<br/>per-article tags]
   S --> G[get_summarizer factory]
   G -->|SUMMARIZER_PROVIDER=extractive| E[ExtractiveSummarizer]
   G -->|SUMMARIZER_PROVIDER=ml| M[MlSummarizer → model server]
@@ -236,11 +239,14 @@ the implementations; the rest of the app uses `get_summarizer()` and the `Summar
 
 ### Interface contract
 ```
-summarize(SummaryInput{title, text, url?, max_words, instrument_name?})
+summarize(SummaryInput{title, text, url?, max_words, instrument_name?, documents?})
   -> SummaryResult{summary, word_count, provider, method, latency_ms}
 summarize_batch([SummaryInput]) -> [SummaryResult | SummaryFailure]   # per-item error isolation
 ```
 Guarantee every implementation must keep: `word_count <= max_words`, plain text, no markup.
+`documents` (optional) is the same content as `text` split per source article, for
+multi-document input; an implementation may ignore it and read `text`. The app sends one
+`SummaryInput` per instrument: `title` = instrument name, `documents` = the top articles' texts.
 
 ### Decisions
 | Decision | Why |
@@ -250,6 +256,8 @@ Guarantee every implementation must keep: `word_count <= max_words`, plain text,
 | Google News links are never fetched | `news.google.com/robots.txt` disallows all crawlers; those items fall back to the headline. 885 of 887 stored articles are Google News links. |
 | Add **Bing News RSS** search as a candidate source (same RSS parsing code) | Its robots.txt allows `/news/search`; items carry the publisher's real URL (decoded from the link, no extra request) and a description snippet, so there is text to summarize. |
 | Full text fetched only where the publisher's robots.txt allows, with a timeout and size cap | Respect robots/ToS; never block the page on fetch failures. |
+| **One combined summary of the top 5** (not one per article), shown under the sentiment line; the 5 articles listed below it with sentiment tags; the old collapsible "headlines behind this sentiment" list removed | Requested change after review: a single digest reads better next to the overall sentiment, and the list shows exactly the articles the summary came from. |
+| Headline-only articles feed the summary only when no article has text | Bare headlines (e.g. "Titan Company Investor Analysis \| StockIQ") made poor summary sentences; they still appear in the list. |
 
 ### Plan (checklist)
 - [x] S1. This section
@@ -258,19 +266,20 @@ Guarantee every implementation must keep: `word_count <= max_words`, plain text,
 - [x] S4. `scripts/eval_summarizer.py`
 - [x] S5. Frontend "Top stories · Auto-summary" cards with skeleton/empty/error states; tests
 - [x] S6. Lint, type-check, all tests, manual check in the browser; update this section with results
+- [x] S7. Revision: combined multi-article summary + top-5 list (backend digest endpoint, multi-document extractive mode, frontend `NewsDigest`), tests, browser check
 
-### Extractive algorithm (baseline, `tfidf-extractive@1.1.0`)
+### Extractive algorithm (baseline, `tfidf-extractive@1.2.0`)
 Code: `backend/app/services/summarization/extractive.py` — one function per step.
 
 | Step | Function | What it does |
 |---|---|---|
-| 1 | `clean_text` | Strip HTML/entities/URLs; drop boilerplate lines (cookie, subscribe, read more, ads…); end heading lines with a period so they don't merge into the next sentence; collapse whitespace |
+| 1 | `clean_text` | Strip HTML/entities, unwrap markdown links, remove URLs; drop boilerplate lines (cookie, subscribe, read more, ads…); end heading lines with a period so they don't merge into the next sentence; collapse whitespace |
 | 2 | `split_sentences` | Split on `.!?` + whitespace + capital/digit; protect abbreviations (Rs., Mr., Dr., Pvt., No., months, e.g., i.e., U.S.) and initials; decimals (7.5%) never split |
 | 3 | `tokenize` | Lowercase, drop ~150 English stop words |
 | 4 | `word_weights` | TF within the article × IDF across its sentences; title words ×2.0, instrument-name words ×2.5; scaled to max 1 |
-| 5 | `score_sentence` | Sum of word weights ÷ length^0.7; +0.30/0.20/0.10 for sentences 1–3; +0.10 for numbers/%/₹/crore; +0.15 for naming the instrument; ×0.5 if < 6 words, ×0.7 if > 45, ×0.7 for quotes, ×0.1 for boilerplate |
-| 6 | `select_sentences` | Greedy by score; skip sentences < 30% of the best score, near-duplicates (token Jaccard ≥ 0.5), and anything over the word budget; max 4 sentences |
-| 7 | (same) | Return picks in original order |
+| 5 | `score_sentence` | Sum of word weights ÷ length^0.7; +0.30/0.20/0.10 for sentences 1–3 **of each article** (`document_sentences` resets positions per document); +0.10 for numbers/%/₹/crore; +0.15 for naming the instrument; ×0.5 if < 6 words, ×0.7 if > 45, ×0.7 for quotes, ×0.6 for questions, ×0.1 for boilerplate |
+| 6 | `select_sentences` | Greedy by score; skip sentences < 30% of the best score, near-duplicates (`is_near_duplicate`: token Jaccard ≥ 0.5, or ≥ 4 shared content words covering ≥ 50% of the shorter sentence — catches paraphrases across articles), and anything over the word budget; max 4 sentences, and in multi-document mode max 1 per article so the summary spans several stories |
+| 7 | (same) | Return picks in original order; `end_sentence` adds a full stop to headline-style sentences so they don't run together |
 | 8 | `trim_to_words` | Hard cap: cut at the last clause boundary if it keeps ≥ 60% of the limit, else at a word boundary; "…" added to the last word |
 | 9 | `_summarize_text` | No usable text → headline; a short snippet passes through selection essentially unchanged |
 
@@ -284,11 +293,17 @@ bump `ALGORITHM_VERSION`, which is part of the cache key and recorded in every l
 - Ranking = name match in headline (×1.0) + recency (half-life 3 days, ×1.0) + 0.5 if the item has
   text to summarize. Near-duplicate headlines (Jaccard ≥ 0.6) keep only the best. Top 5.
 - Text per article: publisher full text (robots.txt-checked, 6 s timeout, 2 MB cap, JSON-LD
-  `articleBody` first, else the densest paragraph block, capped at 1,200 words) → RSS snippet →
-  headline. The response flags each item (`input_kind`, `used_fallback`, `summary_failed`).
-- Cache: per article by `sha256(url | summarizer fingerprint | max_words)` for
-  `SUMMARIZER_CACHE_TTL_MIN`; candidate lists per instrument for the same TTL. Endpoint limit: 20
-  requests/min per user (429 + `Retry-After`).
+  `articleBody` first, else the densest paragraph block) → RSS snippet → headline. Each article
+  contributes its first 300 words to the combined input. The response reports `sources`
+  (how many articles gave full text / snippet / headline) and each article's `input_kind`.
+- Per-article sentiment tags come from `sentiment_service.score_texts` (FinBERT, lexicon fallback).
+- Caches (`SUMMARIZER_CACHE_TTL_MIN`): article text per URL; the combined result per
+  `sha256(sorted article URLs | summarizer fingerprint | max_words)`; candidate lists per
+  instrument. A summarizer failure still returns the article list and isn't cached. Endpoint
+  `GET /api/v1/instruments/{id}/news-summary`, limited to 20 requests/min per user (429 + `Retry-After`).
+- With `LOG_SUMMARIES=true`, one JSONL line per combined summary (`kind: multi_article_digest`,
+  `article_urls`, `documents`, `article_text`, `summary`, method/version). The eval script passes
+  `documents` through, so evaluation matches what the app summarized.
 
 ### Environment variables (`backend/.env.example`)
 | Variable | Default | Meaning |
@@ -300,9 +315,15 @@ bump `ALGORITHM_VERSION`, which is part of the cache key and recorded in every l
 | `LOG_SUMMARIES` | `false` | Append JSONL training/eval data to `data/summarization_log.jsonl` (gitignored) |
 
 ### Results (baseline, measured 2026-11-21)
-Manually checked in the browser on Infosys and SBI Gold Fund: up to 5 cards, each ≤ 100 words, with
-correct fallback notes; summaries load after the chart and stats (~2–3 s cold, instant when cached).
-`python -m scripts.eval_summarizer` over 40 logged real articles (8 instruments):
+**Combined summary (current, `1.2.0`)** — checked in the browser on Reliance and SBI Gold Fund: the
+summary sits under the sentiment line, then the top-5 list with tags; loads after the chart and
+stats (~3–6 s cold, instant when cached). Eval over 8 logged combined summaries (8 instruments):
+100% word-limit compliance, 78 words on average, compression 0.34, ~13 ms per summary. Example
+(Reliance): promoters buying 4.26 lakh shares; JPMorgan's 23% upside call; ₹15,000 crore biogas plan
+— three distinct stories in 83 words.
+
+**Earlier per-article version (`1.1.0`, superseded)** — `python -m scripts.eval_summarizer` over 40
+logged real articles (8 instruments):
 
 | Metric | All 40 | Full-text only (18) |
 |---|---|---|
@@ -322,7 +343,9 @@ full-text articles is the first task before the model comparison.
 - Relevance is heuristic: for funds, general gold/silver market stories can appear alongside
   fund-specific ones.
 - Extractive summaries reuse the article's sentences verbatim; they can't merge facts or paraphrase
-  (the main thing the trained model should improve).
+  (the main thing the trained model should improve). Across articles, differently-worded reports
+  of the same event can both be picked (e.g. two Infosys–NTT Docomo JV sentences), and a selected
+  sentence can lack context ("The selloff came as…").
 - Bing News RSS is used under its public RSS terms for this student project; review before any
   commercial use.
 
