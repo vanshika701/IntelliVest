@@ -26,7 +26,9 @@ from dataclasses import asdict, dataclass
 from app.services.summarization.base import Summarizer, SummaryInput, SummaryResult
 from app.services.summarization.textutils import count_words, trim_to_words
 
-ALGORITHM_VERSION = "1.0.0"
+# Bump whenever output can change: it is part of the summary cache key and
+# is recorded with every logged summary.
+ALGORITHM_VERSION = "1.1.0"
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,9 @@ _MULTI_DOT_ABBREV_RE = re.compile(r"\b(?:e\.g|i\.e|a\.m|p\.m|U\.S|U\.K|U\.A\.E|e
 _INITIAL_RE = re.compile(r"\b([A-Z])\.(?=\s*[A-Z])")
 _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])[\"'”’)\]]*\s+(?=[\"'“‘(\[]?[A-Z0-9₹$])")
 
+_URL_RE = re.compile(r"\b(?:https?://|www\.)\S+", re.IGNORECASE)
+_ENDS_SENTENCE = re.compile(r"[.!?:;\"'”’)]$")
+
 _TOKEN_RE = re.compile(r"[a-z0-9]+(?:[.'’][a-z0-9]+)*")
 _NUMBER_RE = re.compile(r"(\d|₹|\brs\b|%|\bcrore\b|\blakh\b|\bbillion\b|\bmillion\b)", re.IGNORECASE)
 _QUOTE_RE = re.compile(r"[\"“”]")
@@ -104,8 +109,14 @@ def clean_text(raw: str | None) -> str:
         text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r"<br\s*/?>|</p>|</div>|</li>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"<[^>]+>", " ", text)
+    text = _URL_RE.sub(" ", text)
     lines = [line.strip() for line in text.splitlines()]
     kept = [line for line in lines if line and not (_BOILERPLATE.search(line) and count_words(line) < 30)]
+    # A line without closing punctuation is a heading or caption; end it so
+    # it becomes its own (short, low-scoring) sentence instead of merging
+    # into the next one.
+    if len(kept) > 1:
+        kept = [line if _ENDS_SENTENCE.search(line) else f"{line}." for line in kept]
     return re.sub(r"\s+", " ", " ".join(kept)).strip()
 
 

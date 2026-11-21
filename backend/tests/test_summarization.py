@@ -48,10 +48,25 @@ def test_clean_text_strips_html_entities_and_boilerplate_lines() -> None:
         "<p>Subscribe to our newsletter</p><p>Read more: Top stocks today</p></div>"
     )
     assert clean_text(raw) == "Infosys shares rose 2% & hit a record."
+    assert clean_text("Gold   prices\n\n rose ") == "Gold prices. rose."
+
+
+def test_clean_text_strips_urls() -> None:
+    text = "Shares fell 2.5%. https://www.example.com/stocks/infosys-ltd/ By noon the stock recovered."
+    assert clean_text(text) == "Shares fell 2.5%. By noon the stock recovered."
+
+
+def test_clean_text_keeps_headings_from_merging_into_the_next_sentence() -> None:
+    text = "Infosys will invest $10 million in the venture.\nJapan Expansion\nAs part of the deal, it gets a board seat."
+    assert split_sentences(clean_text(text)) == [
+        "Infosys will invest $10 million in the venture.",
+        "Japan Expansion.",
+        "As part of the deal, it gets a board seat.",
+    ]
 
 
 def test_clean_text_collapses_whitespace_and_handles_empty() -> None:
-    assert clean_text("  Gold   prices\n\n rose  ") == "Gold prices rose"
+    assert clean_text("  Gold   prices   rose  ") == "Gold prices rose"
     assert clean_text(None) == ""
     assert clean_text("") == ""
 
