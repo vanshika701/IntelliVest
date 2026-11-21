@@ -75,6 +75,29 @@ export interface InstrumentSentiment {
   generated_at: string
 }
 
+export type SummaryInputKind = 'full_text' | 'snippet' | 'headline'
+
+export interface NewsSummaryItem {
+  title: string
+  url: string
+  source: string | null
+  published_at: string
+  summary: string
+  word_count: number
+  input_kind: SummaryInputKind
+  used_fallback: boolean
+  summary_failed: boolean
+}
+
+export interface NewsSummaries {
+  instrument_id: string
+  provider: string
+  method: string
+  max_words: number
+  items: NewsSummaryItem[]
+  generated_at: string
+}
+
 const base = (id: string) => `/api/v1/instruments/${encodeURIComponent(id)}`
 
 export const instrumentsApi = {
@@ -84,6 +107,7 @@ export const instrumentsApi = {
   history: (id: string) => apiGet<PriceHistory>(`${base(id)}/history`),
   intraday: (id: string) => apiGet<PriceHistory>(`${base(id)}/intraday`),
   sentiment: (id: string) => apiGet<InstrumentSentiment>(`${base(id)}/sentiment`),
+  newsSummaries: (id: string) => apiGet<NewsSummaries>(`${base(id)}/news-summaries`),
 }
 
 export const TYPE_LABEL: Record<InstrumentType, string> = { STOCK: 'Stock', MF: 'MF', ETF: 'ETF' }

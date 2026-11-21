@@ -9,6 +9,7 @@ import { InstrumentHeader, InstrumentHeaderSkeleton } from '../components/instru
 import { PriceChart } from '../components/instrument/PriceChart'
 import { StatsStrip } from '../components/instrument/StatsStrip'
 import { SentimentSection } from '../components/instrument/SentimentSection'
+import { NewsSummaries } from '../components/instrument/NewsSummaries'
 import { ReturnCalculator } from '../components/instrument/ReturnCalculator'
 import { InvestPanel } from '../components/instrument/InvestPanel'
 import { Skeleton } from '../components/ui/Skeleton'
@@ -25,6 +26,10 @@ function InstrumentView({ id }: { id: string }) {
   const history = useApi(id, () => instrumentsApi.history(id))
   const intraday = useApi(isStock ? id : null, () => instrumentsApi.intraday(id))
   const sentiment = useApi(id, () => instrumentsApi.sentiment(id))
+  // Summaries can take a few seconds (article fetching), so they start
+  // only after the header, chart and stats have rendered.
+  const summariesReady = Boolean(detail.data) && !history.loading
+  const summaries = useApi(summariesReady ? id : null, () => instrumentsApi.newsSummaries(id))
 
   const [selectedRange, setSelectedRange] = useState<RangeKey | null>(null)
   const now = useMemo(() => new Date(), [])
@@ -107,7 +112,14 @@ function InstrumentView({ id }: { id: string }) {
         loading={sentiment.loading}
         error={sentiment.error}
         onRetry={sentiment.reload}
-      />
+      >
+        <NewsSummaries
+          data={summaries.data}
+          loading={summaries.loading || !summariesReady}
+          error={summaries.error}
+          onRetry={summaries.reload}
+        />
+      </SentimentSection>
 
       {history.loading ? (
         <Skeleton className="h-80 w-full rounded-2xl" />

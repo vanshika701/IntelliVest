@@ -10,9 +10,10 @@ export function formatINR(value: number | null | undefined, fractionDigits = 2):
 /** Compact Indian notation for large amounts: ₹1.2 L, ₹3.45 Cr. */
 export function formatINRCompact(value: number): string {
   const abs = Math.abs(value)
-  if (abs >= 1e7) return `₹${(value / 1e7).toFixed(2)} Cr`
-  if (abs >= 1e5) return `₹${(value / 1e5).toFixed(2)} L`
-  return formatINR(value, 0)
+  const sign = value < 0 ? '−' : ''
+  if (abs >= 1e7) return `${sign}₹${(abs / 1e7).toFixed(2)} Cr`
+  if (abs >= 1e5) return `${sign}₹${(abs / 1e5).toFixed(2)} L`
+  return `${sign}${formatINR(abs, 0)}`
 }
 
 /** Short labels for chart axes: ₹28L, ₹1.2Cr, ₹50k. */
