@@ -103,7 +103,7 @@ Alerts. Layout: `AppShell` = `Navbar` (page title, notifications bell, user chip
 - [x] 0. FinBERT sentiment work committed (`739cd86`); this work is on branch
       `feature-instrument-search-invest`
 - [x] 1. This document
-- [ ] 2. Backend: TTL cache helper; mfapi.in client; `fundMetaProvider` (mock); instrument
+- [x] 2. Backend: TTL cache helper; mfapi.in client; `fundMetaProvider` (mock); instrument
       service (search, detail, daily history, intraday) + routes + tests
 - [ ] 3. Backend: instrument sentiment in `sentiment_service` (stored FinBERT scores for stocks,
       on-demand Google News + FinBERT for funds, lexicon fallback, 20-min cache) + route + tests

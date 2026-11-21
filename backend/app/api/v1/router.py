@@ -1,6 +1,15 @@
 from fastapi import APIRouter
 
-from app.api.v1.routes import alerts, auth, dashboard, expenses, health, sentiment, watchlist
+from app.api.v1.routes import (
+    alerts,
+    auth,
+    dashboard,
+    expenses,
+    health,
+    instruments,
+    sentiment,
+    watchlist,
+)
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router)
@@ -10,3 +19,4 @@ api_router.include_router(watchlist.router)
 api_router.include_router(alerts.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(sentiment.router)
+api_router.include_router(instruments.router)

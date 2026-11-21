@@ -32,3 +32,12 @@ async def upsert_prices(records: list[dict]) -> int:
 
     result = await get_prices_collection().bulk_write(operations, ordered=False)
     return result.upserted_count + result.modified_count
+
+
+async def get_close_series(ticker: str) -> list[dict]:
+    """Every stored daily close for `ticker`, oldest first. Served by the
+    (ticker, date) unique index."""
+    cursor = get_prices_collection().find(
+        {"ticker": ticker}, {"_id": 0, "date": 1, "close": 1}
+    ).sort("date", 1)
+    return await cursor.to_list(length=None)
