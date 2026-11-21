@@ -9,7 +9,7 @@ import { InstrumentHeader, InstrumentHeaderSkeleton } from '../components/instru
 import { PriceChart } from '../components/instrument/PriceChart'
 import { StatsStrip } from '../components/instrument/StatsStrip'
 import { SentimentSection } from '../components/instrument/SentimentSection'
-import { NewsSummaries } from '../components/instrument/NewsSummaries'
+import { NewsDigest } from '../components/instrument/NewsDigest'
 import { ReturnCalculator } from '../components/instrument/ReturnCalculator'
 import { InvestPanel } from '../components/instrument/InvestPanel'
 import { Skeleton } from '../components/ui/Skeleton'
@@ -26,10 +26,10 @@ function InstrumentView({ id }: { id: string }) {
   const history = useApi(id, () => instrumentsApi.history(id))
   const intraday = useApi(isStock ? id : null, () => instrumentsApi.intraday(id))
   const sentiment = useApi(id, () => instrumentsApi.sentiment(id))
-  // Summaries can take a few seconds (article fetching), so they start
-  // only after the header, chart and stats have rendered.
-  const summariesReady = Boolean(detail.data) && !history.loading
-  const summaries = useApi(summariesReady ? id : null, () => instrumentsApi.newsSummaries(id))
+  // The news summary can take a few seconds (article fetching), so it
+  // starts only after the header, chart and stats have rendered.
+  const digestReady = Boolean(detail.data) && !history.loading
+  const digest = useApi(digestReady ? id : null, () => instrumentsApi.newsDigest(id))
 
   const [selectedRange, setSelectedRange] = useState<RangeKey | null>(null)
   const now = useMemo(() => new Date(), [])
@@ -113,11 +113,11 @@ function InstrumentView({ id }: { id: string }) {
         error={sentiment.error}
         onRetry={sentiment.reload}
       >
-        <NewsSummaries
-          data={summaries.data}
-          loading={summaries.loading || !summariesReady}
-          error={summaries.error}
-          onRetry={summaries.reload}
+        <NewsDigest
+          data={digest.data}
+          loading={digest.loading || !digestReady}
+          error={digest.error}
+          onRetry={digest.reload}
         />
       </SentimentSection>
 

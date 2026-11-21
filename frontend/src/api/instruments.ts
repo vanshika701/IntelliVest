@@ -77,24 +77,28 @@ export interface InstrumentSentiment {
 
 export type SummaryInputKind = 'full_text' | 'snippet' | 'headline'
 
-export interface NewsSummaryItem {
+export interface DigestArticle {
   title: string
   url: string
   source: string | null
   published_at: string
-  summary: string
-  word_count: number
   input_kind: SummaryInputKind
-  used_fallback: boolean
-  summary_failed: boolean
+  label: SentimentLabel
+  score: number
 }
 
-export interface NewsSummaries {
+/** One combined summary of the top recent articles, plus those articles. */
+export interface NewsDigest {
   instrument_id: string
   provider: string
   method: string
   max_words: number
-  items: NewsSummaryItem[]
+  summary: string | null
+  word_count: number
+  summary_failed: boolean
+  sources: Record<SummaryInputKind, number>
+  sentiment_engine: string | null
+  articles: DigestArticle[]
   generated_at: string
 }
 
@@ -107,7 +111,7 @@ export const instrumentsApi = {
   history: (id: string) => apiGet<PriceHistory>(`${base(id)}/history`),
   intraday: (id: string) => apiGet<PriceHistory>(`${base(id)}/intraday`),
   sentiment: (id: string) => apiGet<InstrumentSentiment>(`${base(id)}/sentiment`),
-  newsSummaries: (id: string) => apiGet<NewsSummaries>(`${base(id)}/news-summaries`),
+  newsDigest: (id: string) => apiGet<NewsDigest>(`${base(id)}/news-summary`),
 }
 
 export const TYPE_LABEL: Record<InstrumentType, string> = { STOCK: 'Stock', MF: 'MF', ETF: 'ETF' }

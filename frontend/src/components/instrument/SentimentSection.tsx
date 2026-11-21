@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { AlertCircle, Newspaper, RefreshCw } from 'lucide-react'
 import type { InstrumentSentiment, SentimentLabel } from '../../api/instruments'
-import { formatDate } from '../../lib/format'
 import { cn } from '../../lib/utils'
 import { Skeleton } from '../ui/Skeleton'
 
@@ -86,38 +85,12 @@ export function SentimentSection({ name, sentiment, loading, error, onRetry, chi
 
         {children}
 
-        {sentiment && sentiment.articles.length > 0 && (
-          <details className="group mt-5 rounded-xl border border-[var(--color-border-subtle)]">
-            <summary className="cursor-pointer select-none rounded-xl px-4 py-3 text-sm font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]">
-              Headlines behind this sentiment ({sentiment.articles.length})
-            </summary>
-            <ul className="divide-y divide-[var(--color-border-subtle)] px-4 pb-3">
-              {sentiment.articles.map((article) => (
-                <li key={article.url} className="py-3">
-                  <a
-                    href={article.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="group/link flex items-start gap-3 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="line-clamp-2 text-sm font-medium leading-snug text-[var(--color-text-primary)] group-hover/link:text-[var(--color-brand)]">
-                        {article.title}
-                      </p>
-                      <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                        {article.source ?? 'Unknown source'} · {formatDate(article.published_at)}
-                      </p>
-                    </div>
-                    <SentimentBadge label={article.label} size="sm" />
-                  </a>
-                </li>
-              ))}
-            </ul>
-            <p className="px-4 pb-3 text-[11px] text-[var(--color-text-muted)]">
-              Scored by {sentiment.engine === 'lexicon' ? 'a keyword lexicon (fallback)' : sentiment.engine} from
-              headlines in the last {sentiment.window_days} days. Not investment advice.
-            </p>
-          </details>
+        {sentiment && (
+          <p className="mt-4 text-[11px] text-[var(--color-text-muted)]">
+            Sentiment scored by {sentiment.engine === 'lexicon' ? 'a keyword lexicon (fallback)' : sentiment.engine}{' '}
+            from {sentiment.article_count} headline{sentiment.article_count === 1 ? '' : 's'} in the last{' '}
+            {sentiment.window_days} days. Not investment advice.
+          </p>
         )}
       </div>
     </section>
