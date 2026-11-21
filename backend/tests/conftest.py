@@ -1,3 +1,4 @@
+import pymongo
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
@@ -16,11 +17,41 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     # multiple tests' TestClient lifespans, and nothing here needs actual
     # scheduled ingestion running — see test_scheduler.py for that.
     monkeypatch.setattr(settings, "enable_scheduler", False)
+    # Isolated DB: Phase 2 tests register users, create expenses, etc.
+    # through the real HTTP layer — without this they'd write straight
+    # into the real dev database instead of a throwaway one.
+    monkeypatch.setattr(settings, "mongodb_db_name", TEST_DB_NAME)
+
+    sync_client = pymongo.MongoClient(settings.mongodb_uri)
+    sync_client.drop_database(TEST_DB_NAME)
 
     # Using the context-manager form runs the app's lifespan (connects to
     # Mongo on entry, closes it on exit) instead of just importing the app.
     with TestClient(app) as test_client:
         yield test_client
+
+    sync_client.drop_database(TEST_DB_NAME)
+    sync_client.close()
+
+
+@pytest.fixture
+def auth_headers(client: TestClient) -> dict[str, str]:
+    """Register + log in a throwaway user, return ready-to-use auth headers.
+
+    Every Phase 2 module beyond auth itself (expenses, watchlist, alerts)
+    requires a logged-in user — this is the one place that registration
+    flow lives so those test files can focus on their own module.
+    """
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": "fixture-user@example.com", "password": "password123", "full_name": "Fixture User"},
+    )
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": "fixture-user@example.com", "password": "password123"},
+    )
+    token = login.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest_asyncio.fixture

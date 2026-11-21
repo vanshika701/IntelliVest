@@ -8,14 +8,27 @@ __pycache__/
 node_modules/
 dist/
 dist-ssr/
+*.log
+
+# Ruff cache
+.ruff_cache/
 
 # Env files (never commit secrets — only .env.example files are tracked)
 .env
 *.local
 
-# ML artifacts
-ml/models/*
-!ml/models/.gitkeep
+# ML model binaries — regenerable via each ml/train_*.py script.
+# metrics.json is NOT ignored (tracked deliberately): it's small and is
+# the actual documented result of training, not a build artifact.
+ml/models/**/*.joblib
+ml/models/**/*.pkl
+ml/models/**/*.h5
+ml/models/**/*.pt
+
+# Raw downloaded source data (regenerable via each ml/download_*.py
+# script) — only the small, processed CSVs derived from these are
+# committed (e.g. ml/data/bharatpoi_supplementary.csv).
+ml/data/raw/
 
 # Editor / OS
 .vscode/*

@@ -16,18 +16,62 @@ from app.data.expense_repository import (
     insert_expense,
     insert_many_expenses,
 )
+from app.services.expense_categorization_service import predict_category
 
 logger = logging.getLogger(__name__)
+
+# Used whenever the ML categorizer isn't available (model not trained
+# yet) — matches the CSV importer's long-standing fallback so behavior
+# is consistent whether an expense is missing a category via the API or
+# via a CSV row that had no Category column.
+_FALLBACK_CATEGORY = "Uncategorized"
+
+
+def _categorize(description: str) -> tuple[str, str, float | None]:
+    """Return (category, category_source, category_confidence) for a
+    transaction description with no user-provided category."""
+    prediction = predict_category(description)
+    if prediction is None:
+        return _FALLBACK_CATEGORY, "default", None
+    category, confidence = prediction
+    return category, "ml", confidence
+
+# Given to users via GET /expenses/sample-csv, showing exactly the
+# columns import_csv recognizes — so "download sample" and "what does
+# the parser accept" never drift apart.
+SAMPLE_CSV_CONTENT = (
+    "Date,Description,Category,Type,Amount\n"
+    "2026-01-05,Monthly salary,Salary,Income,75000\n"
+    "2026-01-07,Grocery shopping,Groceries,Expense,2450.50\n"
+    "2026-01-10,Electricity bill,Utilities,Expense,1800\n"
+    "2026-01-15,Freelance project,Freelance,Income,12000\n"
+)
 
 
 # ---------------------------------------------------------------------------
 # Manual expense entry
 # ---------------------------------------------------------------------------
 
-async def add_expense(user_id: str, data: dict) -> str:
-    """Validate and store a single expense. Returns the new expense ID."""
+async def add_expense(user_id: str, data: dict) -> dict:
+    """Validate and store a single expense. Returns the full stored record.
+
+    If the caller didn't supply a category, the ML categorizer (Phase 3)
+    predicts one from the description instead of requiring the user to
+    pick — category_source/category_confidence record whether that
+    happened, so the UI can show it was a guess, not a fact.
+    """
     if data.get("date") is None:
         data["date"] = datetime.now(UTC)
+
+    if data.get("category"):
+        data["category_source"] = "user"
+        data["category_confidence"] = None
+    else:
+        category, source, confidence = _categorize(data["description"])
+        data["category"] = category
+        data["category_source"] = source
+        data["category_confidence"] = confidence
+
     return await insert_expense(user_id, data)
 
 
@@ -59,7 +103,14 @@ _DESC_COLS = {"description", "narration", "particulars", "remarks", "memo"}
 _AMOUNT_COLS = {"amount", "transaction amount", "txn amount"}
 _DEBIT_COLS = {"debit", "withdrawal", "withdrawals"}
 _CREDIT_COLS = {"credit", "deposit", "deposits"}
-_CATEGORY_COLS = {"category", "type", "expense type"}
+_CATEGORY_COLS = {"category"}
+# A "Type" column is ambiguous in the wild: some statements use it for
+# transaction direction ("Income"/"Expense", "Debit"/"Credit"), others use
+# it as a category label ("Groceries", "Rent"). We check the actual cell
+# values against known direction words before deciding which it is.
+_TYPE_COLS = {"type", "expense type", "transaction type"}
+_INCOME_WORDS = {"income", "credit", "cr", "deposit"}
+_EXPENSE_WORDS = {"expense", "debit", "dr", "withdrawal", "spend"}
 
 
 def _find_col(headers: list[str], synonyms: set[str]) -> int | None:
@@ -67,6 +118,17 @@ def _find_col(headers: list[str], synonyms: set[str]) -> int | None:
     for i, h in enumerate(headers):
         if h.strip().lower() in synonyms:
             return i
+    return None
+
+
+def _classify_type_value(raw: str) -> str | None:
+    """Return 'income'/'expense' if a Type column value is a direction
+    word, or None if it's actually a category label in disguise."""
+    value = raw.strip().lower()
+    if value in _INCOME_WORDS:
+        return "income"
+    if value in _EXPENSE_WORDS:
+        return "expense"
     return None
 
 
@@ -108,6 +170,7 @@ async def import_csv(user_id: str, file_bytes: bytes) -> dict:
     debit_idx = _find_col(headers, _DEBIT_COLS)
     credit_idx = _find_col(headers, _CREDIT_COLS)
     category_idx = _find_col(headers, _CATEGORY_COLS)
+    type_idx = _find_col(headers, _TYPE_COLS)
 
     if date_idx is None:
         return {"imported": 0, "skipped": 0, "errors": ["No date column found"]}
@@ -134,10 +197,18 @@ async def import_csv(user_id: str, file_bytes: bytes) -> dict:
         # Description
         description = row[desc_idx].strip() if desc_idx is not None and desc_idx < len(row) else "Imported"
 
+        # Type column, if present — may indicate direction (income/expense)
+        # or just be a category label; _classify_type_value tells them apart.
+        type_value = row[type_idx].strip() if type_idx is not None and type_idx < len(row) else ""
+        type_direction = _classify_type_value(type_value) if type_value else None
+
         # Amount & type
         if amount_idx is not None and amount_idx < len(row):
             amount = _parse_amount(row[amount_idx])
-            expense_type = "expense"  # Will be overridden if category column says otherwise
+            # A dedicated Type column indicating direction wins; otherwise
+            # a single "Amount" column with no direction signal defaults
+            # to expense (can't tell income from spend from amount alone).
+            expense_type = type_direction or "expense"
         elif debit_idx is not None and debit_idx < len(row) and row[debit_idx].strip():
             amount = _parse_amount(row[debit_idx])
             expense_type = "expense"
@@ -154,12 +225,22 @@ async def import_csv(user_id: str, file_bytes: bytes) -> dict:
             skipped += 1
             continue
 
-        # Category (optional)
-        category = "Uncategorized"
+        # Category. Prefer an explicit Category column; if the Type
+        # column turned out to be a category label in disguise (not a
+        # direction word), fall back to that; otherwise let the ML
+        # categorizer (Phase 3) predict one from the description rather
+        # than blindly labeling every uncategorized row "Uncategorized".
+        category_source = "user"
+        category_confidence = None
+        category = None
         if category_idx is not None and category_idx < len(row):
             cat = row[category_idx].strip()
             if cat:
                 category = cat
+        if category is None and type_value and type_direction is None:
+            category = type_value
+        if category is None:
+            category, category_source, category_confidence = _categorize(description)
 
         records.append(
             {
@@ -167,6 +248,8 @@ async def import_csv(user_id: str, file_bytes: bytes) -> dict:
                 "amount": amount,
                 "description": description,
                 "category": category,
+                "category_source": category_source,
+                "category_confidence": category_confidence,
                 "expense_type": expense_type,
                 "date": date,
                 "created_at": now,

@@ -1,4 +1,4 @@
-"""Background job scheduler for ingestion.
+"""Background job scheduler for ingestion and price alert evaluation.
 
 Runs inside the same process as the API, via FastAPI's lifespan, using
 APScheduler's AsyncIOScheduler — which shares the app's existing asyncio
@@ -9,7 +9,9 @@ later if ingestion ever needs to run somewhere the API isn't.
 This is what finally makes ingestion "a scheduled/background job, not a
 script you remember to re-run" — the three scripts/ingest_*.py entry
 points still exist for manual one-off runs, but the app now keeps itself
-up to date on its own once it's running.
+up to date on its own once it's running. It's also what makes Phase 2's
+price alerts actually fire: evaluate_all_alerts() only ever does anything
+useful if something calls it on a schedule.
 """
 
 import logging
@@ -19,6 +21,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.constants import FINANCE_SUBREDDITS, STOCK_UNIVERSE
+from app.services.alert_service import evaluate_all_alerts
 from app.services.market_data_service import ingest_stock_universe
 from app.services.news_service import ingest_news_for_universe
 from app.services.reddit_service import ingest_reddit_posts
@@ -43,6 +46,11 @@ async def _run_reddit_ingestion() -> None:
     await ingest_reddit_posts(FINANCE_SUBREDDITS)
 
 
+async def _run_alert_evaluation() -> None:
+    logger.info("Scheduled job starting: price alert evaluation")
+    await evaluate_all_alerts()
+
+
 def start_scheduler() -> None:
     # Prices move once per trading day — refresh daily, after Indian
     # market close (15:30 IST) with a buffer for the day's data to settle.
@@ -65,8 +73,19 @@ def start_scheduler() -> None:
         id="reddit_ingestion",
         replace_existing=True,
     )
+    # Phase 2 exit criterion: "get a rule-based alert when a price crosses
+    # a threshold" — that only actually happens if this runs. Every 5
+    # minutes is frequent enough to feel responsive without hammering Mongo.
+    scheduler.add_job(
+        _run_alert_evaluation,
+        trigger=IntervalTrigger(minutes=5),
+        id="alert_evaluation",
+        replace_existing=True,
+    )
     scheduler.start()
-    logger.info("Ingestion scheduler started (market data daily, news/Reddit hourly)")
+    logger.info(
+        "Ingestion scheduler started (market data daily, news/Reddit hourly, alerts every 5min)"
+    )
 
 
 def stop_scheduler() -> None:

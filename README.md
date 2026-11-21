@@ -29,7 +29,8 @@ source .venv/bin/activate      # Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
 cd backend
-cp .env.example .env           # fill in API keys as later phases need them
+cp .env.example .env           # JWT_SECRET_KEY works out of the box for local dev;
+                                # fill in API keys as later phases need them
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -51,7 +52,8 @@ Three pipelines pull real data into MongoDB — market data (yfinance, no
 key needed), news (Indian financial RSS feeds, no key needed), and Reddit (asyncpraw). Each has a manual
 entry point for one-off runs, and all three also run automatically on a
 schedule (daily for prices, hourly for news/Reddit) whenever the backend
-is running, via `app/core/scheduler.py`:
+is running, via `app/core/scheduler.py` (which also runs price-alert
+evaluation every 5 minutes, for Phase 2's watchlist alerts):
 
 ```bash
 cd backend
@@ -107,7 +109,7 @@ Two people, one `main` branch — to avoid stepping on each other:
 
 ## Current status
 
-Phase 2 is the active build. Track remaining work in
+Phase 2's exit criteria are met. Track remaining polish items in
 [`PHASE_2_EXECUTION_PLAN.md`](./PHASE_2_EXECUTION_PLAN.md) (source of truth).
 
 - **Phase 0** — done. Empty-but-running React app talking to an
@@ -126,6 +128,64 @@ Phase 2 is the active build. Track remaining work in
     code changes once approved
   - Scheduler wraps all three into a real background job, retries
     transient failures with backoff, fails fast on permanent ones
+- **Phase 2** — exit criteria verified live: register/login, add an
+  expense, upload a CSV statement, add a watchlist item with notes, and
+  get a rule-based alert when a price crosses a threshold, all confirmed
+  end-to-end against the real backend and MongoDB. 39/39 backend tests,
+  7/7 frontend tests, `npm run build` green. Refresh tokens, a ticker
+  marquee, and a shared modal component library are explicitly deferred
+  polish — see `PHASE_2_EXECUTION_PLAN.md` Section 7.
+- **Phase 3** — complete. Expense categorizer trained on the **full**
+  `mitulshah/transaction-categorization` dataset (Hugging Face, all
+  4,501,043 rows), benchmarked against the DFTSen paper (95.3% accuracy
+  reported) — **98.7% accuracy / 98.7% macro-F1** on held-out
+  template-style test data with a classical TF-IDF + Logistic Regression
+  model (Random Forest scored marginally higher but took 47 minutes to
+  train vs. 89 seconds, so it wasn't shipped). A stress test against 50
+  hand-written realistic examples (real brand names, Indian UPI/NEFT-style
+  text) initially measured only **50.0% accuracy** — this dataset's
+  synthetic merchant names don't overlap with real ones, so the model had
+  no learned signal for brands like Swiggy, Zerodha, or BESCOM. Fixed by
+  mixing ~13,466 supplementary rows of real vocabulary (484 hand-curated
+  brands + 12,982 real Indian business names from the BharatPOI dataset)
+  into training, upweighted via `sample_weight`; a second bug (the fix
+  silently failing at full-dataset scale because `TfidfVectorizer`'s
+  vocabulary selection ignores sample weighting) was found and fixed
+  before shipping. A second pass reviewed the remaining misses for
+  patterns, found 3 confident token-collision errors (e.g. "auto" in
+  "AUTO DEBIT" pulling toward Transportation instead of meaning
+  "automatic payment"), fixed them with trigrams + 14 targeted
+  disambiguation rows, and expanded the stress test from 50 to 150
+  examples — see `ml/log.md` for the full investigation. **Final
+  realistic-text results: 92.0% accuracy, 0.9200 macro-F1** (138/150,
+  all originally-targeted token-collision errors fixed; the 12 remaining
+  misses are genuine category-boundary confusions, not vocabulary gaps).
+  This stress test now runs automatically on every training run and
+  reports the full precision/recall/F1 breakdown, not just accuracy
+  (`ml/evaluate_on_realistic_examples.py`, wired into
+  `ml/train_expense_categorizer.py`) so `metrics.json` always reflects
+  it — see `PROJECT_PLAN.md` Phase 3 for the complete writeup. Manual
+  entry and CSV import both auto-categorize when no category is given;
+  the Budgeting page shows the live accuracy metric and marks
+  ML-categorized transactions.
 
-See `PHASE_2_EXECUTION_PLAN.md` for remaining Phase 2 work, and
+See `PHASE_2_EXECUTION_PLAN.md` for remaining Phase 2 polish, and
 `PROJECT_PLAN.md` for later phases and ownership.
+
+### Training the expense categorizer (Phase 3)
+
+```bash
+cd ml
+cp .env.example .env   # needs a free Hugging Face token — see that file
+python3 train_expense_categorizer.py
+```
+
+Needs a Hugging Face account + accepting the dataset's access conditions
+once at [huggingface.co/datasets/mitulshah/transaction-categorization](https://huggingface.co/datasets/mitulshah/transaction-categorization)
+(instant, no review), then a token from
+[huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+Writes `vectorizer.joblib` + `model.joblib` (gitignored — regenerate
+locally) and `metrics.json` (tracked — the real reported results) to
+`ml/models/expense_categorizer/`. The backend auto-categorization
+feature degrades gracefully (falls back to "Uncategorized") if this
+hasn't been run yet on a given machine.

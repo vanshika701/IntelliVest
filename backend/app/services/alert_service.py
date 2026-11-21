@@ -41,8 +41,17 @@ async def add_alert(user_id: str, data: dict) -> str:
 
 async def list_alerts(user_id: str) -> list[dict]:
     items = await get_alerts_for_user(user_id)
+    if not items:
+        return []
+
+    # Enrich with each ticker's latest close so the UI can show "target
+    # $150, currently $142" instead of just the bare rule.
+    tickers = {item["ticker"] for item in items}
+    price_cache = {ticker: await _get_latest_close(ticker) for ticker in tickers}
+
     for item in items:
         item["id"] = str(item.pop("_id"))
+        item["latest_price"] = price_cache.get(item["ticker"])
     return items
 
 
