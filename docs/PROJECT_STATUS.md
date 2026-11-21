@@ -1,6 +1,7 @@
 # IntelliVest — Project Status: Search, Instrument Detail & Invest Flow
 
-_Last updated: 2026-11-21 (planning; updated as work progresses)_
+_Last updated: 2026-11-21 — implementation complete on branch `feature-instrument-search-invest`
+(see section 7 for what was built, what's mocked and what's left)._
 
 ## 1. What exists today
 
@@ -78,10 +79,15 @@ Alerts. Layout: `AppShell` = `Navbar` (page title, notifications bell, user chip
   uses yfinance 5-minute bars for the last trading session, fetched on demand by the backend and
   cached for 5 minutes. _Assumption:_ stocks outside the 20-stock universe are out of scope for
   now (they have no stored prices or news sentiment).
-- **Mutual funds & ETFs — mfapi.in** (free, no key; checked: `/mf/search?q=gold` returns 15
-  schemes, `/mf/{code}` returns metadata + full daily NAV history). Scheme names containing "ETF"
-  (but not "Fund of Fund"/"FoF") are tagged ETF, the rest MF. Results are cached (search 1 h,
-  history 6 h), calls have a 10 s timeout and retries, and failures return a clean error.
+- **Mutual funds & ETFs — mfapi.in** (free, no key; `/mf/{code}` returns metadata + full daily
+  NAV history). _Changed during implementation:_ mfapi's `/mf/search` caps results at 15, and for
+  "gold" those missed SBI Gold Fund and Edelweiss Gold entirely. Search therefore matches
+  against mfapi's full scheme list (`/mf`, ~38k schemes, 5.7 MB, cached 24 h), keeping only the
+  ~9.4k schemes that still have an ISIN (schemes without one are long-closed). Results show one
+  entry per fund (best variant: Direct > Regular, Growth > IDCW). `/mf/search` is the fallback
+  if the list can't be loaded. Scheme names containing "ETF"/"Exchange Traded" (but not "Fund
+  of Fund"/"FoF") are tagged ETF, the rest MF. Caching: search 1 h, scheme data 6 h; calls
+  have a 10 s timeout and retries; failures return 502 or a `partial` search result.
   _Assumption:_ ETF prices shown are AMFI NAVs, not live exchange prices.
 - **Mutual funds only have a daily NAV**, so 1D is disabled for MF/ETF with a tooltip.
 - **Rating, fund size (AUM), minimum SIP / minimum investment: no free API.** They sit behind a
@@ -116,7 +122,7 @@ Alerts. Layout: `AppShell` = `Navbar` (page title, notifications bell, user chip
 - [x] 7. Frontend: `paymentService` (interface + mock), invest panel (One-time / Start SIP),
       confirmation screen, "My Investments" page + sidebar link
 - [x] 8. Lint, type-check, all tests; run the app and walk the full flow
-- [ ] 9. Update this document with what was built, what's mocked, what's left
+- [x] 9. Update this document with what was built, what's mocked, what's left
 
 ## 6. Decisions log
 
@@ -126,3 +132,74 @@ Alerts. Layout: `AppShell` = `Navbar` (page title, notifications bell, user chip
 | 2026-11-21 | **Sentiment uses the pre-trained FinBERT already in the backend; no training.** A keyword lexicon is the fallback if FinBERT can't load. Both sit behind `sentiment_service`, so the engine can be swapped. | FinBERT is already running for news (option 2 in the brief); no LLM keys exist in the project yet. |
 | 2026-11-21 | Overall label = average of headline scores (positive − negative probability), with ±0.15 as the neutral band; at least 3 headlines needed, otherwise "Not enough news to determine sentiment". | Same rule as the existing per-stock sentiment, and avoids a label from one or two headlines. |
 | 2026-11-21 | Fund sentiment is computed on request (fresh Google News search + FinBERT) and cached for 20 minutes, unlike stocks, which read precomputed scores. | Funds are open-ended (any of ~thousands of schemes), so pre-ingesting news for all of them isn't practical. The cache keeps it within rate limits. |
+| 2026-11-21 | Fund search matches against mfapi's full live-scheme list, not `/mf/search`. | `/mf/search` returns at most 15 results and missed obvious matches (SBI Gold for "gold"). |
+| 2026-11-21 | Sidebar starts closed on screens under 640 px. | It overlays the page on phones and blocked the new detail page's controls. |
+
+## 7. Outcome
+
+### What was built
+
+**Backend** (`/api/v1`, all behind login)
+- `GET /instruments/search?q=` — stocks (20 tracked NSE names) + MFs/ETFs (mfapi.in), with type
+  tags; a `partial` flag when the fund provider is down.
+- `GET /instruments/{id}` (header + stats), `/history` (daily), `/intraday` (5-min bars, stocks
+  only), `/sentiment` (overall label + scored headlines). Ids: `stock-<TICKER>`, `mf-<CODE>`.
+- `GET /investments/accounts`, `GET /investments`, `POST /investments/one-time`,
+  `POST /investments/sip`, `POST /investments/{id}/payment-result` — mock orders/SIPs in a new
+  `investments` collection, validated against minimums and account type, one-shot status changes.
+- New modules: `core/cache.py` (TTL cache), `services/mfapi_client.py`,
+  `services/fund_meta_provider.py`, `services/instrument_service.py`,
+  `services/investment_service.py`; `sentiment_service.py` gained `score_texts` (FinBERT →
+  lexicon fallback) and `get_instrument_sentiment`; FinBERT warms up in the background at startup.
+
+**Frontend**
+- `GlobalSearch` in the navbar (debounced combobox, keyboard + ARIA, mobile icon mode).
+- `/instrument/:id`: header, price chart with ranges, stats strip, news sentiment, return
+  calculator, invest panel (One-time / Start SIP) with confirmation screens.
+- `/investments` ("My Investments", new sidebar entry).
+- `services/paymentService.ts` (interface + `MockPaymentService`), `hooks/useApi.ts`,
+  `hooks/useDebouncedValue.ts`, `lib/ranges.ts`, `lib/returns.ts`, `lib/format.ts`.
+
+**Tests**: backend 95 passing (+43 new: instruments, instrument sentiment, investments); frontend
+43 passing (+40 new: SIP/lumpsum/CAGR formulas, range + YTD logic, search debounce/keyboard/
+states, payment mock, amount validation). Lint and type-check clean except 4 warnings that
+predate this work. Manually verified end to end in a browser at desktop and phone widths:
+search "gold" → SBI Gold Fund → all ranges → stats, sentiment, calculator → One-time ₹5,000
+(confirmation) → SIP ₹1,000 on the 15th (confirmation) → both listed under My Investments;
+mobile search → Infosys → 1D intraday chart.
+
+### What is mocked or placeholder (all marked `TODO(mock)` in code)
+
+| What | Where | Status |
+|---|---|---|
+| Rating, fund size (AUM) | `fund_meta_provider.py` | Not available from free sources → `null`, shown as "—" |
+| Minimum SIP ₹500 / one-time ₹1,000 for MFs | `fund_meta_provider.py` | Placeholder defaults, labelled "Placeholder" in the UI |
+| ETF minimums | `fund_meta_provider.py` | One unit at NAV (approximate), labelled placeholder |
+| Investment accounts / folios | `investment_service.DEMO_ACCOUNTS` | Demo list, labelled "(Demo)" |
+| Payments and SIP mandates | `frontend/src/services/paymentService.ts` | `MockPaymentService`: ~1.5 s delay, declines amounts above ₹5,00,000 so failure can be demoed |
+| Payment verification | `investment_service.record_payment_result` | Trusts the client's result — must verify Razorpay signatures server-side before going live |
+
+### Known limitations
+- Stock search covers only the 20 tracked NSE stocks (the only ones with stored prices and news).
+- A stock's header price is the last stored daily close (refreshed daily at 18:00 IST), so it can
+  be a session behind the 1D intraday chart.
+- Fund sentiment is an exact-phrase Google News search on the fund name: popular funds get
+  headlines, many niche schemes show "Not enough news to determine sentiment". Headlines are
+  scored on overall tone, not specifically for the fund.
+- Historical CAGR is shown as-is, including negative values (e.g. a stock that fell over 3 years);
+  only values outside −50%…+60% fall back to 12%.
+- In-memory caches are per API process (fine for one instance; use Redis if scaled out).
+
+### What's left / next steps
+1. Real fund metadata (rating, AUM, minimums) from a paid feed or AMC factsheets → implement a
+   second `FundMetaProvider`.
+2. Razorpay: backend order creation + signature verification/webhooks, a
+   `RazorpayPaymentService` on the frontend, then `VITE_PAYMENT_PROVIDER=razorpay`.
+3. Real accounts/folios linked to the user (KYC, folio creation).
+4. Broader stock search (e.g. yfinance search for any NSE ticker) with on-demand price history.
+5. Optionally use the latest intraday price in the stock header when it's newer than the daily close.
+
+### Environment variables
+- No new keys or secrets are needed: mfapi.in, yfinance and Google News RSS are keyless.
+- New optional frontend variable `VITE_PAYMENT_PROVIDER` (default `mock`), added to
+  `frontend/.env.example`.
