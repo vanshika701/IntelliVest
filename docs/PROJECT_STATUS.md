@@ -252,8 +252,8 @@ Guarantee every implementation must keep: `word_count <= max_words`, plain text,
 | Full text fetched only where the publisher's robots.txt allows, with a timeout and size cap | Respect robots/ToS; never block the page on fetch failures. |
 
 ### Plan (checklist)
-- [ ] S1. This section
-- [ ] S2. `summarization` package: interface, extractive algorithm + config, ML placeholder, factory, ROUGE helpers; unit tests
+- [x] S1. This section
+- [x] S2. `summarization` package: interface, extractive algorithm + config, ML placeholder, factory, ROUGE helpers; unit tests
 - [ ] S3. Article fetcher (robots-aware) + Bing News search; candidate selection (relevance + recency, near-duplicate removal); summary service with cache, JSONL logging; endpoint + rate limit; tests
 - [ ] S4. `scripts/eval_summarizer.py`
 - [ ] S5. Frontend "Top stories · Auto-summary" cards with skeleton/empty/error states; tests

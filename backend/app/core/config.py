@@ -36,6 +36,18 @@ class Settings(BaseSettings):
     # every article with the new model.
     sentiment_model: str = "ProsusAI/finbert"
 
+    # Phase 5 news summaries. "extractive" = classical baseline; "ml" = our
+    # trained model (placeholder until it exists, see summarization/ml.py).
+    summarizer_provider: str = "extractive"
+    summarizer_max_words: int = 100
+    summarizer_cache_ttl_min: int = 60
+    ml_summarizer_url: str | None = None
+    # Append (article text, summary, method, version) lines to a JSONL file
+    # to build evaluation/training data for the trained model.
+    log_summaries: bool = False
+    # Relative paths resolve against the repo root.
+    summary_log_path: str = "data/summarization_log.jsonl"
+
     # External API keys — needed from Phase 1 onward, optional for now so
     # the app still boots without them during Phase 0.
     alpha_vantage_api_key: str | None = None
