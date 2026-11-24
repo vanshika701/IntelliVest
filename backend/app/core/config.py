@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # Relative paths resolve against the repo root.
     summary_log_path: str = "data/summarization_log.jsonl"
 
+    # Phase 8 budget explanations. "template" (default) = the engine's own
+    # sentences; "anthropic" = Claude rephrases them (needs `pip install
+    # anthropic` and ANTHROPIC_API_KEY). Numbers always come from the engine.
+    budget_explainer_provider: str = "template"
+    budget_explainer_model: str = "claude-opus-5-5"
+
     # External API keys — needed from Phase 1 onward, optional for now so
     # the app still boots without them during Phase 0.
     alpha_vantage_api_key: str | None = None

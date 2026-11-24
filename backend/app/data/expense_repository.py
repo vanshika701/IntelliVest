@@ -62,7 +62,7 @@ async def delete_expense(user_id: str, expense_id: str) -> bool:
 
 
 async def get_expense_summary(user_id: str) -> dict:
-    """Aggregate total income, total expense, net, and per-category totals."""
+    """Aggregate total income, total expense, net, and per-category spending totals."""
     pipeline = [
         {"$match": {"user_id": user_id}},
         {
@@ -88,8 +88,8 @@ async def get_expense_summary(user_id: str) -> dict:
             total_income += total
         else:
             total_expense += total
-
-        by_category[category] = by_category.get(category, 0.0) + total
+            # Spending only: income used to leak into the category pie.
+            by_category[category] = by_category.get(category, 0.0) + total
 
     return {
         "total_income": total_income,

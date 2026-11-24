@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.routes import (
     alerts,
     auth,
+    budget,
     dashboard,
     expenses,
     health,
@@ -22,3 +23,4 @@ api_router.include_router(dashboard.router)
 api_router.include_router(sentiment.router)
 api_router.include_router(instruments.router)
 api_router.include_router(investments.router)
+api_router.include_router(budget.router)

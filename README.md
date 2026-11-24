@@ -189,6 +189,15 @@ Phase 2's exit criteria are met. Track remaining polish items in
   the Budgeting page shows the live accuracy metric and marks
   ML-categorized transactions.
 
+- **Phase 8** — complete (redefined as Smart Budgeting & Goal Planner).
+  Users pick expense categories from a fixed list of 13 (Needs / Wants /
+  Savings), which replaced the Phase 3 auto-categorizer in the app. Old
+  categories are migrated on startup. Budget setup, an Estimated/Actual
+  spending pie, a deterministic overspend rules engine (50/30/20,
+  per-category ranges, DTI, emergency fund) and a flat vs step-up SIP
+  goal planner with an affordability check. An LLM is optional and only
+  rewords results. See `docs/PHASE_8_BUDGETING.md`.
+
 See `PHASE_2_EXECUTION_PLAN.md` for remaining Phase 2 polish, and
 `PROJECT_PLAN.md` for later phases and ownership.
 
@@ -206,6 +215,6 @@ once at [huggingface.co/datasets/mitulshah/transaction-categorization](https://h
 [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
 Writes `vectorizer.joblib` + `model.joblib` (gitignored — regenerate
 locally) and `metrics.json` (tracked — the real reported results) to
-`ml/models/expense_categorizer/`. The backend auto-categorization
-feature degrades gracefully (falls back to "Uncategorized") if this
-hasn't been run yet on a given machine.
+`ml/models/expense_categorizer/`. As of Phase 8 the app no longer uses
+this model (categories are picked by the user); the script is kept as
+the Phase 3 record and is not needed to run the app.

@@ -12,6 +12,7 @@ from app.core.logging import configure_logging
 from app.core.scheduler import start_scheduler, stop_scheduler
 from app.data.indexes import ensure_indexes
 from app.data.mongo import close_mongo_connection, connect_to_mongo
+from app.services.category_migration import migrate_expense_categories
 from app.services.sentiment_service import warm_up_model
 
 configure_logging()
@@ -27,6 +28,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """
     await connect_to_mongo()
     await ensure_indexes()
+    # Phase 8: map old free-text / ML categories onto the fixed list (idempotent).
+    await migrate_expense_categories()
     warm_up_task = None
     if settings.enable_scheduler:
         start_scheduler()

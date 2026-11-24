@@ -2,10 +2,7 @@
 the full route -> service -> repository -> DB stack.
 """
 
-import pytest
 from fastapi.testclient import TestClient
-
-from app.services import expense_service
 
 
 def test_create_expense_returns_a_valid_response(
@@ -17,61 +14,65 @@ def test_create_expense_returns_a_valid_response(
     response = client.post(
         "/api/v1/expenses",
         headers=auth_headers,
-        json={"amount": 500, "description": "Groceries", "category": "Food"},
+        json={"amount": 500, "description": "Big Basket order", "category": "groceries"},
     )
 
     assert response.status_code == 201
     body = response.json()
     assert body["amount"] == 500
-    assert body["category"] == "Food"
+    assert body["category"] == "groceries"
     assert body["expense_type"] == "expense"
-    assert body["category_source"] == "user"
-    assert body["category_confidence"] is None
+    assert "category_source" not in body
     assert "id" in body
     assert "created_at" in body
     assert "date" in body
 
 
-def test_create_expense_without_category_gets_ml_auto_categorized(
-    client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+def test_create_expense_accepts_category_display_name(
+    client: TestClient, auth_headers: dict[str, str]
 ) -> None:
-    """Phase 3: omitting category should trigger the ML categorizer, not
-    fail validation. Mocked so this test doesn't depend on whether the
-    real model has been trained on this machine."""
-    monkeypatch.setattr(
-        expense_service, "_categorize", lambda description: ("Food & Dining", "ml", 0.87)
-    )
-
     response = client.post(
         "/api/v1/expenses",
         headers=auth_headers,
-        json={"amount": 250, "description": "Starbucks - USA Store"},
+        json={"amount": 250, "description": "Dinner", "category": "Food & Dining Out"},
     )
-
     assert response.status_code == 201
-    body = response.json()
-    assert body["category"] == "Food & Dining"
-    assert body["category_source"] == "ml"
-    assert body["category_confidence"] == 0.87
+    assert response.json()["category"] == "food_dining"
 
 
-def test_create_expense_falls_back_to_uncategorized_when_model_unavailable(
-    client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+def test_create_expense_requires_a_category_from_the_list(
+    client: TestClient, auth_headers: dict[str, str]
 ) -> None:
-    """If the model isn't trained yet, auto-categorization should degrade
-    gracefully to 'Uncategorized' rather than the request failing."""
-    monkeypatch.setattr(expense_service, "predict_category", lambda description: None)
+    """Phase 8: no auto-categorization. A missing or unknown category is a
+    validation error, not a guess."""
+    missing = client.post(
+        "/api/v1/expenses",
+        headers=auth_headers,
+        json={"amount": 250, "description": "Starbucks"},
+    )
+    unknown = client.post(
+        "/api/v1/expenses",
+        headers=auth_headers,
+        json={"amount": 250, "description": "Starbucks", "category": "Coffee"},
+    )
+    assert missing.status_code == 422
+    assert unknown.status_code == 422
 
+
+def test_income_always_gets_the_income_category(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
     response = client.post(
         "/api/v1/expenses",
         headers=auth_headers,
-        json={"amount": 100, "description": "Some unrecognizable merchant"},
+        json={"amount": 50000, "description": "Salary", "expense_type": "income"},
     )
-
     assert response.status_code == 201
-    body = response.json()
-    assert body["category"] == "Uncategorized"
-    assert body["category_source"] == "default"
+    assert response.json()["category"] == "income"
+
+
+def test_categorization_model_endpoint_is_gone(client: TestClient) -> None:
+    assert client.get("/api/v1/expenses/categorization-model-info").status_code in (401, 404, 405)
 
 
 def test_list_expenses_returns_created_expense(
@@ -80,7 +81,7 @@ def test_list_expenses_returns_created_expense(
     client.post(
         "/api/v1/expenses",
         headers=auth_headers,
-        json={"amount": 100, "description": "Coffee", "category": "Food"},
+        json={"amount": 100, "description": "Coffee", "category": "food_dining"},
     )
 
     response = client.get("/api/v1/expenses", headers=auth_headers)
@@ -95,7 +96,7 @@ def test_delete_expense_removes_it(client: TestClient, auth_headers: dict[str, s
     created = client.post(
         "/api/v1/expenses",
         headers=auth_headers,
-        json={"amount": 100, "description": "Coffee", "category": "Food"},
+        json={"amount": 100, "description": "Coffee", "category": "food_dining"},
     ).json()
 
     response = client.delete(f"/api/v1/expenses/{created['id']}", headers=auth_headers)
@@ -111,12 +112,12 @@ def test_summary_aggregates_income_and_expense(
     client.post(
         "/api/v1/expenses",
         headers=auth_headers,
-        json={"amount": 1000, "description": "Salary", "category": "Salary", "expense_type": "income"},
+        json={"amount": 1000, "description": "Salary", "expense_type": "income"},
     )
     client.post(
         "/api/v1/expenses",
         headers=auth_headers,
-        json={"amount": 200, "description": "Groceries", "category": "Food", "expense_type": "expense"},
+        json={"amount": 200, "description": "Groceries", "category": "groceries", "expense_type": "expense"},
     )
 
     response = client.get("/api/v1/expenses/summary", headers=auth_headers)
@@ -126,6 +127,8 @@ def test_summary_aggregates_income_and_expense(
     assert body["total_income"] == 1000
     assert body["total_expense"] == 200
     assert body["net"] == 800
+    # Income must not show up in the spending-by-category breakdown.
+    assert body["by_category"] == {"groceries": 200}
 
 
 def test_sample_csv_download_is_a_valid_csv(client: TestClient) -> None:
@@ -179,20 +182,22 @@ def test_csv_upload_uses_type_column_as_category_when_not_a_direction_word(
     assert response.json()["imported"] == 1
 
     listed = client.get("/api/v1/expenses", headers=auth_headers).json()
-    assert listed["items"][0]["category"] == "Fitness"
+    # "Fitness" is mapped onto the fixed list (label mapping, not ML).
+    assert listed["items"][0]["category"] == "health_insurance"
     assert listed["items"][0]["expense_type"] == "expense"
 
 
-def test_csv_upload_ml_categorizes_rows_with_no_category_column(
-    client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+def test_csv_upload_maps_labels_and_never_guesses_from_description(
+    client: TestClient, auth_headers: dict[str, str]
 ) -> None:
-    """No Category column and no usable Type-as-category fallback should
-    trigger the ML categorizer per row, not a blind 'Uncategorized'."""
-    monkeypatch.setattr(
-        expense_service, "_categorize", lambda description: ("Transportation", "ml", 0.91)
+    """Category labels map onto the fixed list; rows with no label go to
+    Other even when the description looks obvious (no auto-categorization)."""
+    csv_content = (
+        "Date,Description,Category,Amount\n"
+        "2026-01-05,Uber ride,,350\n"
+        "2026-01-06,Flat rent,Rent,20000\n"
+        "2026-01-07,Weird,Something Else,10\n"
     )
-
-    csv_content = "Date,Description,Amount\n2026-01-05,Uber ride,350\n"
     response = client.post(
         "/api/v1/expenses/upload-csv",
         headers=auth_headers,
@@ -200,12 +205,11 @@ def test_csv_upload_ml_categorizes_rows_with_no_category_column(
     )
 
     assert response.status_code == 200
-    assert response.json()["imported"] == 1
+    assert response.json()["imported"] == 3
 
     listed = client.get("/api/v1/expenses", headers=auth_headers).json()
-    assert listed["items"][0]["category"] == "Transportation"
-    assert listed["items"][0]["category_source"] == "ml"
-    assert listed["items"][0]["category_confidence"] == 0.91
+    by_desc = {item["description"]: item["category"] for item in listed["items"]}
+    assert by_desc == {"Uber ride": "other", "Flat rent": "housing", "Weird": "other"}
 
 
 def test_csv_upload_rejects_non_csv_files(client: TestClient, auth_headers: dict[str, str]) -> None:

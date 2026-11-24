@@ -14,6 +14,12 @@ export class ApiError extends Error {
   }
 }
 
+/** FastAPI errors: `detail` is a string, or a list of {msg} for 422s. */
+function errorDetail(errData: any, fallback: string): string {
+  if (Array.isArray(errData?.detail)) return errData.detail.map((d: { msg: string }) => d.msg).join('; ')
+  return errData?.detail || fallback
+}
+
 function getDefaultHeaders() {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -35,8 +41,7 @@ export async function apiGet<T>(path: string, init?: { signal?: AbortSignal }): 
   if (!response.ok) {
     let message = `GET ${path} failed with status ${response.status}`
     try {
-      const errData = await response.json()
-      message = errData.detail || message
+      message = errorDetail(await response.json(), message)
     } catch {
       // Non-JSON error body — keep the generic message.
     }
@@ -56,9 +61,30 @@ export async function apiPost<T>(path: string, body: any): Promise<T> {
   if (!response.ok) {
     let message = `POST ${path} failed`
     try {
-      const errData = await response.json()
-      message = errData.detail || message
-    } catch (e) {}
+      message = errorDetail(await response.json(), message)
+    } catch {
+      // Non-JSON error body — keep the generic message.
+    }
+    throw new ApiError(message, response.status)
+  }
+
+  return response.json() as Promise<T>
+}
+
+export async function apiPut<T>(path: string, body: any): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'PUT',
+    headers: getDefaultHeaders(),
+    body: JSON.stringify(body),
+  })
+
+  if (!response.ok) {
+    let message = `PUT ${path} failed`
+    try {
+      message = errorDetail(await response.json(), message)
+    } catch {
+      // Non-JSON error body — keep the generic message.
+    }
     throw new ApiError(message, response.status)
   }
 

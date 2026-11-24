@@ -5,7 +5,6 @@ from fastapi.responses import Response
 
 from app.api.deps import get_current_user_id
 from app.schemas.expense import CsvUploadResult, ExpenseCreate, ExpenseResponse, ExpenseSummary
-from app.services.expense_categorization_service import get_model_info
 from app.services.expense_service import (
     SAMPLE_CSV_CONTENT,
     add_expense,
@@ -61,10 +60,3 @@ async def download_sample_csv():
         headers={"Content-Disposition": "attachment; filename=sample_transactions.csv"},
     )
 
-
-@router.get("/categorization-model-info")
-async def categorization_model_info():
-    """The ML categorizer's accuracy/F1 and provenance (Phase 3's
-    "visible accuracy metric" exit criteria) — null fields if the model
-    hasn't been trained yet on this machine (see ml/train_expense_categorizer.py)."""
-    return get_model_info() or {"status": "model not trained yet"}

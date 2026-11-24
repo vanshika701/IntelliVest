@@ -40,3 +40,11 @@ def get_alerts_collection() -> AsyncIOMotorCollection:
 
 def get_investments_collection() -> AsyncIOMotorCollection:
     return get_database()["investments"]
+
+
+def get_budget_profiles_collection() -> AsyncIOMotorCollection:
+    return get_database()["budget_profiles"]
+
+
+def get_savings_goals_collection() -> AsyncIOMotorCollection:
+    return get_database()["savings_goals"]

@@ -10,11 +10,13 @@ import logging
 
 from app.data.collections import (
     get_alerts_collection,
+    get_budget_profiles_collection,
     get_expenses_collection,
     get_investments_collection,
     get_news_collection,
     get_prices_collection,
     get_reddit_collection,
+    get_savings_goals_collection,
     get_users_collection,
     get_watchlist_collection,
 )
@@ -97,8 +99,18 @@ async def ensure_indexes() -> None:
         name="user_investments_by_created",
     )
 
+    # --- Phase 8 collections ---
+    # One budget profile per user.
+    await get_budget_profiles_collection().create_index(
+        "user_id", name="uniq_budget_profile_user", unique=True
+    )
+    # "My goals", oldest first.
+    await get_savings_goals_collection().create_index(
+        [("user_id", 1), ("created_at", 1)], name="user_goals_by_created"
+    )
+
     logger.info(
         "MongoDB indexes ensured (prices, news_articles, reddit_posts, "
-        "users, expenses, watchlist, alerts, investments)"
+        "users, expenses, watchlist, alerts, investments, budget_profiles, savings_goals)"
     )
 

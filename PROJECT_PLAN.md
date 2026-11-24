@@ -133,7 +133,8 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 - **Paper (benchmark reference):** DFTSen, *Discover Artificial Intelligence* (Springer, 2026) — reports 95.3% accuracy / 95.4% macro-F1 on this same dataset with a Transformer+BiLSTM deep multi-task model
 - **Model:** classical TF-IDF + Logistic Regression. Random Forest scored higher on the full dataset (98.84% vs 98.73% macro-F1 — a real gap, not noise) but took **47 minutes to train vs. Logistic Regression's 89 seconds** (~32x longer) — Logistic Regression remained the correct production choice; see `ml/log.md` for the full run-by-run history, including the ~5-15x worse-than-estimated Random Forest scaling
 - **Result: 98.7% accuracy / 98.7% macro-F1** on the full dataset's held-out test split — numerically *above* DFTSen's reported deep-learning number, which is a dataset-cleanliness artifact (this dataset's descriptions are template-generated, e.g. "Exxon - CANADA Store" — cleaner than real bank statement text), documented honestly rather than presented as "our simple model beat a deep model," see `ml/models/expense_categorizer/metrics.json`
-- **Integration:** `category` is now optional on manual entry and CSV import — omit it and the trained model predicts one; every expense records `category_source` (`user`/`ml`/`default`) and `category_confidence`; `GET /api/v1/expenses/categorization-model-info` exposes the real metrics; the Budgeting page shows a live accuracy badge and a ✨ icon on auto-categorized transactions
+- **Retired from the app in Phase 8 (2026-11-21):** auto-categorization was removed in favour of a user-picked fixed category list (see Phase 8). The training code and `metrics.json` in `ml/` remain as the record of this phase.
+- **Integration (historical):** `category` was optional on manual entry and CSV import — omit it and the trained model predicts one; every expense records `category_source` (`user`/`ml`/`default`) and `category_confidence`; `GET /api/v1/expenses/categorization-model-info` exposes the real metrics; the Budgeting page shows a live accuracy badge and a ✨ icon on auto-categorized transactions
 - **Verified live**, not just in tests: real descriptions through the running API returned correct categories with real confidence scores
 - **Real-world generalization gap: found, root-caused, and fixed — with the numbers to show it.** The initial 98.5% only proved the model generalizes *within this dataset's clean, template-generated style* — a much easier problem than real bank/UPI statement text. Built `ml/evaluate_on_realistic_examples.py`, 50 hand-written examples using real brand names and Indian UPI/NEFT/POS-style formatting, and measured **50.0% accuracy (a coin flip)** on realistic text. Root cause: real brands (Swiggy, Zerodha, BESCOM, IRCTC, Practo, ...) never appear in this dataset's templated merchant names, so the model had no learned signal for them. This is distribution shift, not classical overfitting — the held-out test methodology itself was sound, it's the training data's realism that was the limitation.
   - **Fix, attempt 1:** mixed in ~13,466 supplementary rows of real vocabulary — 484 hand-curated national brand names plus 12,982 real Indian business names derived from the [BharatPOI](https://www.kaggle.com/datasets/mansiaggarwal88/bharatpoi-india-places-intelligence-dataset) dataset (Kaggle, ODbL 1.0, built on OpenStreetMap) — upweighted via `sample_weight` rather than row duplication, so ~13k rows wouldn't get drowned out by ~4.5M template rows.
@@ -231,23 +232,24 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 ---
 
-## Phase 8 — Financial Health Assessment
+## Phase 8 — Smart Budgeting & Goal Planner (was: Financial Health Assessment)
 
 **Owner:** _unassigned_
 
-**Goal:** Turn budgeting + investment data already in the system into a single interpretable health score.
+**Status: complete (2026-11-21).** Redefined from "Financial Health Assessment" to a rule-based smart budgeter. The same health ratios (savings rate, debt-to-income, emergency-fund coverage) are computed by a deterministic, unit-tested rules engine. The single combined health score is not built yet. See `docs/PHASE_8_BUDGETING.md` for the checklist, assumptions and sources.
 
-**What gets built:**
-- Financial ratio computation (savings rate, debt-to-income if available, emergency fund coverage, investment diversification)
-- A scoring model/formula that converts these into a health score and explanation
+**What was built:**
+- A fixed list of 13 expense categories (Needs / Wants / Savings) in `backend/app/core/budget_config.py`. Users pick the category; AI auto-categorization was removed from the app, and old labels are migrated on startup.
+- Budget setup (income, emergency savings, monthly estimate per category), a pie with an Estimated/Actual toggle, and an estimated-vs-actual table.
+- Rules engine: 50/30/20, per-category % ranges, DTI > 36% flag, emergency fund 3–6 months. "Improve my budget" reports ₹ overspend and a suggested target per category.
+- Goal planner: flat vs step-up SIP (future value of an annuity due), horizon-based default returns, an affordability check against the monthly surplus, and concrete options.
+- An optional LLM layer that only rewords engine output. Off by default, and replies that change numbers are rejected.
 
-**Concepts to learn:** standard personal-finance health indicators, why an interpretable scoring approach is often preferable to a black-box model for something a user needs to trust and act on.
+**Concepts:** standard personal-finance ratios; why interpretable rules beat a black box for advice a user must trust; time-value-of-money (annuity due, step-up SIP).
 
-**System design focus:** the scoring formula lives in its own service function with well-defined inputs/outputs, unit-tested against known cases (e.g. "a user with X savings rate and Y debt ratio should score Z") — this is the easiest phase to write real tests for, since it's pure logic with no external dependencies.
+**System design focus:** all thresholds live in one config file; the engines are pure functions with tests for known cases ("₹9,000 on dining at ₹1L income → 9%, ₹3,000 over, target ₹6,000"); the LLM never produces a number.
 
-**Hardware:** CPU-OK.
-
-**Exit criteria:** Dashboard shows a financial health score with a breakdown of what's driving it, computed from the user's own budgeting and portfolio data.
+**Exit criteria (met):** a user sets up a budget, sees estimated vs actual spending, gets rule-based overspend flags with ₹ amounts, and plans a goal with two SIP options and an affordability check, all without any LLM.
 
 ---
 

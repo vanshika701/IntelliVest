@@ -15,13 +15,13 @@ _Last updated: 2026-11-21 — implementation complete on branch `feature-instrum
 - Database: MongoDB 8 (via `docker compose up -d`).
 
 **Pages** (`frontend/src/pages`): Auth (login/register), Dashboard (savings, alerts, watchlist
-overview, market news), Watchlist, Budgeting (expenses, CSV upload, ML categorisation),
+overview, market news), Watchlist, Budgeting (expenses, CSV upload, fixed categories; Phase 8 setup, rules engine and goal planner — see `docs/PHASE_8_BUDGETING.md`),
 Alerts. Layout: `AppShell` = `Navbar` (page title, notifications bell, user chip) + `Sidebar`.
 
 **Components**: `Button`, `Input`, layout components. No shared skeleton/badge components yet.
 
 **APIs** (`/api/v1`, all except auth/health need a Bearer token): `auth`, `health`, `expenses`,
-`watchlist`, `alerts`, `dashboard`, `sentiment` (FinBERT news sentiment per tracked stock).
+`watchlist`, `alerts`, `dashboard`, `budget`, `sentiment` (FinBERT news sentiment per tracked stock).
 
 **Data sources**
 - Stock prices: yfinance, daily OHLCV for a fixed universe of 20 NSE large caps, stored in the
