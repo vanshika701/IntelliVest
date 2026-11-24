@@ -17,7 +17,7 @@ This is a two-person project. Every phase below now carries an **Owner** field �
 1. **Skeleton before intelligence.** The unified dashboard, budgeting, and watchlist (the "boring" CRUD app) get built before any ML, so you have a real app to plug models into instead of building models in a vacuum.
 2. **One module at a time, fully understood, before the next.** Each AI module (expense categorization → price prediction → sentiment → summarization → portfolio engine → health score → advisor) is its own phase with its own concepts, dataset, and evaluation — matching the teaching-mode requirement that you understand before code gets written.
 3. **Orchestration last.** The "AI Investment Advisor" that combines everything is built only after every module it depends on already works standalone.
-4. **Blockchain audit layer is bolted on, not baked in.** It hashes and timestamps outputs of the other modules — it's built after there's something real to hash.
+4. **Blockchain controls trades, not the whole app.** AI runs off-chain; contracts enforce the user's terms when an AI result leads to a trade. The infrastructure can be built early against mock models; real modules plug in as they finish (see Phase 10).
 5. **Hardware-aware sequencing.** Phases are tagged CPU-OK (fine on the M1) or GPU-heavy (fine-tuning transformers, deep sequence models on full data) so you know in advance which ones you can start immediately and which ones you may want to batch for a GPU session (Colab/Kaggle/rented GPU) rather than wait on entirely.
 6. **Engineering quality is not optional.** This is a system-design project as much as an ML project. Every phase below carries a "System design focus" note — those aren't polish to add at the end, they're built in at the phase where they're first relevant. A working demo with a sloppy backend is not the goal.
 
@@ -160,7 +160,7 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 **Concepts to learn:** what a recurrent network is and why it suits sequences, train/validation splits for time series (this is *not* random splitting — order matters), overfitting on noisy financial data, why stock prediction accuracy claims in most papers are overstated, backtesting vs. live evaluation.
 
-**System design focus:** predictions are generated on a schedule (e.g. once daily after market close) and stored, not recomputed per dashboard load — a user opening the app reads a cached prediction, they don't trigger a model run. Model versioning matters here too (which model version produced which stored prediction), since Phase 10's audit layer will need to reference it.
+**System design focus:** predictions are generated on a schedule (e.g. once daily after market close) and stored, not recomputed per dashboard load — a user opening the app reads a cached prediction, they don't trigger a model run. Model versioning matters here too (which model version produced which stored prediction), since Phase 10 records it as evidence when a prediction leads to a trade (checklist B18). Store the model version, artifact hash, as-of date, horizon and up/down probability with each prediction.
 
 **Hardware:** GPU-heavy for meaningful training (multiple tickers, longer sequences, Transformer variant). A small LSTM on 1–2 tickers is feasible on the M1 for learning the concept; scale up (full stock universe, longer lookback windows, Transformer) when GPU access is available. This phase can be *started* immediately in reduced form and *scaled* later — no need to wait.
 
@@ -182,7 +182,7 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 **Concepts to learn:** what a pretrained transformer is and why FinBERT beats general-purpose sentiment models on financial text, zero-shot/inference-only use vs. fine-tuning, prompt design for summarization, aggregating signals from heterogeneous sources (news vs. social) into one sentiment measure.
 
-**System design focus:** sentiment scoring and summarization run as part of the same background ingestion pipeline as Phase 1 (score/summarize as new articles arrive, not on-demand per request), and results are stored alongside the source article/post so the dashboard is just reading precomputed data.
+**System design focus:** sentiment scoring and summarization run as part of the same background ingestion pipeline as Phase 1 (score/summarize as new articles arrive, not on-demand per request), and results are stored alongside the source article/post so the dashboard is just reading precomputed data. Phase 10 records sentiment on-chain only when it feeds an AI trade task (checklist B13).
 
 **Hardware:** Using FinBERT purely for inference (no fine-tuning) is CPU-OK, just slower per document than on GPU. Fine-tuning FinBERT, or running summarization with a larger local LLM, is GPU-heavy — plan to batch that for a GPU session; inference-only can proceed on the M1 in the meantime.
 
@@ -224,7 +224,7 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 **Concepts to learn:** Modern Portfolio Theory basics (risk, return, diversification, correlation), how to combine multiple model outputs into one decision system, why some "AI" systems are really optimization + ML hybrids rather than one end-to-end model.
 
-**System design focus:** this service reads already-stored outputs from Phases 4–5 (never recomputes predictions/sentiment itself) and defines a clean interface — given a user's profile + current stored signals, return a recommendation — so it can be called synchronously (recommendations are cheap to compute here; it's the inputs that are expensive) without becoming a bottleneck.
+**System design focus:** this service reads already-stored outputs from Phases 4–5 (never recomputes predictions/sentiment itself) and defines a clean interface — given a user's profile + current stored signals, return a recommendation (its risk profile also prefills Phase 10 mandate limits, checklist B19) — so it can be called synchronously (recommendations are cheap to compute here; it's the inputs that are expensive) without becoming a bottleneck.
 
 **Hardware:** CPU-OK — this phase is mostly optimization logic and score combination, not deep learning training.
 
@@ -261,11 +261,11 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 **What gets built:**
 - An orchestration layer that pulls: predictions, sentiment, sector intelligence, portfolio recommendation, and health score into a single, explainable piece of guidance per user
-- Explanation/traceability of *why* a recommendation was made (which module contributed what) — this also sets up what gets hashed in Phase 10
+- Explanation/traceability of *why* a recommendation was made (which module contributed what) — this becomes the evidence behind a Phase 10 trade proposal
 
 **Concepts to learn:** system design for combining multiple model outputs, explainability in multi-model pipelines, avoiding a "black box of black boxes."
 
-**System design focus:** this is the phase where service-boundary discipline pays off — the advisor calls the Phase 3–8 services through their defined interfaces, handles a module being unavailable or slow without the whole recommendation failing (graceful degradation, not a hard crash if, say, sentiment data hasn't refreshed yet), and returns a response that records *which module contributed what* — that traceability is what Phase 10 hashes, so its shape needs to be decided deliberately here, not reverse-engineered later.
+**System design focus:** this is the phase where service-boundary discipline pays off — the advisor calls the Phase 3–8 services through their defined interfaces, handles a module being unavailable or slow without the whole recommendation failing (graceful degradation, not a hard crash if, say, sentiment data hasn't refreshed yet), and returns a response that records *which module contributed what* — Phase 10 records that traceability, so the advisor (LLM or trained, still undecided) must return the `Proposal` format frozen in Phase 10 (checklist B20).
 
 **Hardware:** CPU-OK — this phase composes existing outputs rather than training new models.
 
@@ -273,27 +273,36 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 ---
 
-## Phase 10 — Blockchain Governance / Audit Layer
+## Phase 10 — Blockchain: Mode 2 AI Trading with a User-Owned Vault
 
-> **⚠️ Status: NOT FINALIZED.** The blockchain audit layer's design (scope, chain choice, even whether it stays a smart contract vs. some lighter tamper-evident approach) is still open and deliberately left for last. Do not start building this phase, and do not let earlier phases assume its final shape — revisit and lock the design down only once Phases 0–9 are done.
+> **Status: design agreed (2026-11-25), not started.** Replaces the earlier hash-only audit layer. Full spec, formats, rules and tasks: `checklist.md`, Phase 10. Infrastructure may start now with mocks; real integrations wait for Phases 4, 7 and 9.
 
 **Owner:** _unassigned_
 
-**Goal:** Add the verifiable audit trail described in the proposal, now that there's real advisor output to audit.
+**Goal:** Let the AI propose and execute trades without being able to take the user's assets or exceed the terms the user signed.
+
+**Approach:** Mode 2 of "Intelligent Contracts: Making Smart Contracts Smart for Blockchain Intelligence". AI runs off-chain; contracts coordinate its signed results and control execution. Ethereum-compatible chain: local Hardhat first, Sepolia for the final demo.
 
 **What gets built:**
-- Minimal smart contract on a public testnet (Polygon Amoy / Ethereum Sepolia) that stores hashes + metadata only
-- Hashing at the four lifecycle stages from the proposal: (1) Design & Data — training data sources/licensing/model params; (2) Verification & Validation — test results and validation criteria; (3) Deployment — authorized model version + intended use; (4) Operations & Monitoring — periodically sampled inputs/outputs post-deployment for drift detection
-- A verification flow: given a past recommendation, prove it matches what was hashed on-chain
-- Explicit non-goals honored: no real transactions on-chain, no full dataset storage on-chain, no custom consensus
+- Contracts: `ModelRegistry`, `MandateManager`, `AITaskManager`, `InvestmentVault`, and `MockFundMarket` with test tokens
+- One `Proposal` format for every advisor, with a mock advisor until Phase 9
+- On-chain evidence (hashes, model version, compact score) from sentiment and stock prediction, **only when they feed an AI trade task**
+- Mandate enforcement: execute, wait for the user's signature, or reject
+- Background worker, event reader, wallet/mandate/approval screens, behind `BLOCKCHAIN_ENABLED=false`
 
-**Concepts to learn:** what a smart contract actually is, on-chain vs. off-chain data (why only hashes go on-chain), testnets vs. mainnet, what "tamper-evident" means and doesn't mean, basic Web3 interaction from a backend.
+**Earlier lifecycle records:** model data, test results and authorized versions stay off-chain, with their hashes in `ModelRegistry`. Operations are recorded per trade task instead of by periodic sampling.
 
-**System design focus:** testnet wallet keys are treated with the same secrets discipline as any other credential (never committed, loaded from environment config), and chain-write calls happen from a dedicated service rather than scattered inline — since these are the slowest, least reliable calls in the whole system, they need explicit timeout/retry handling and shouldn't block the request that triggered them.
+**Non-goals:** real money or securities, personal data or full datasets on-chain, models running on-chain, SGX/zkML, custom consensus, and blockchain for budgeting or page views.
 
-**Hardware:** CPU-OK — smart contract development and testnet interaction don't need a GPU at all.
+**Concepts to learn:** smart contracts, wallets and signatures (EIP-712), tokens and atomic swaps, on-chain vs. off-chain data, price feeds, reentrancy and replay attacks, what "non-custodial" does and doesn't guarantee.
 
-**Exit criteria:** A recommendation produced in Phase 9 has a corresponding on-chain hash record, and you can independently verify that a given recommendation matches its on-chain fingerprint.
+**System design focus:** chain calls live in one service and run in the background with retries and no double submission. Keys stay in environment config, with a separate key per role. The owner can always withdraw, even if IntelliVest is down.
+
+**Hardware:** CPU-OK.
+
+**Exit criteria:**
+- *Infrastructure:* a mock-advisor trade with real FinBERT evidence runs end to end locally, and the attack tests pass.
+- *Complete:* Phases 4, 7 and 9 are connected, the limits are compared against backend-only limits, and the contracts are on Sepolia.
 
 ---
 
@@ -322,7 +331,7 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 These are named in the proposal itself as future work, not part of the current build:
 - **Financial Learning Module** (in-app investing tutorials/education) — future scope
 - **Bank-Linked Model Training via Account Aggregator** — real bank data integration is deferred; Phase 3 uses synthetic data by design, not as a shortcut
-- **Blockchain Audit Trail Performance Optimization** (off-chain indexing, batched writes, caching, layer-2 scaling) — only relevant once there's real usage volume to optimize for
+- **Blockchain Performance Optimization** (batched writes, layer-2 scaling, third-party indexing) — only relevant once there's real usage volume to optimize for
 
 ---
 

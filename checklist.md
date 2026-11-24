@@ -86,3 +86,180 @@ As of 2026-11-24.
 - [ ] **12. Commit the Phase 8 work.** It is only in the working folder.
 - [ ] **13. Restart the backend on port 8000.** It still runs the pre-Phase 8 code, so the page on
       port 5173 doesn't load budget data.
+
+---
+
+# Phase 10 Checklist: Blockchain (Mode 2 AI + user-owned vault)
+
+Written 2026-11-25. Design agreed, **nothing built yet**. This is the detailed spec;
+`PROJECT_PLAN.md` Phase 10 is the summary. If they disagree, fix both.
+
+## What we are building and why
+
+The AI works off-chain and proposes a trade. A smart contract checks it against terms the user
+signed, and only then swaps test tokens held in a vault **the user owns**. This is **Mode 2
+(schedule AI collaboration)** of the paper "Intelligent Contracts: Making Smart Contracts Smart
+for Blockchain Intelligence", applied to investing.
+
+**Justification:** IntelliVest can propose trades but cannot withdraw the user's assets or exceed
+the mandate, even if its server is hacked. A database can store the limit but cannot hold the
+asset outside its operator's control. The immutable trade history is a second benefit.
+
+**Claims we must not make:** a signature shows who submitted a result, not that the model really
+ran or is right. A trade inside the limits can still lose money. Test prices come from us.
+
+## Decisions
+
+| Question | Decision | Why |
+|---|---|---|
+| Platform | **Ethereum-compatible (EVM)**, Solidity | Wallets, tokens, atomic swaps and user-owned vaults are standard here |
+| Hyperledger Fabric | No | Built for a known group of organizations; we have one operator, so it would remove the user-control argument |
+| Other chains (e.g. Solana) | No | Possible, but new tooling with no benefit for this prototype |
+| Network | Local Hardhat first; Ethereum Sepolia for the final demo | Free and repeatable; Polygon Amoy is a fallback |
+| Libraries | Hardhat, OpenZeppelin, `web3.py`, one frontend wallet library | Pin versions when installing |
+| Assets | Test tokens only (`tINR`, `tEquityFund`, `tDebtFund`, `tGoldFund`) | No real money |
+| SGX / TEE | Not used | Not needed for smart contracts |
+| Default state | `BLOCKCHAIN_ENABLED=false` | The current app must work unchanged |
+
+## Where blockchain goes
+
+| Part of the app | Blockchain use | Can do now? |
+|---|---|---|
+| AI advisor (Phase 9) | Signed proposal; the contract accepts, waits for the user, or rejects | Interface and mock only |
+| Sentiment (Phase 5) | Evidence step, only for an AI trade task | **Yes**, FinBERT exists |
+| Stock prediction (Phase 4) | Evidence step, only for an AI trade task | Interface and mock only |
+| Portfolio / risk profile (Phase 7) | Suggests mandate limits; the user signs the final ones | Manual entry only |
+| Goal planner (Phase 8) | Suggests amount and end date for the mandate | Yes |
+| Invest panel / SIP | Optional vault execution. A SIP is rule-based: a separate path with no AI evidence | Yes, test tokens |
+| Budget, expenses, income, login, watchlist, search, charts, summaries, sector view | **None** | n/a |
+
+Opening a page never creates a transaction.
+
+## Flow
+
+1. The user connects a wallet, proves ownership by signing a one-time message, creates a vault,
+   deposits `tINR` and signs a mandate.
+2. The backend opens a task in `AITaskManager` for one vault and one fund.
+3. Workers submit signed evidence: sentiment, stock prediction, then the advisor proposal.
+4. The contracts check signer, model version, deadline, required steps and mandate.
+5. Result: **execute**, **wait for the user's signature**, or **reject with a reason**. Rejections
+   must be stored as an outcome with an event; a reverted transaction leaves no event.
+6. The backend follows events and updates MongoDB. The UI shows pending / executed / rejected.
+
+## What gets recorded
+
+**Every evidence step, on-chain:** task ID, step type, status (`OK` or `NO_DATA`), model ID hash,
+version hash, input hash, output hash, submitter, time.
+
+| Step | Extra on-chain values | Off-chain (MongoDB), covered by the hashes |
+|---|---|---|
+| Sentiment | score (-10000..10000), article count | Article IDs, URLs, text hashes, probabilities, engine, window |
+| Stock prediction | direction, probability (0..10000), horizon, as-of date | Feature values, price window, model artifact hash |
+| Advisor proposal | fund, side, amount, minimum received, confidence, nonce, deadline, explanation hash | Full explanation, contributions per module |
+| Trade | amounts in and out, price and its time, result or rejection reason | Transaction hash, link to the `investments` record |
+
+Rules: canonical JSON, then keccak256. Add a random salt to anything derived from private data.
+Never put names, emails, income, expenses, goals or article text on-chain. Use integers, never
+floats. On a public chain, vault balances and mandate limits **are visible**; the UI must say so.
+
+## Proposal interface (freeze this first)
+
+```
+Proposal { taskId, vault, fund, side, amount, minimumReceived, confidence,
+           modelId, modelVersion, inputHash, evidenceHash, explanationHash, nonce, deadline }
+```
+
+Signed with EIP-712. `confidence` is 0..10000. `evidenceHash` covers the task's submitted steps,
+so evidence can't be swapped later. Any advisor (LLM, trained model, mock) returns this shape.
+
+## Contracts
+
+| Contract | Job |
+|---|---|
+| `ModelRegistry` | Model IDs, versions, artifact/config hash, allowed signer; can revoke |
+| `MandateManager` | The user's signed terms and the model versions they accept |
+| `AITaskManager` | Tasks, required steps, evidence, deadlines, proposals |
+| `InvestmentVault` | One per user: deposit, execute, withdraw, revoke, pause |
+| `MockFundMarket` + test tokens + test price feed | Atomic swaps at test prices |
+
+### Mandate terms
+
+- [ ] Allowed funds; per-trade, daily and monthly caps; maximum equity %; maximum slippage
+- [ ] Start and end date; required evidence steps; accepted model versions
+- [ ] Confidence threshold and amount above which the user must sign
+- [ ] Maximum trades per day; loss limit that pauses the AI until the owner resumes
+
+### Rules that must hold
+
+- [ ] Only the owner can withdraw, and only to the owner. Works when the AI is paused or revoked,
+      a mandate has expired, prices are stale, or the backend is down.
+- [ ] IntelliVest has no admin function that moves vault assets or changes a mandate.
+- [ ] Confidence can only make a check stricter. It never bypasses a hard limit.
+- [ ] A new model version isn't usable by a vault until its owner accepts it.
+- [ ] Replayed, expired, duplicate or wrong-chain proposals are rejected.
+- [ ] Stale prices stop AI trades. Minimum received is always enforced.
+- [ ] A sentiment `NO_DATA` (too few articles) or the `lexicon` fallback is never treated as
+      FinBERT. It goes to the user's signature, or is rejected, as the mandate says.
+- [ ] Vaults are not upgradeable. Use reentrancy protection and safe token transfers.
+
+## Can't be done yet
+
+| Blocked item | Waiting for |
+|---|---|
+| Real stock prediction evidence | Phase 4 (no model in the repo) |
+| Automatic limits from a risk profile | Phase 7 (not built) |
+| Real advisor proposals | Phase 9; LLM or trained model undecided |
+| Final results with real models | Phases 4, 7 and 9 |
+| Sepolia deployment | A team test wallet, RPC URL and test ETH. **Never paste a private key into chat** |
+| Real money, stocks or mutual funds | Out of scope: regulation, KYC, tokenized assets, audit |
+| Proof that a model really ran | Out of scope: TEE or zkML |
+
+## Build order
+
+### A. Set up
+- [ ] **B1.** Use Node 24 as pinned in `.nvmrc`. Node 23.5.0 was installed on 2026-11-25.
+- [ ] **B2.** Create the Hardhat project in `blockchain/` and ignore its build output.
+- [ ] **B3.** Freeze the `Proposal` and evidence formats in `docs/PHASE_10_BLOCKCHAIN.md`, with
+      shared test vectors so Solidity and Python produce the same hashes.
+
+### B. Contracts
+- [ ] **B4.** Test tokens, price feed and `MockFundMarket`.
+- [ ] **B5.** `ModelRegistry` and `MandateManager`.
+- [ ] **B6.** `InvestmentVault`, with withdrawal tests written first.
+- [ ] **B7.** `AITaskManager`, including approve-by-user and reject paths.
+- [ ] **B8.** Tests for every rule above, plus a local deploy script. Done when all pass.
+
+### C. Backend
+- [ ] **B9.** Settings in `backend/app/core/config.py` and `.env.example`; keys only in `.env`.
+      Use a different key per role (sentiment, stock, advisor, SIP runner).
+- [ ] **B10.** `backend/app/services/blockchain/`: client, hashing, signing, advisor interface,
+      mock advisor, mock stock predictor. `web3.py` imported only here.
+- [ ] **B11.** Wallet linking (one-time nonce), repositories, indexes and `/api/v1/blockchain/...`.
+      Follow routes -> services -> data.
+- [ ] **B12.** Background worker and event reader: retry, timeout, no double submission, resume
+      after restart, handle reorganized blocks. Requests never wait for the chain.
+- [ ] **B13.** Sentiment adapter. Add evidence details without changing existing responses.
+      Stored articles hold their model name; keep the exact model revision too.
+
+### D. Frontend
+- [ ] **B14.** Connect wallet, vault, deposit/withdraw and mandate form (goal values prefilled).
+      Withdrawal goes wallet-to-contract directly, with no backend call.
+- [ ] **B15.** Pending trades with approve/reject, evidence view, "Revoke AI", privacy notice.
+- [ ] **B16.** Vault SIP, triggered by any permitted runner; the vault enforces date and amount.
+- [ ] **B17.** With the flag off, the existing invest flow and tests are unchanged.
+
+### E. Connect later
+- [ ] **B18.** Phase 4: replace the mock stock predictor; store model version and artifact hash.
+- [ ] **B19.** Phase 7: prefill mandate limits from the risk profile.
+- [ ] **B20.** Phase 9: replace the mock advisor; include contributions per module.
+
+### F. Evaluate
+- [ ] **B21.** Attack tests: stolen advisor key, hacked backend, replay, over limit, bad fund, old
+      or changed model, stale price, price manipulation, missing evidence, backend switched off.
+- [ ] **B22.** Compare no limits, backend-only limits and vault limits. Report blocked attacks,
+      maximum loss, valid trades wrongly blocked, gas and latency. Label mock results as mock.
+- [ ] **B23.** Deploy to Sepolia and verify the source.
+
+**Infrastructure done (without Phases 4, 7, 9):** B1-B17 pass, B21 passes locally, and a
+mock-advisor trade with real FinBERT evidence runs end to end.
+**Phase 10 complete:** B18-B23 are also done.
