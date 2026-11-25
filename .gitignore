@@ -50,3 +50,6 @@ data/*.jsonl
 
 # Local database backups
 data/backups/
+
+# Local planning notes
+/DIVISION_OF_WORK.md
