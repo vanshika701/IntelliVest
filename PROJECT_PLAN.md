@@ -188,6 +188,8 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 **Exit criteria:** News articles (and Reddit posts, if access has come through by now) carry sentiment scores; the dashboard shows AI-generated news summaries and a sentiment view per stock/sector; if FinBERT was fine-tuned, its classification accuracy is reported and documented.
 
+**Fine-tuning result so far:** on 30 hand-written news headlines, pretrained FinBERT scored 83.3% accuracy / 0.7855 macro-F1 and the tweet fine-tune 73.3% / 0.7044, so the app keeps the pretrained model. A combined tweets + Financial PhraseBank run is prepared but not completed (8 GB RAM limit; run on a GPU system). Details in `ml/log.md`.
+
 ---
 
 ## Phase 6 — Sector-Level Market Intelligence

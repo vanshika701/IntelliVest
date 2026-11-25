@@ -225,18 +225,22 @@ def evaluate(predict_fn) -> dict:
 
 def main() -> None:
     """CLI entry point — loads whatever model is currently saved on disk
-    via the backend service and prints a readable report."""
-    import sys
+    and prints a readable report. Loads the artifacts directly: the app no
+    longer serves this model (Phase 8), so there is no backend service."""
     from pathlib import Path
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
-    from app.services.expense_categorization_service import predict_category
+    import joblib
 
-    def predict_fn(description: str):
-        result = predict_category(description)
-        if result is None:
-            raise RuntimeError("Model not available — run train_expense_categorizer.py first.")
-        return result
+    model_dir = Path(__file__).resolve().parent / "models" / "expense_categorizer"
+    vectorizer_path, model_path = model_dir / "vectorizer.joblib", model_dir / "model.joblib"
+    if not (vectorizer_path.exists() and model_path.exists()):
+        raise RuntimeError("Model not available — run train_expense_categorizer.py first.")
+    vectorizer, model = joblib.load(vectorizer_path), joblib.load(model_path)
+
+    def predict_fn(description: str) -> tuple[str, float]:
+        # Same normalization as training (see train_expense_categorizer.py).
+        features = vectorizer.transform([description.strip().lower()])
+        return model.predict(features)[0], float(model.predict_proba(features).max())
 
     summary = evaluate(predict_fn)
 

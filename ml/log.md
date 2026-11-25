@@ -753,3 +753,23 @@ very slowly — investigated rather than assumed hung. Findings:
   report), so the plan is prompting-based summarization evaluated via
   ROUGE against the public FNS shared-task dataset as a methodology
   convention, not a specific paper's method.
+
+### Scripts adapted to the merged backend, both models re-measured (2026-11-26)
+
+No training was done; this re-evaluates existing models.
+
+- **Environment:** torch 2.15.0, transformers 5.23.0, scikit-learn 1.9.1.
+- **Dataset:** the same 30 hand-written headlines (sentiment) and 150
+  hand-written transactions (expenses).
+- **Results (unchanged from before):** pretrained FinBERT 83.3% (25/30) /
+  0.7855 macro-F1; tweet fine-tune 73.3% (22/30) / 0.7044; expense
+  categorizer 92.0% (138/150) / 0.9200.
+- **Problem:** both evaluation scripts called backend functions that no
+  longer exist (`analyze_sentiment`, `expense_categorization_service`).
+  Sentiment now goes through `score_texts()` and rejects its lexicon
+  fallback; the categorizer loads its artifacts directly.
+- **Problem:** `beats_pretrained_baseline` compared against a rounded
+  0.833, so a 25/30 tie would have counted as a win. Now exactly 25/30.
+- **Label mismatch:** the current fine-tuned weights output
+  Bullish/Bearish, which the backend would score as 0. They must not be
+  set as `SENTIMENT_MODEL`.

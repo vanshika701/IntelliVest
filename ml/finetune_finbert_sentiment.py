@@ -97,6 +97,8 @@ from pathlib import Path
 import numpy as np
 import torch
 from datasets import Dataset, load_dataset
+from evaluate_sentiment_on_realistic_news import _LABEL_EQUIVALENCE
+from evaluate_sentiment_on_realistic_news import evaluate as evaluate_on_realistic_news
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.model_selection import train_test_split
 from transformers import (
@@ -106,9 +108,6 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-
-from evaluate_sentiment_on_realistic_news import _LABEL_EQUIVALENCE
-from evaluate_sentiment_on_realistic_news import evaluate as evaluate_on_realistic_news
 
 ML_DIR = Path(__file__).parent
 MODEL_DIR = ML_DIR / "models" / "sentiment_finbert"
@@ -122,6 +121,9 @@ NUM_EPOCHS = 3
 # chasing a higher one.
 LEARNING_RATE = 2e-5
 BATCH_SIZE = 16
+# Pretrained FinBERT on the 30-headline stress test (see ml/log.md). Kept
+# exact: a rounded 0.833 would make a 25/30 tie count as an improvement.
+PRETRAINED_BASELINE_ACCURACY = 25 / 30
 
 # FinBERT's OWN label scheme (confirmed via AutoConfig.from_pretrained,
 # not assumed) — reusing it means the classification head we initialize
@@ -361,7 +363,7 @@ def main() -> None:
         if hasattr(p, "numel")
     ) / (1024 * 1024)
 
-    beats_pretrained_on_real_task = realistic_news_eval["accuracy"] > 0.833
+    beats_pretrained_on_real_task = realistic_news_eval["accuracy"] > PRETRAINED_BASELINE_ACCURACY
 
     metrics_out = {
         "base_model": BASE_MODEL,
@@ -432,7 +434,7 @@ def main() -> None:
         "realistic_news_stress_test": {
             **realistic_news_eval,
             "pretrained_baseline_for_comparison": {
-                "accuracy": 0.833,
+                "accuracy": PRETRAINED_BASELINE_ACCURACY,
                 "macro_f1": 0.7855,
                 "note": "See ml/log.md — measured on the same 30-headline test.",
             },
@@ -446,7 +448,7 @@ def main() -> None:
             "is measured above for comparison. Whether sentiment_service.py actually "
             "DEFAULTS to this model instead of the pretrained checkpoint depends on "
             "beats_pretrained_baseline above — see backend/app/core/config.py's "
-            "use_finetuned_sentiment_model setting and ml/log.md for the decision."
+            "sentiment_model setting and ml/log.md for the decision."
         ),
         "known_limitations": [
             (

@@ -24,6 +24,10 @@ ml/models/**/*.joblib
 ml/models/**/*.pkl
 ml/models/**/*.h5
 ml/models/**/*.pt
+ml/models/**/*.safetensors
+ml/models/**/*.bin
+# Intermediate fine-tuning checkpoints (~1.2 GB each)
+ml/_finetune_checkpoints/
 # Downloaded Hugging Face models (FinBERT, ~420 MB) — re-downloaded
 # automatically on first use.
 ml/models/hf_cache/

@@ -98,6 +98,22 @@ score, overall label and the latest articles over the last `days`
 `backend/.env` to its Hugging Face id or local path; the next run
 re-scores every article with it.
 
+Model choice was measured on 30 hand-written news headlines
+(`ml/evaluate_sentiment_on_realistic_news.py`), a small set, so treat it
+as evidence rather than proof:
+
+| Model | Accuracy | Macro-F1 |
+|---|---|---|
+| Pretrained FinBERT (default) | 83.3% (25/30) | 0.7855 |
+| FinBERT fine-tuned on tweets | 73.3% (22/30) | 0.7044 |
+
+Do not point `SENTIMENT_MODEL` at the tweet fine-tune: it outputs
+`Bullish`/`Bearish`, but scoring reads `positive`/`negative`, so every
+article would score 0. `ml/finetune_finbert_sentiment.py` now trains on
+tweets plus Financial PhraseBank with matching labels; that run has not
+been completed (it needs more than 8 GB of RAM). PhraseBank is licensed
+for non-commercial use only. See `ml/log.md`.
+
 ## Frontend setup
 
 ```bash

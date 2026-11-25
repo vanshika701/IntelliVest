@@ -1,17 +1,17 @@
 """Domain-shift stress test for the news-sentiment model (Phase 5).
 
-The fine-tuned model (ml/finetune_finbert_sentiment.py) was trained on
-zeroshot/twitter-financial-news-sentiment — short, informal TWEETS. But
+The first fine-tuned model (ml/finetune_finbert_sentiment.py) was trained
+on zeroshot/twitter-financial-news-sentiment — short, informal TWEETS. But
 production actually scores NEWS ARTICLE headlines/descriptions from
-NewsAPI (backend/app/services/news_service.py) — longer, more formal
+RSS feeds (backend/app/services/news_service.py) — longer, more formal
 text, structurally different from tweets. This is exactly the kind of
 train/production distribution mismatch that hurt Phase 3 before its
 realistic-text stress test caught it (see ml/log.md) — so it gets
 checked here empirically instead of assumed away.
 
 Hand-written, realistic financial news headlines (not tweets, not from
-either training dataset), labeled by hand. Compares the off-the-shelf
-pretrained checkpoint against the fine-tuned model on the SAME examples,
+either training dataset), labeled by hand. Compares the model the
+app serves against the local fine-tuned model on the SAME examples,
 since the real question isn't "how good is the fine-tuned model in
 isolation" (already measured on its own tweet validation split) but
 "did fine-tuning on tweets help or hurt for the news-headline domain it
@@ -24,7 +24,10 @@ Run directly:
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+ML_DIR = Path(__file__).resolve().parent
+FINETUNED_MODEL_DIR = ML_DIR / "models" / "sentiment_finbert"
+
+sys.path.insert(0, str(ML_DIR.parent / "backend"))
 
 # Bearish/Bullish/Neutral (fine-tuned model) <-> positive/negative/neutral
 # (pretrained model) — a reasonable, honest mapping for stock-market
@@ -108,50 +111,64 @@ def evaluate(predict_fn, label_map: dict) -> dict:
     }
 
 
-def main() -> None:
-    from app.services import sentiment_service
+def predict_production(text: str) -> tuple[str, float]:
+    """Score one headline through the backend's own entry point, so this
+    measures what the app actually serves (settings.sentiment_model).
 
-    # Force-load the off-the-shelf pretrained checkpoint, bypassing the
-    # fine-tuned model this machine has, for a genuine side-by-side.
+    score_texts() silently falls back to a keyword lexicon when FinBERT
+    can't be loaded. That is fine for the app, but would put a lexicon
+    score under a model's name here, so it is treated as an error.
+    """
+    from app.services.sentiment_service import score_texts
+
+    probabilities, engine = score_texts([text])
+    if engine == "lexicon":
+        raise RuntimeError("Sentiment model could not be loaded (score_texts fell back to the lexicon).")
+    label = max(probabilities[0], key=probabilities[0].get)
+    return label, probabilities[0][label]
+
+
+def load_finetuned_predictor():
+    """Return a predict function for the local fine-tuned model, or None
+    if its weights (gitignored) aren't on this machine."""
+    if not (FINETUNED_MODEL_DIR / "model.safetensors").exists():
+        return None
+
     from transformers import pipeline
 
-    print("Loading pretrained ProsusAI/finbert (bypassing local fine-tuned model)...")
-    pretrained_pipe = pipeline("sentiment-analysis", model="ProsusAI/finbert")
+    classifier = pipeline("text-classification", model=str(FINETUNED_MODEL_DIR))
 
-    def predict_pretrained(text: str):
-        result = pretrained_pipe(text, truncation=True, max_length=512)[0]
+    def predict(text: str) -> tuple[str, float]:
+        result = classifier(text, truncation=True, max_length=512)[0]
         return result["label"], float(result["score"])
 
-    print("Loading fine-tuned model (ml/models/sentiment_finbert if present, else pretrained)...")
+    return predict
 
-    def predict_current(text: str):
-        result = sentiment_service.analyze_sentiment(text)
-        if result is None:
-            raise RuntimeError("Sentiment model unavailable")
-        return result
 
-    pretrained_eval = evaluate(predict_pretrained, _LABEL_EQUIVALENCE)
-    current_eval = evaluate(predict_current, _LABEL_EQUIVALENCE)
-
-    print(f"\n{'=' * 70}")
-    print("Realistic financial NEWS HEADLINE stress test (not tweets)")
-    print(f"{'=' * 70}")
+def print_report(name: str, result: dict) -> None:
+    correct = result["num_examples"] - len(result["misclassified"])
+    print(f"\n{'=' * 70}\n{name}")
     print(
-        f"Off-the-shelf pretrained FinBERT: accuracy={pretrained_eval['accuracy']:.1%} "
-        f"macro_f1={pretrained_eval['macro_f1']:.4f}"
+        f"accuracy={result['accuracy']:.1%} ({correct}/{result['num_examples']}) "
+        f"macro_f1={result['macro_f1']:.4f}"
     )
-    print(
-        f"Currently-loaded model (fine-tuned if present): accuracy={current_eval['accuracy']:.1%} "
-        f"macro_f1={current_eval['macro_f1']:.4f}"
-    )
-
-    print("\nPretrained model misclassifications:")
-    for m in pretrained_eval["misclassified"]:
+    for m in result["misclassified"]:
         print(f"  {m['text']!r} -> got {m['predicted']!r} ({m['confidence']:.1%}), expected {m['expected']!r}")
 
-    print("\nCurrent (fine-tuned) model misclassifications:")
-    for m in current_eval["misclassified"]:
-        print(f"  {m['text']!r} -> got {m['predicted']!r} ({m['confidence']:.1%}), expected {m['expected']!r}")
+
+def main() -> None:
+    from app.core.config import settings
+
+    print_report(
+        f"Production model: {settings.sentiment_model}",
+        evaluate(predict_production, _LABEL_EQUIVALENCE),
+    )
+
+    predict_finetuned = load_finetuned_predictor()
+    if predict_finetuned is None:
+        print(f"\nNo fine-tuned weights in {FINETUNED_MODEL_DIR}; skipping the comparison.")
+        return
+    print_report("Local fine-tuned model", evaluate(predict_finetuned, _LABEL_EQUIVALENCE))
 
 
 if __name__ == "__main__":
