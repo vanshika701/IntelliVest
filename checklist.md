@@ -91,7 +91,9 @@ As of 2026-11-24.
 
 # Phase 10 Checklist: Blockchain (Mode 2 AI + user-owned vault)
 
-Written 2026-11-25. **B1-B9 (setup, contracts, settings) are built and tested; next is B10.** This is the detailed spec;
+Written 2026-11-25. B1-B9 (setup, contracts, settings) are built and tested.
+**Paused 2026-11-25** until the other phases are done, starting with Phase 4; resume at B10 with the
+real stock model instead of a mock. This is the detailed spec;
 `PROJECT_PLAN.md` Phase 10 is the summary. If they disagree, fix both.
 
 ## What we are building and why
