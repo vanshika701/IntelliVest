@@ -4,12 +4,13 @@ Seam between Indian financial news RSS feeds and storage
 (app/data/news_repository.py) — parsing/validation lives here. No API
 key and no daily quota, unlike the NewsAPI pipeline this replaced.
 
-Two kinds of feed:
+Three kinds of feed:
 - General market feeds (Economic Times, Livemint): each item is tagged
   with every tracked company its headline/description mentions (via
   TICKER_ALIASES); items mentioning none are dropped.
 - One Google News search per company: targeted coverage for each ticker,
   including outlets whose own feeds block automated requests.
+- One Google News search per sector, for sector-wide headlines (Phase 6).
 """
 
 import calendar
@@ -22,7 +23,13 @@ import feedparser
 import httpx
 from bs4 import BeautifulSoup
 
-from app.core.constants import NEWS_RSS_FEEDS, TICKER_ALIASES, TICKER_TO_COMPANY_NAME
+from app.core.constants import (
+    NEWS_RSS_FEEDS,
+    SECTOR_HEADLINE_TERMS,
+    SECTOR_NEWS_QUERIES,
+    TICKER_ALIASES,
+    TICKER_TO_COMPANY_NAME,
+)
 from app.core.retry import with_retry
 from app.data.news_repository import upsert_news_articles
 from app.services.ingestion_types import IngestResult
@@ -30,6 +37,8 @@ from app.services.ingestion_types import IngestResult
 logger = logging.getLogger(__name__)
 
 GOOGLE_NEWS_SEARCH_URL = "https://news.google.com/rss/search?q={query}&hl=en-IN&gl=IN&ceid=IN:en"
+
+SECTOR_ARTICLES_PER_RUN = 25
 
 # Some publishers reject httpx's default User-Agent outright.
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; IntelliVestBot/0.1)"}
@@ -40,6 +49,18 @@ _PRICE_TRACKER_TITLE = re.compile(
     r"Share Price (?:Live Updates|Highlights|Today)|Stock Price History", re.IGNORECASE
 )
 
+# Promotional price pages, fund fact sheets, and other countries' markets.
+_SECTOR_NOISE = re.compile(
+    r"share price|price target|target 20\d\d|IPO|Regular Plan|Direct Plan|stock price|"
+    r"\b(?:ASX|Canad\w+|Wall Street|Nasdaq|FTSE|Nikkei|Australian?|China|Chinese|Pakistan)\b",
+    re.IGNORECASE,
+)
+_SECTOR_PATTERNS: dict[str, re.Pattern] = {
+    # "IT" must be capitals, or it would match the word "it".
+    sector: re.compile(rf"(?<!\w)(?:{terms})(?!\w)", 0 if sector == "it" else re.IGNORECASE)
+    for sector, terms in SECTOR_HEADLINE_TERMS.items()
+}
+
 _TICKER_PATTERNS: dict[str, re.Pattern] = {
     ticker: re.compile(rf"(?<!\w)(?:{'|'.join(aliases)})(?!\w)", re.IGNORECASE)
     for ticker, aliases in TICKER_ALIASES.items()
@@ -48,6 +69,15 @@ _TICKER_PATTERNS: dict[str, re.Pattern] = {
 
 def match_tickers(text: str) -> list[str]:
     return [ticker for ticker, pattern in _TICKER_PATTERNS.items() if pattern.search(text)]
+
+
+def is_sector_headline(sector: str, title: str) -> bool:
+    """The title names the sector, in English, and isn't a price page or foreign."""
+    return bool(
+        _SECTOR_PATTERNS[sector].search(title)
+        and not _SECTOR_NOISE.search(title)
+        and not re.search(r"[\u0900-\u0d7f]", title)  # Indian scripts: the models are English-only
+    )
 
 
 def _clean_text(raw: str | None) -> str | None:
@@ -124,12 +154,17 @@ async def ingest_feed(
     url: str,
     feed_source: str | None,
     ticker: str | None = None,
+    sector: str | None = None,
 ) -> IngestResult:
     """Fetch and store one feed. Failures are isolated per feed: one
     publisher being down shouldn't abort the whole run."""
     try:
         entries = await fetch_feed(client, url)
-        records = parse_feed_entries(entries, feed_source, ticker)
+        records = parse_feed_entries(entries, feed_source, ticker, keep_untagged=sector is not None)
+        if sector is not None:
+            records = [r for r in records if is_sector_headline(sector, r["title"])]
+            records.sort(key=lambda r: r["published_at"], reverse=True)
+            records = [{**r, "sectors": [sector]} for r in records[:SECTOR_ARTICLES_PER_RUN]]
         upserted = await upsert_news_articles(records)
         return IngestResult(label, upserted)
     except httpx.HTTPStatusError as exc:
@@ -142,6 +177,11 @@ async def ingest_feed(
 
 def google_news_url(company_name: str, days: int = 7) -> str:
     return GOOGLE_NEWS_SEARCH_URL.format(query=quote_plus(f'"{company_name}" when:{days}d'))
+
+
+def sector_news_url(sector: str, days: int = 3) -> str:
+    query = f"({SECTOR_NEWS_QUERIES[sector]}) India when:{days}d"
+    return GOOGLE_NEWS_SEARCH_URL.format(query=quote_plus(query))
 
 
 BING_NEWS_SEARCH_URL = "https://www.bing.com/news/search?q={query}&format=rss&mkt=en-in"
@@ -191,18 +231,19 @@ async def search_news(phrase: str, days: int = 30, limit: int = 15) -> list[dict
 
 
 async def ingest_news_for_universe(tickers: list[str]) -> list[IngestResult]:
-    feeds: list[tuple[str, str, str | None, str | None]] = [
-        (url, url, publisher, None) for publisher, url in NEWS_RSS_FEEDS
+    feeds: list[tuple[str, str, str | None, str | None, str | None]] = [
+        (url, url, publisher, None, None) for publisher, url in NEWS_RSS_FEEDS
     ]
     feeds += [
-        (ticker, google_news_url(TICKER_TO_COMPANY_NAME.get(ticker, ticker)), None, ticker)
+        (ticker, google_news_url(TICKER_TO_COMPANY_NAME.get(ticker, ticker)), None, ticker, None)
         for ticker in tickers
     ]
+    feeds += [(f"sector:{s}", sector_news_url(s), None, None, s) for s in SECTOR_NEWS_QUERIES]
 
     results = []
     async with httpx.AsyncClient(timeout=15.0, headers=_HEADERS, follow_redirects=True) as client:
-        for label, url, feed_source, ticker in feeds:
-            result = await ingest_feed(client, label, url, feed_source, ticker)
+        for label, url, feed_source, ticker, sector in feeds:
+            result = await ingest_feed(client, label, url, feed_source, ticker, sector)
             results.append(result)
             status = f"error: {result.error}" if result.error else "ok"
             logger.info(

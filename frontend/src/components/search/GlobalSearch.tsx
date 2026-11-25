@@ -44,7 +44,9 @@ export function GlobalSearch() {
       .search(debouncedQuery, controller.signal)
       .then((data) => {
         setResponse({ query: debouncedQuery, status: 'success', results: data.results, partial: data.partial })
-        setActiveIndex(data.results.length ? 0 : -1)
+        // Nothing is preselected: Enter lists every match unless the user
+        // picked one with the arrow keys.
+        setActiveIndex(-1)
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return
@@ -86,6 +88,14 @@ export function GlobalSearch() {
     navigate(`/instrument/${encodeURIComponent(result.id)}`)
   }
 
+  function showAll() {
+    const text = query.trim()
+    if (text.length < MIN_QUERY_LENGTH) return
+    close()
+    inputRef.current?.blur()
+    navigate(`/search?q=${encodeURIComponent(text)}`)
+  }
+
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === 'Escape') {
       event.preventDefault()
@@ -97,16 +107,17 @@ export function GlobalSearch() {
       event.preventDefault()
       setOpen(true)
       if (!results.length) return
-      const step = event.key === 'ArrowDown' ? 1 : -1
-      setActiveIndex((i) => (i + step + results.length) % results.length)
+      setActiveIndex((i) => {
+        if (event.key === 'ArrowDown') return (i + 1) % results.length
+        return i <= 0 ? results.length - 1 : i - 1
+      })
       return
     }
-    if (event.key === 'Enter' && open && status === 'success') {
-      const choice = results[activeIndex] ?? results[0]
-      if (choice) {
-        event.preventDefault()
-        select(choice)
-      }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      const choice = open && !pending ? results[activeIndex] : undefined
+      if (choice) select(choice)
+      else showAll()
     }
   }
 
@@ -153,6 +164,7 @@ export function GlobalSearch() {
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)
+              setActiveIndex(-1)
               setOpen(true)
             }}
             onFocus={() => setOpen(true)}
@@ -205,10 +217,9 @@ export function GlobalSearch() {
                     role="option"
                     aria-selected={index === activeIndex}
                     onMouseDown={(e) => e.preventDefault()}
-                    onMouseEnter={() => setActiveIndex(index)}
                     onClick={() => select(result)}
                     className={cn(
-                      'flex cursor-pointer items-center gap-3 px-4 py-2.5',
+                      'flex cursor-pointer items-center gap-3 px-4 py-2.5 hover:bg-[var(--color-background-tertiary)]',
                       index === activeIndex && 'bg-[var(--color-background-tertiary)]',
                     )}
                   >
@@ -223,6 +234,16 @@ export function GlobalSearch() {
                 ))
               )}
             </ul>
+            {status === 'success' && results.length > 0 && !pending && (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={showAll}
+                className="w-full border-t border-[var(--color-border-subtle)] px-4 py-2 text-left text-xs font-medium text-[var(--color-brand)] hover:bg-[var(--color-background-tertiary)]"
+              >
+                See all results (Enter)
+              </button>
+            )}
             {status === 'success' && partial && !pending && (
               <p className="border-t border-[var(--color-border-subtle)] px-4 py-2 text-xs text-[var(--color-text-muted)]">
                 Fund results are temporarily unavailable; showing stocks only.

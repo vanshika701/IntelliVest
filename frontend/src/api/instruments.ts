@@ -20,7 +20,12 @@ export interface InstrumentSearchResponse {
 
 export interface InstrumentStats {
   rating: number | null
+  rating_source: string | null
+  analyst_rating: string | null
+  analyst_count: number | null
+  market_cap_crore: number | null
   aum_crore: number | null
+  aum_period: string | null
   min_sip: number | null
   min_investment: number | null
   placeholder_fields: string[]
@@ -34,12 +39,16 @@ export interface InstrumentDetail {
   symbol: string
   subtitle: string | null
   category: string | null
+  sector: { id: string; name: string } | null
   currency: string
   price: number | null
   price_date: string | null
   previous_price: number | null
   day_change: number | null
   day_change_pct: number | null
+  quote_fetched_at: string | null
+  quote_delay_minutes: number | null
+  market_open: boolean
   supports_intraday: boolean
   stats: InstrumentStats
 }
@@ -87,9 +96,22 @@ export interface DigestArticle {
   score: number
 }
 
+/** The instrument's own price change, from our data rather than the news. */
+export interface PriceMove {
+  as_of: string
+  day_pct: number | null
+  week_pct: number | null
+  month_pct: number | null
+  text: string
+}
+
 /** One combined summary of the top recent articles, plus those articles. */
 export interface NewsDigest {
   instrument_id: string
+  /** 'sector' = too little news about the instrument, so scope_name's news is shown. */
+  scope: 'instrument' | 'sector'
+  scope_name: string
+  price_move: PriceMove | null
   provider: string
   method: string
   max_words: number
@@ -105,8 +127,8 @@ export interface NewsDigest {
 const base = (id: string) => `/api/v1/instruments/${encodeURIComponent(id)}`
 
 export const instrumentsApi = {
-  search: (query: string, signal?: AbortSignal) =>
-    apiGet<InstrumentSearchResponse>(`/api/v1/instruments/search?q=${encodeURIComponent(query)}&limit=12`, { signal }),
+  search: (query: string, signal?: AbortSignal, limit = 12) =>
+    apiGet<InstrumentSearchResponse>(`/api/v1/instruments/search?q=${encodeURIComponent(query)}&limit=${limit}`, { signal }),
   detail: (id: string) => apiGet<InstrumentDetail>(base(id)),
   history: (id: string) => apiGet<PriceHistory>(`${base(id)}/history`),
   intraday: (id: string) => apiGet<PriceHistory>(`${base(id)}/intraday`),

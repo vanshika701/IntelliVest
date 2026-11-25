@@ -14,10 +14,9 @@ from datetime import UTC, date, datetime
 import yfinance as yf
 
 from app.core.cache import MISSING, TTLCache
-from app.core.constants import STOCK_UNIVERSE, TICKER_TO_COMPANY_NAME
+from app.core.constants import SECTORS, STOCK_UNIVERSE, TICKER_TO_COMPANY_NAME, TICKER_TO_SECTOR
 from app.data.prices_repository import get_close_series
-from app.services import mfapi_client
-from app.services.fund_meta_provider import fund_meta_provider
+from app.services import fund_meta_provider, mfapi_client, quote_service
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +117,24 @@ async def _daily_series(kind: str, ref: str) -> tuple[list[tuple[date, float]], 
     return scheme["navs"], scheme["meta"]
 
 
+def _sector(ticker: str) -> dict | None:
+    sector = TICKER_TO_SECTOR.get(ticker)
+    return {"id": sector, "name": SECTORS[sector][0]} if sector else None
+
+
+async def _quote_if_newer(kind: str, ref: str, price_date: date | None) -> dict | None:
+    quote = (await quote_service.get_quotes()).get(ref) if kind == "stock" else None
+    return quote if quote and (price_date is None or quote["date"] >= price_date) else None
+
+
+async def get_prices(instrument_id: str) -> tuple[list[tuple[date, float]], float | None]:
+    """Daily series (oldest first) and the latest price, without the metadata."""
+    kind, ref = parse_instrument_id(instrument_id)
+    series, _ = await _daily_series(kind, ref)
+    quote = await _quote_if_newer(kind, ref, series[-1][0] if series else None)
+    return series, quote["price"] if quote else (series[-1][1] if series else None)
+
+
 async def get_instrument(instrument_id: str) -> dict:
     kind, ref = parse_instrument_id(instrument_id)
     series, meta = await _daily_series(kind, ref)
@@ -131,7 +148,12 @@ async def get_instrument(instrument_id: str) -> dict:
         subtitle, category = meta.get("fund_house"), meta.get("scheme_category")
 
     price = series[-1][1] if series else None
+    price_date = series[-1][0] if series else None
     previous = series[-2][1] if len(series) >= 2 else None
+    quote = await _quote_if_newer(kind, ref, price_date)
+    if quote:
+        price, price_date = quote["price"], quote["date"]
+        previous = quote["previous_close"] or previous
     day_change = round(price - previous, 4) if price is not None and previous else None
     day_change_pct = round(day_change / previous * 100, 4) if day_change is not None else None
 
@@ -142,14 +164,24 @@ async def get_instrument(instrument_id: str) -> dict:
         "symbol": ref,
         "subtitle": subtitle,
         "category": category,
+        "sector": _sector(ref) if kind == "stock" else None,
         "currency": "INR",
         "price": price,
-        "price_date": series[-1][0] if series else None,
+        "price_date": price_date,
         "previous_price": previous,
         "day_change": day_change,
         "day_change_pct": day_change_pct,
+        "quote_fetched_at": quote["fetched_at"] if quote else None,
+        "quote_delay_minutes": quote_service.DELAY_MINUTES if quote else None,
+        "market_open": bool(quote and quote["market_open"]),
         "supports_intraday": kind == "stock",
-        "stats": await fund_meta_provider.get_meta(instrument_type, price),
+        "stats": await fund_meta_provider.get_meta(
+            instrument_type,
+            price,
+            ticker=ref if kind == "stock" else None,
+            isin=meta.get("isin_growth") or meta.get("isin_div_reinvestment"),
+            scheme_code=int(ref) if kind == "mf" else None,
+        ),
     }
 
 

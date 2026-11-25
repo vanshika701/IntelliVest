@@ -20,6 +20,9 @@ function article(overrides: Partial<DigestArticle>): DigestArticle {
 function digest(overrides: Partial<NewsDigestData> = {}): NewsDigestData {
   return {
     instrument_id: 'stock-INFY.NS',
+    scope: 'instrument',
+    scope_name: 'Infosys',
+    price_move: null,
     provider: 'extractive',
     method: 'tfidf-extractive@1.2.0',
     max_words: 100,
@@ -53,6 +56,22 @@ describe('NewsDigest', () => {
     expect(screen.getByText(/BusinessLine · 20 Nov 2026/)).toBeInTheDocument()
     expect(screen.getByText('Negative')).toBeInTheDocument()
     expect(screen.getByText('Positive')).toBeInTheDocument()
+  })
+
+  it('states the price move, even without news', () => {
+    const price_move = { as_of: '2026-11-25', day_pct: -1.2, week_pct: null, month_pct: null, text: 'Infosys: down 1.2% on the day.' }
+    const { unmount } = render(<NewsDigest data={digest({ price_move })} loading={false} error={null} onRetry={() => {}} />)
+    expect(screen.getByText('Infosys: down 1.2% on the day.')).toBeInTheDocument()
+    unmount()
+    render(<NewsDigest data={digest({ price_move, articles: [], summary: null })} loading={false} error={null} onRetry={() => {}} />)
+    expect(screen.getByText('Infosys: down 1.2% on the day.')).toBeInTheDocument()
+    expect(screen.getByText('No recent news found.')).toBeInTheDocument()
+  })
+
+  it('says when sector news stands in for the instrument', () => {
+    render(<NewsDigest data={digest({ scope: 'sector', scope_name: 'Gold' })} loading={false} error={null} onRetry={() => {}} />)
+    expect(screen.getByText(/so this covers Gold instead/)).toBeInTheDocument()
+    expect(screen.getByText('Top stories: Gold')).toBeInTheDocument()
   })
 
   it('says when the summary only had snippets and headlines to work with', () => {

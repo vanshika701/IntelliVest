@@ -11,7 +11,7 @@ function Probe() {
     <div>
       <span data-testid="loading">{String(isLoading)}</span>
       <span data-testid="user">{user ? user.email : 'none'}</span>
-      <button onClick={() => login('fake-token', { id: '1', email: 'a@b.com', full_name: 'A B' })}>
+      <button onClick={() => login('fake-token', { id: '1', email: 'a@b.com', full_name: 'A B', has_date_of_birth: true })}>
         login
       </button>
       <button onClick={logout}>logout</button>

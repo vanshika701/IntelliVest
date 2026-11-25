@@ -24,13 +24,17 @@ _Completed 2026-11-21 on branch `feature-instrument-search-invest`._
       step-up % can be edited and the plan updates live. Includes an affordability check
       against the monthly surplus, ₹-specific options (extend / reduce / cut), the
       short-horizon safer-instrument note, and a disclaimer.
-- [x] Optional LLM wording only: template text by default. A Claude rewrite is available if
+- [x] Optional LLM wording only: template text by default. A Groq or Gemini rewrite is available if
       enabled, and it is rejected if any number changes.
 - [x] Tests: SIP maths, rules engine, migration, API, explainer guard, and frontend
       validation and chart helpers.
 
-The original plan's single "financial health score" was not built. The ratios it would
-combine (savings rate, DTI, emergency-fund months) now exist in the rules engine.
+Added 2026-11-25: income sources in three groups (Job / Investments / Other), editing of
+transactions and goals, an error state, and a 0-100 health score (`services/health_score.py`):
+savings 20 points, emergency fund 15, debt 15, rent / housing 12, groceries 8, bills + transport +
+health 10, lifestyle spending 20. These are points out of 100, not shares of income. A spending
+part earns full marks up to its guideline maximum and none at twice it; parts not entered are left
+out. The weights and scales are our own choices, in `budget_config.py`.
 
 ## How it works
 
@@ -46,8 +50,10 @@ combine (savings rate, DTI, emergency-fund months) now exist in the rules engine
 | UI | `frontend/src/pages/BudgetingPage.tsx`, `frontend/src/components/budget/*` |
 
 **Definitions**
-- **Actual monthly spend** is the average over the calendar months, within the last 3
-  (including the current month), that have at least one expense logged.
+- **Actual monthly spend** is the average over the completed months, within the last 3, that
+  have expenses. The current month is used only when there is nothing else. A category with
+  nothing logged, or an unfinished month below the estimate, uses the estimate, and the UI says so.
+- **Goals** claim the surplus in the order they were created.
 - **Surplus** = income − (Needs + Wants). The Savings & Investments allocation counts as
   available for goal SIPs.
 - **Savings rate** (50/30/20) = surplus ÷ income.
@@ -62,7 +68,7 @@ combine (savings rate, DTI, emergency-fund months) now exist in the rules engine
 
 | Item | Default | Basis |
 |---|---|---|
-| 50/30/20 | Needs ≤ 50%, Wants ≤ 30%, Savings ≥ 20% of take-home | Warren & Tyagi, *All Your Worth*; widely restated (Experian, U.S. Bank) |
+| 50/30/20 | Needs ≤ 50%, Wants ≤ 30%, Savings ≥ 20% of take-home | Warren & Tyagi, *All Your Worth*; confirmed on Experian; split also on U.S. Bank |
 | Housing & Rent | 25–35% | ~30% rent-burden line / "28" of the 28/36 rule; widened for Indian metros |
 | Groceries | 8–12% | rule of thumb |
 | Food & Dining Out | 3–6% | rule of thumb |
@@ -73,37 +79,57 @@ combine (savings rate, DTI, emergency-fund months) now exist in the rules engine
 | Entertainment & Leisure | 3–5% | rule of thumb |
 | Travel | 2–5% | rule of thumb |
 | Education | no benchmark | "as needed" |
-| EMI / Debt | ≤ 30%; **critical above 36%** | 28/36 rule caps total debt at 36% of *gross*; Indian advisers suggest ≤ 30–40% of take-home (bank FOIR allows 40–55% of gross). We use take-home, which is conservative |
+| EMI / Debt | ≤ 30%; **critical above 36%** | 28/36 rule caps total debt at 36% of *gross*; Finnovate calls 25–35% of take-home safe (bank FOIR allows 40–55% of gross). We use take-home, which is conservative |
 | Savings & Investments | ≥ 20% | 50/30/20 |
 | Other / Miscellaneous | no benchmark | — |
-| Emergency fund | 3–6 months of essentials | standard guidance (American Express, Empower) |
-| Return ≤ 3 years | 7% / yr | RD / short-duration debt yields ~6–8% |
-| Return 3–5 years | 9% / yr | hybrid / balanced funds |
-| Return > 5 years | 11% / yr | long-run diversified equity ~10–12% |
+| Emergency fund | 3–6 months of essentials | Empower |
+| Return ≤ 3 years | 6% / yr | just under a 3-year SBI FD (6.3%) |
+| Return 3–5 years | 8% / yr | our own value between the other two; no source found |
+| Return > 5 years | 11% / yr | below the Nifty 50 TRI 20-year CAGR of about 12.4% |
 | Step-up | 10% / yr | common default |
 | Bucket of "Other" | Wants | conservative (counts against discretionary) |
 | Bucket of "Education", "EMI" | Needs | — |
 
 The per-category ranges are not from one authority. They are starting points chosen to sit
-inside the 50/30 split. Every figure is illustrative and is not financial advice. The UI
+inside the 50/30 split.
+
+**Source check (2026-11-25).** Pages opened and read: Experian, U.S. Bank, Empower, Bankrate,
+Finnovate, MoSPI's HCES 2023-24 press note, Scripbox (SBI FD) and Bajaj AMC (Nifty 50 TRI, quoting
+NSE). Corrected: Finnovate says 25–35% of take-home, not 30–40%; the 7% and 9% return defaults were
+not supported. Could not be opened: American Express, Investopedia, HUD, SBI and NSE's own pages.
+MoSPI's urban averages (food about 40% of spending, conveyance 8.46%, rent 6.58%) are not used as
+limits: they are shares of spending, not income, and the rent average includes home owners.
+
+Every figure is illustrative and is not financial advice. The UI
 says so on the Improve and Goals tabs.
 
 ## Optional LLM explanations
 
-These are off by default (`BUDGET_EXPLAINER_PROVIDER=template`). To enable them:
+Off unless a key is set. With a key, an "Explain in plain words" button appears under
+Budgeting > Improve and on each saved goal. In `backend/.env`:
 
 ```bash
-pip install anthropic
-# backend/.env
-BUDGET_EXPLAINER_PROVIDER=anthropic
-ANTHROPIC_API_KEY=...
-BUDGET_EXPLAINER_MODEL=claude-opus-5-5   # any Claude model id
+BUDGET_EXPLAINER_PROVIDER=groq        # or gemini
+GROQ_API_KEY=...                      # free: https://console.groq.com/keys
+GEMINI_API_KEY=...                    # free: https://aistudio.google.com/apikey
 ```
 
-When enabled, an "Explain in plain words" button appears. The server recomputes everything
-and sends only the engine's own sentences to the model. If the reply contains any number
-that wasn't in those sentences, the template text is returned instead. The same happens if
-the model refuses, errors, or the SDK is missing.
+| Provider | Free tier (checked 2026-11-25) | Use of our data |
+|---|---|---|
+| **Groq** (default), `openai/gpt-oss-120b` | Yes: 30 requests/min, 1,000/day | Not retained by default; up to 30 days for reliability or abuse checks |
+| Gemini, `gemini-3.5-flash-lite` | Yes; limits shown only in AI Studio | Free-tier content is used to improve Google's products |
+| Claude | Trial credits only | - |
+| OpenAI (GPT) | Lists a free tier, but no free models or limits | - |
+| xAI (Grok) | None listed on its models page | - |
+
+Groq is the default because the text describes someone's finances and Groq has the better data
+terms. Sources: console.groq.com/docs/rate-limits and /docs/your-data,
+aistudio.google.com/docs/pricing, platform.claude.com pricing, developers.openai.com rate limits,
+docs.x.ai/docs/models.
+
+The server recomputes everything and sends only the engine's own sentences. If the reply contains a
+number that wasn't in them, reorders numbers or writes them as words, or the call fails, the
+template text is returned instead.
 
 ## Running and testing
 
@@ -112,7 +138,7 @@ docker compose up -d                       # MongoDB
 cd backend && ../.venv/Scripts/python -m uvicorn app.main:app --reload   # migration runs on startup
 cd frontend && npm run dev                 # open /budget
 
-cd backend && ../.venv/Scripts/python -m pytest -q    # 218 tests
+cd backend && ../.venv/Scripts/python -m pytest -q
 cd frontend && npm test && npx tsc -b && npm run lint
 ```
 

@@ -28,7 +28,7 @@ from app.services.summarization.textutils import count_words, trim_to_words
 
 # Bump whenever output can change: it is part of the summary cache key and
 # is recorded with every logged summary.
-ALGORITHM_VERSION = "1.2.0"
+ALGORITHM_VERSION = "1.5.0"
 
 
 @dataclass(frozen=True)
@@ -41,6 +41,7 @@ class ExtractiveConfig:
     position_bonus: tuple[float, ...] = (0.30, 0.20, 0.10)  # sentences 1, 2, 3
     number_bonus: float = 0.10
     instrument_mention_bonus: float = 0.15
+    movement_bonus: float = 0.20  # says something rose, fell, was won, cut...
     min_sentence_words: int = 6
     max_sentence_words: int = 45
     short_sentence_multiplier: float = 0.5
@@ -48,6 +49,12 @@ class ExtractiveConfig:
     quote_multiplier: float = 0.7
     question_multiplier: float = 0.6  # "Planning to visit a bank today?" teasers
     boilerplate_multiplier: float = 0.1
+    # Opens by pointing at an earlier sentence ("Her work...", "The company...").
+    dangling_opener_multiplier: float = 0.5
+    # Multi-document: words a sentence must share with its own headline.
+    min_headline_overlap: int = 2
+    # Score is multiplied by 1 + this x the share of headline words covered.
+    headline_match_bonus: float = 0.6
     # Step 6 — selection. Near-duplicate if token Jaccard >= threshold, OR
     # (paraphrases across articles) they share >= N content words that make
     # up >= the given share of the shorter sentence.
@@ -76,22 +83,28 @@ STOP_WORDS = frozenset(
     """.split()  # noqa: SIM905 — a word block is far easier to read and edit than a 150-item list
 )
 
+# Words in instrument names that say nothing about which instrument it is.
+_GENERIC_NAME_WORDS = frozenset(
+    ["fund", "funds", "etf", "fof", "scheme", "plan", "growth", "company", "limited", "ltd", "industries", "bank", "india"]
+)
+
 # Step 1: lines/sentences that are site furniture, not news.
 _BOILERPLATE = re.compile(
     r"(cookie|subscribe|sign up|sign in|log in|newsletter|read more|also read|click here|"
     r"download (the|our) app|follow us|advertisement|sponsored|all rights reserved|©|"
     r"terms of (use|service)|privacy policy|share this|whatsapp channel|catch all the|"
-    r"for more (news|updates)|stay updated|disclaimer:)",
+    r"for more (news|updates)|stay updated|disclaimer:|sebi-registered|this article has been written|"
+    r"latest news,|is a (markets? )?(reporter|journalist|correspondent)|schemes managed by|key takeaways|live updates related|\{\{|find here all|known for its innovative)",
     re.IGNORECASE,
 )
 
-# Step 2: abbreviations whose trailing dot never ends a sentence. Company
-# suffixes (Ltd., Inc.) are not listed: they often do end a sentence, and
-# when they don't, the next word is lowercase and won't trigger a split.
+# Step 2: abbreviations whose trailing dot is not taken as a sentence end.
+# Company suffixes sometimes do end one; joining two sentences is better
+# than cutting one short at "... Vehicles Ltd."
 _ABBREVIATIONS = (
     "Rs", "Mr", "Mrs", "Ms", "Dr", "Prof", "Sr", "Jr", "St", "No", "Nos", "vs", "approx",
     "Govt", "Pvt", "Dept", "Jan", "Feb", "Mar", "Apr", "Jun", "Jul", "Aug", "Sep", "Sept",
-    "Oct", "Nov", "Dec", "Fig", "Rev", "Gen", "Col", "Lt", "Capt", "Hon",
+    "Oct", "Nov", "Dec", "Fig", "Rev", "Gen", "Col", "Lt", "Capt", "Hon", "Ltd", "Inc", "Co", "Corp", "Bros", "Cos", "Cr", "Mn", "Bn",
 )
 _DOT = "․"  # placeholder for protected dots, restored after splitting
 _ABBREV_RE = re.compile(r"\b(" + "|".join(_ABBREVIATIONS) + r")\.", re.IGNORECASE)
@@ -101,10 +114,25 @@ _SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])[\"'”’)\]]*\s+(?=[\"'“‘(\[]?
 
 _MARKDOWN_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]*\)")
 _URL_RE = re.compile(r"\b(?:https?://|www\.)\S+", re.IGNORECASE)
+# Cut short by the search engine, or ending on a colon that introduces something else.
+_CUT_OFF = re.compile(r"(\.\.\.|…|:)[\"'”’)\]]*$")
 _ENDS_SENTENCE = re.compile(r"[.!?:;\"'”’)]$")
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+(?:[.'’][a-z0-9]+)*")
 _NUMBER_RE = re.compile(r"(\d|₹|\brs\b|%|\bcrore\b|\blakh\b|\bbillion\b|\bmillion\b)", re.IGNORECASE)
+_DANGLING_OPENER = re.compile(
+    r"^(he|she|it|they|his|her|its|their|this|that|these|those|such|however|meanwhile|"
+    r"the (company|firm|stock|bank|alliance|deal|move|purchases?|plants?|selloff|broker(age)?))\b",
+    re.IGNORECASE,
+)
+# Page text often loses the space between paragraphs ("remain open.According").
+_MISSING_SPACE = re.compile(r"(?<=[a-z0-9%)][.!?])(?=[A-Z][a-z])")
+_MOVEMENT_RE = re.compile(
+    r"\b(rose|risen|rises|gained|gains|jumped|surged|soared|rallied|climbed|rebounded|advanced|fell|fallen|falls|"
+    r"dropped|slid|slumped|plunged|crashed|declined|tumbled|lost|raised|cut|reported|posted|won|signed|acquired|"
+    r"increased|decreased|reduced|upgraded|downgraded|announced)\b",
+    re.IGNORECASE,
+)
 _QUOTE_RE = re.compile(r"[\"“”]")
 
 
@@ -113,13 +141,13 @@ _QUOTE_RE = re.compile(r"[\"“”]")
 def clean_text(raw: str | None) -> str:
     if not raw:
         return ""
-    text = html.unescape(raw)
+    text = html.unescape(html.unescape(raw))  # some feeds escape twice
     if "<" in text:
         text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", text, flags=re.IGNORECASE | re.DOTALL)
         text = re.sub(r"<br\s*/?>|</p>|</div>|</li>", "\n", text, flags=re.IGNORECASE)
         text = re.sub(r"<[^>]+>", " ", text)
     text = _MARKDOWN_LINK_RE.sub(r"\1", text)
-    text = _URL_RE.sub(" ", text)
+    text = _URL_RE.sub(" ", text).replace("**", "")
     lines = [line.strip() for line in text.splitlines()]
     kept = [line for line in lines if line and not (_BOILERPLATE.search(line) and count_words(line) < 30)]
     # A line without closing punctuation is a heading or caption; end it so
@@ -127,7 +155,7 @@ def clean_text(raw: str | None) -> str:
     # into the next one.
     if len(kept) > 1:
         kept = [line if _ENDS_SENTENCE.search(line) else f"{line}." for line in kept]
-    return re.sub(r"\s+", " ", " ".join(kept)).strip()
+    return _MISSING_SPACE.sub(" ", re.sub(r"\s+", " ", " ".join(kept)).strip())
 
 
 # --- Step 2 -----------------------------------------------------------------
@@ -194,6 +222,8 @@ def score_sentence(
         score += config.position_bonus[index]
     if _NUMBER_RE.search(sentence):
         score += config.number_bonus
+    if _MOVEMENT_RE.search(sentence):
+        score += config.movement_bonus
     if instrument_tokens and instrument_tokens & set(tokens):
         score += config.instrument_mention_bonus
 
@@ -208,6 +238,8 @@ def score_sentence(
         score *= config.question_multiplier
     if _BOILERPLATE.search(sentence):
         score *= config.boilerplate_multiplier
+    if _DANGLING_OPENER.search(sentence):
+        score *= config.dangling_opener_multiplier
     return score
 
 
@@ -278,7 +310,11 @@ def document_sentences(documents: tuple[str, ...] | list[str]) -> tuple[list[str
     sentences: list[str] = []
     positions: list[int] = []
     for document in documents:
-        doc_sentences = [s for s in split_sentences(clean_text(document)) if not _BOILERPLATE.search(s)]
+        doc_sentences = [
+            s
+            for s in split_sentences(clean_text(document))
+            if not _BOILERPLATE.search(s) and not _CUT_OFF.search(s)
+        ]
         sentences.extend(doc_sentences)
         positions.extend(range(len(doc_sentences)))
     return sentences, positions
@@ -308,10 +344,39 @@ class ExtractiveSummarizer(Summarizer):
             latency_ms=round((time.perf_counter() - started) * 1000, 3),
         )
 
+    def _match_headlines(self, scores, token_sets, documents, document_ids, titles) -> list[float]:
+        """Favour sentences that cover their own headline and zero those that
+        share too few words with it.
+        A document with no matching sentence keeps its lead."""
+        if not titles or len(titles) != len(documents):
+            return scores
+        title_tokens = [set(tokenize(clean_text(t))) for t in titles]
+        needed = [min(self.config.min_headline_overlap, len(t)) for t in title_tokens]
+        on_topic = [len(token_sets[i] & title_tokens[d]) >= needed[d] for i, d in enumerate(document_ids)]
+        matched = {d for i, d in enumerate(document_ids) if on_topic[i]}
+        leads = {document_ids.index(d) for d in set(document_ids) - matched}
+        out = []
+        for i, score in enumerate(scores):
+            if not (on_topic[i] or i in leads):
+                out.append(0.0)
+                continue
+            title = title_tokens[document_ids[i]]
+            coverage = len(token_sets[i] & title) / len(title) if title else 0.0
+            out.append(score * (1 + self.config.headline_match_bonus * coverage))
+        return out
+
     def _summarize_text(self, item: SummaryInput) -> str:
         max_words = item.max_words
         title = clean_text(item.title)
-        sentences, positions = document_sentences(item.documents or (item.text,))
+        documents = item.documents or (item.text,)
+        titles = item.document_titles
+        # Documents that clean to nothing produce no sentences; drop them (and
+        # their titles) so document numbering stays aligned.
+        kept = [i for i, d in enumerate(documents) if document_sentences((d,))[0]]
+        if len(titles) == len(documents):
+            titles = tuple(titles[i] for i in kept)
+        documents = tuple(documents[i] for i in kept)
+        sentences, positions = document_sentences(documents)
         # Step 9: nothing usable -> headline. A short snippet still goes
         # through selection (drops duplicates) and comes out ~unchanged.
         if not sentences:
@@ -319,8 +384,9 @@ class ExtractiveSummarizer(Summarizer):
 
         sentence_tokens = [tokenize(s) for s in sentences]
         token_sets = [set(t) for t in sentence_tokens]
-        instrument_tokens = set(tokenize(item.instrument_name or ""))
-        weights = word_weights(sentence_tokens, set(tokenize(title)), instrument_tokens, self.config)
+        instrument_tokens = set(tokenize(item.instrument_name or "")) - _GENERIC_NAME_WORDS
+        title_tokens = set(tokenize(title)) - _GENERIC_NAME_WORDS
+        weights = word_weights(sentence_tokens, title_tokens, instrument_tokens, self.config)
         scores = [
             score_sentence(positions[i], s, sentence_tokens[i], weights, instrument_tokens, self.config)
             for i, s in enumerate(sentences)
@@ -329,12 +395,16 @@ class ExtractiveSummarizer(Summarizer):
         multi_document = len(item.documents) > 1
         # A sentence's position resets to 0 at the start of each document.
         document_ids = [sum(1 for p in positions[: k + 1] if p == 0) - 1 for k in range(len(positions))]
+        scores = self._match_headlines(scores, token_sets, documents, document_ids, titles)
         picked = select_sentences(
             sentences, scores, token_sets, max_words, self.config, document_ids if multi_document else None
         )
         if not picked:
-            # Every sentence alone is over the limit: trim the best one (step 8).
+            # Every sentence alone is over the limit: use its headline rather
+            # than cutting mid-sentence, or trim it if there is none (step 8).
             best = max(range(len(sentences)), key=lambda k: scores[k])
+            if titles and len(titles) == len(documents):
+                return trim_to_words(end_sentence(clean_text(titles[document_ids[best]])), max_words)
             return trim_to_words(sentences[best], max_words)
         # Step 8: the selection already fits, but enforce the limit in code regardless.
         return trim_to_words(" ".join(end_sentence(sentences[i]) for i in picked), max_words)

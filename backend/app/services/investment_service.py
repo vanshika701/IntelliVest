@@ -23,9 +23,9 @@ IST = ZoneInfo("Asia/Kolkata")
 # TODO(mock): the app has no real brokerage/folio accounts; this demo list
 # stands in for them.
 DEMO_ACCOUNTS = [
-    {"id": "demo-folio-1", "label": "MF folio 1029384756 (Demo)", "kind": "folio", "supports": ["MF"]},
-    {"id": "demo-folio-new", "label": "New folio (Demo)", "kind": "folio", "supports": ["MF"]},
-    {"id": "demo-demat-1", "label": "Demat ••••4821 (Demo)", "kind": "demat", "supports": ["STOCK", "ETF"]},
+    {"id": "demo-folio-1", "label": "MF folio 1029384756", "kind": "folio", "supports": ["MF"]},
+    {"id": "demo-folio-new", "label": "New folio", "kind": "folio", "supports": ["MF"]},
+    {"id": "demo-demat-1", "label": "Demat ••••4821", "kind": "demat", "supports": ["STOCK", "ETF"]},
 ]
 
 _PENDING_STATUS = {"one_time": "pending_payment", "sip": "pending_mandate"}
@@ -55,6 +55,15 @@ def next_installment_date(day_of_month: int, today: date) -> date:
         return candidate
     first_of_next_month = (today.replace(day=28) + timedelta(days=4)).replace(day=1)
     return first_of_next_month.replace(day=day_of_month)
+
+
+def installment_dates(sip: dict, today: date) -> list[date]:
+    """Due dates up to today. The stored date is the first instalment."""
+    due, out = date.fromisoformat(sip["next_installment_date"]), []
+    while due <= today:
+        out.append(due)
+        due = next_installment_date(sip["day_of_month"], due)
+    return out
 
 
 async def _create(user_id: str, kind: str, instrument_id: str, amount: float, account_id: str, **extra) -> dict:
@@ -126,4 +135,10 @@ async def record_payment_result(
 
 
 async def list_investments(user_id: str) -> list[dict]:
-    return await list_user_investments(user_id)
+    today = datetime.now(IST).date()
+    items = await list_user_investments(user_id)
+    for item in items:
+        # Stored once, as the first instalment; show the upcoming one.
+        if item["status"] == "active" and item["next_installment_date"] <= today.isoformat():
+            item["next_installment_date"] = next_installment_date(item["day_of_month"], today).isoformat()
+    return items

@@ -14,6 +14,7 @@ from app.data.watchlist_repository import (
     remove_watchlist_item,
     update_watchlist_item,
 )
+from app.services import quote_service
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +72,12 @@ async def get_enriched_watchlist(user_id: str) -> list[dict]:
     price_map = await _get_latest_prices(tickers)
 
     enriched = []
+    quotes = await quote_service.get_quotes()
     for item in items:
         item["id"] = str(item.pop("_id"))
         ticker_prices = price_map.get(item["ticker"], {})
+        if quote := quotes.get(item["ticker"]):
+            ticker_prices = {**quote, "latest_price": quote["price"]}
         item["latest_price"] = ticker_prices.get("latest_price")
         item["previous_close"] = ticker_prices.get("previous_close")
         item["change_pct"] = ticker_prices.get("change_pct")

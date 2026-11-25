@@ -52,3 +52,11 @@ async def update_investment_if_status(
 async def list_user_investments(user_id: str, limit: int = 100) -> list[dict]:
     cursor = get_investments_collection().find({"user_id": user_id}).sort("created_at", -1).limit(limit)
     return [_serialize(doc) for doc in await cursor.to_list(length=limit)]
+
+
+async def list_held_investments(user_id: str) -> list[dict]:
+    """Paid one-time orders and active SIPs, oldest first."""
+    cursor = get_investments_collection().find(
+        {"user_id": user_id, "status": {"$in": ["completed", "active"]}}
+    ).sort("created_at", 1)
+    return [_serialize(doc) for doc in await cursor.to_list(length=None)]

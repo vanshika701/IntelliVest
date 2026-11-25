@@ -13,6 +13,8 @@ from app.core.scheduler import start_scheduler, stop_scheduler
 from app.data.indexes import ensure_indexes
 from app.data.mongo import close_mongo_connection, connect_to_mongo
 from app.services.category_migration import migrate_expense_categories
+from app.services.price_date_migration import migrate_price_dates
+from app.services.sector_service import refresh_sectors
 from app.services.sentiment_service import warm_up_model
 
 configure_logging()
@@ -35,15 +37,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await ensure_indexes()
     # Phase 8: map old free-text / ML categories onto the fixed list (idempotent).
     await migrate_expense_categories()
+    await migrate_price_dates()
     warm_up_task = None
+    sector_task = None
     if settings.enable_scheduler:
         start_scheduler()
         # Off the event loop and not awaited: the API is usable immediately.
         warm_up_task = asyncio.create_task(asyncio.to_thread(warm_up_model))
+        # Sector rollups from what's already stored, before the first job runs.
+        sector_task = asyncio.create_task(refresh_sectors())
     logger.info("%s starting up (env=%s)", settings.app_name, settings.environment)
     yield
     if warm_up_task is not None and not warm_up_task.done():
         warm_up_task.cancel()
+    if sector_task is not None and not sector_task.done():
+        sector_task.cancel()
     if settings.enable_scheduler:
         stop_scheduler()
     await close_mongo_connection()

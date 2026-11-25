@@ -18,6 +18,7 @@ from app.core.budget_config import (
     CATEGORY_BY_ID,
     FALLBACK_CATEGORY_ID,
     INCOME_CATEGORY_ID,
+    INCOME_SOURCES,
 )
 from app.data.collections import get_expenses_collection
 
@@ -93,6 +94,39 @@ def map_legacy_category(label: str | None, expense_type: str = "expense") -> str
                 break
 
     return FALLBACK_CATEGORY_ID if mapped == INCOME_CATEGORY_ID else mapped
+
+
+_INCOME_LABEL_RULES: list[tuple[str, str]] = [
+    (r"bonus|incentive", "bonus"),
+    (r"commission|overtime", "commission"),
+    (r"part[- ]?time", "part_time"),
+    (r"stipend|internship", "stipend"),
+    (r"salary|wages?|payroll", "salary"),
+    (r"dividends?", "dividends"),
+    (r"interest", "interest"),
+    (r"capital gains?", "capital_gains"),
+    (r"rent|rental", "rental"),
+    (r"freelanc\w*|gig", "freelance"),
+    (r"business", "business"),
+    (r"royalt\w*", "content_royalties"),
+    (r"pension", "pension"),
+    (r"scholarship|benefits?|subsidy", "scholarship_benefits"),
+    (r"gifts?", "gift_family"),
+    (r"refunds?|cashback", "refund_cashback"),
+]
+
+
+def map_income_source(label: str | None) -> str:
+    """Income source id for a statement's category label; like the expense
+    mapping, it never looks at the description."""
+    text = (label or "").strip().lower()
+    for source in INCOME_SOURCES:
+        if text in (source.id, source.name.lower()):
+            return source.id
+    for pattern, source_id in _INCOME_LABEL_RULES:
+        if re.search(rf"\b(?:{pattern})\b", text):
+            return source_id
+    return "other_income"
 
 
 def is_valid_spending_category(category_id: str) -> bool:

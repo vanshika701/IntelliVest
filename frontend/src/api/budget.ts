@@ -15,7 +15,42 @@ export interface BudgetCategory {
   note: string | null
 }
 
+export type IncomeGroupId = 'job' | 'investments' | 'other'
+
+export interface IncomeGroup {
+  id: IncomeGroupId
+  name: string
+  sources: { id: string; name: string }[]
+}
+
+export interface Transaction {
+  id: string
+  amount: number
+  description: string
+  category: string
+  expense_type: 'income' | 'expense'
+  income_source: string | null
+  date: string
+}
+
+export interface TransactionSummary {
+  total_income: number
+  total_expense: number
+  net: number
+  by_category: Record<string, number>
+  by_income_source: Record<string, number>
+}
+
+export interface HealthScore {
+  score: number | null
+  band: string | null
+  complete: boolean
+  components: { id: string; name: string; score: number | null; weight: number; detail: string }[]
+  message: string | null
+}
+
 export interface BudgetMeta {
+  income_groups: IncomeGroup[]
   categories: BudgetCategory[]
   bucket_targets_pct: Record<Bucket, number>
   emergency_fund_months: [number, number]
@@ -74,6 +109,7 @@ export interface EmergencyFund {
 
 export interface BudgetAnalysis {
   basis: 'actual' | 'estimated'
+  filled_from_estimate: string[]
   income: number
   total_spend: number
   surplus: number
@@ -99,7 +135,7 @@ export interface BudgetOverview {
   has_profile: boolean
   profile: BudgetProfile | null
   profile_warnings: string[]
-  actual: { has_data: boolean; months: string[]; window_start: string }
+  actual: { has_data: boolean; partial: boolean; months: string[]; window_start: string }
   comparison: ComparisonRow[]
   analysis: BudgetAnalysis | null
 }
@@ -123,7 +159,7 @@ export interface GoalInput {
 }
 
 export interface GoalOption {
-  type: 'extend_timeline' | 'reduce_target' | 'free_up'
+  type: 'step_up' | 'extend_timeline' | 'reduce_target' | 'free_up'
   message: string
   horizon_months?: number
   monthly?: number
@@ -177,7 +213,10 @@ export const budgetApi = {
   improve: (focus: string, basis: Basis = 'auto') =>
     apiGet<ImproveResult>(`/api/v1/budget/improve?focus=${encodeURIComponent(focus)}&basis=${basis}`),
   goals: () => apiGet<GoalsList>('/api/v1/budget/goals'),
-  previewGoal: (body: GoalInput) => apiPost<GoalPlan>('/api/v1/budget/goals/preview', body),
+  previewGoal: (body: GoalInput, goalId?: string | null) =>
+    apiPost<GoalPlan>(`/api/v1/budget/goals/preview${goalId ? `?goal_id=${encodeURIComponent(goalId)}` : ''}`, body),
+  updateGoal: (id: string, body: GoalInput) => apiPut<SavedGoal>(`/api/v1/budget/goals/${encodeURIComponent(id)}`, body),
+  healthScore: () => apiGet<HealthScore>('/api/v1/budget/health-score'),
   createGoal: (body: GoalInput) => apiPost<SavedGoal>('/api/v1/budget/goals', body),
   deleteGoal: (id: string) => apiDelete(`/api/v1/budget/goals/${encodeURIComponent(id)}`),
   explain: (body: { kind: 'improve' | 'goal'; focus?: string; goal_id?: string; basis?: Basis }) =>

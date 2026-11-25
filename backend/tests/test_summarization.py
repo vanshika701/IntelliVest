@@ -19,7 +19,12 @@ from app.services.summarization.extractive import (
     word_weights,
 )
 from app.services.summarization.ml import MlSummarizer
-from app.services.summarization.textutils import count_words, trim_to_words
+from app.services.summarization.textutils import (
+    complete_sentences,
+    count_words,
+    first_words,
+    trim_to_words,
+)
 
 ARTICLE = (
     "Infosys reported a 7.5% rise in net profit to Rs. 7,364 crore for the September quarter, beating estimates. "
@@ -117,7 +122,7 @@ def test_word_weights_boost_title_and_instrument_words() -> None:
 def test_score_sentence_applies_position_number_and_penalties() -> None:
     weights = {"profit": 1.0, "rose": 0.5, "company": 0.5, "stated": 0.2, "result": 0.3, "today": 0.2}
     tokens = ["profit", "rose", "company", "stated", "result", "today"]
-    sentence = "The company stated profit rose in the result today."
+    sentence = "Company profit rose, the stated result showed today."
     first = score_sentence(0, sentence, tokens, weights, set())
     later = score_sentence(5, sentence, tokens, weights, set())
     assert first == pytest.approx(later + CONFIG.position_bonus[0])
@@ -376,3 +381,113 @@ def test_evaluate_uses_logged_documents_for_multi_article_records() -> None:
     record = {"url": "digest-1", "title": "Reliance", "article_text": "\n".join(DOCS), "documents": list(DOCS)}
     report = evaluate(get_summarizer("extractive"), [record], 100)
     assert report["failures"] == 0 and report["word_limit_compliance"] == 1.0
+
+
+def test_first_words_keeps_headings_separate_and_drops_the_cut_off_sentence() -> None:
+    text = "Infosys will invest $10 million.\nJapan Expansion\nIt gets a board seat. The bank may sustain the momentum."
+    assert first_words(text, 14) == "Infosys will invest $10 million.\nJapan Expansion\nIt gets a board seat."
+    assert "Japan Expansion." in split_sentences(clean_text(first_words(text, 14)))
+
+
+def test_first_words_cut_exactly_at_a_sentence_end_and_fallbacks() -> None:
+    assert first_words("One two three. Four five six.", 3) == "One two three."
+    assert first_words("no punctuation here at all", 3) == "no punctuation here"
+    assert first_words("Up. then one very long unfinished sentence follows", 6) == "Up. then one very long unfinished"
+    assert first_words("short text", 5) == "short text"
+    assert first_words("anything", 0) == ""
+
+
+def test_sentences_unrelated_to_their_own_headline_are_left_out() -> None:
+    bio = "Her work aims to drive impact and her story on illegal gold imports caught the government's attention."
+    news = "SBI Mutual Fund estimates gold is trading 72% above its fair value."
+    result = ExtractiveSummarizer().summarize(
+        SummaryInput(
+            title="SBI Gold Fund",
+            text="",
+            instrument_name="SBI Gold Fund",
+            documents=(f"{bio} Fund managers raise gold and silver exposure after the correction.", news),
+            document_titles=(
+                "Fund managers look to raise gold, silver exposure",
+                "Gold trading 72% above fair value: Should investors book profits?",
+            ),
+        )
+    )
+    assert "Her work" not in result.summary
+    assert "Fund managers raise gold" in result.summary and "72% above" in result.summary
+
+
+def test_headline_matching_stays_aligned_when_a_document_cleans_to_nothing() -> None:
+    result = ExtractiveSummarizer().summarize(
+        SummaryInput(
+            title="Infosys", text="", documents=("", "Infosys wins a large banking deal in Europe."),
+            document_titles=("Unrelated headline about cricket", "Infosys wins banking deal"),
+        )
+    )
+    assert result.summary == "Infosys wins a large banking deal in Europe."
+
+
+def test_clean_text_restores_missing_sentence_space_and_strips_bold() -> None:
+    assert clean_text("Banks remain open.According to RBI, **all** branches work.") == (
+        "Banks remain open. According to RBI, all branches work."
+    )
+
+
+def test_headline_match_outranks_a_side_detail_from_the_same_article() -> None:
+    doc = (
+        "Some fund managers are raising gold and silver exposure after the price correction. "
+        "Kotak Mutual Fund cut its allocation from 19% to 12.1% and DSP cut exposure from 14.7% to 11%."
+    )
+    other = "SBI Mutual Fund estimates gold is trading 72% above its fair value."
+    result = ExtractiveSummarizer().summarize(
+        SummaryInput(
+            title="SBI Gold Fund", text="", instrument_name="SBI Gold Fund", documents=(doc, other),
+            document_titles=(
+                "Fund managers look to raise gold, silver exposure as price correction revives interest",
+                "Gold trading 72% above fair value",
+            ),
+        )
+    )
+    assert "raising gold and silver" in result.summary and "Kotak" not in result.summary
+
+
+def test_generic_words_in_a_fund_name_do_not_win() -> None:
+    docs = (
+        "Axis and SBI are warming to gold again after a steep correction. Kotak Mutual Fund cut one fund from 19% to 12.1% of fund assets.",
+        "Central banks bought more gold in October.",
+    )
+    result = ExtractiveSummarizer().summarize(
+        SummaryInput(title="SBI Gold Fund", text="", instrument_name="SBI Gold Fund", documents=docs)
+    )
+    assert "warming to gold" in result.summary and "Kotak" not in result.summary
+
+
+def test_cut_off_sentences_are_never_used() -> None:
+    docs = ("Maruti raised prices by 0.31% this month. Tata Motors will also raise prices of its cars and SUVs ...",
+            "Small-cap stock has a history of stock splits and bonus shares …")
+    result = ExtractiveSummarizer().summarize(
+        SummaryInput(title="Maruti", text="", instrument_name="Maruti", documents=docs)
+    )
+    assert result.summary == "Maruti raised prices by 0.31% this month."
+
+
+def test_complete_sentences_drops_only_the_unfinished_tail() -> None:
+    assert complete_sentences("Gold fell 3%. As worries grow, should investors ...") == "Gold fell 3%."
+    assert complete_sentences("Silver fell to Rs. 1.50 lakh. It may ...") == "Silver fell to Rs. 1.50 lakh."
+    assert complete_sentences("The stock trades near Rs. 500 and ...") == ""
+    assert complete_sentences("HDFC Bank rose 3.9%.") == "HDFC Bank rose 3.9%."
+    assert complete_sentences("") == ""
+
+
+def test_overlong_sentence_in_a_digest_uses_its_headline_instead_of_a_cut_sentence() -> None:
+    long = "Gold fell because " + " and ".join(f"reason {i} weighed on gold" for i in range(40)) + "."
+    result = ExtractiveSummarizer().summarize(
+        SummaryInput(title="Gold", text="", documents=(long, ""), document_titles=("Gold falls 3%", "x"))
+    )
+    assert result.summary == "Gold falls 3%."
+
+
+def test_company_suffixes_do_not_cut_a_sentence_short() -> None:
+    assert split_sentences("Tata Motors Passenger Vehicles Ltd. (TMPV) will raise prices. Titan Co. Managing Director spoke.") == [
+        "Tata Motors Passenger Vehicles Ltd. (TMPV) will raise prices.",
+        "Titan Co. Managing Director spoke.",
+    ]

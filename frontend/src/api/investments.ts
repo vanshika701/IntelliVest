@@ -39,7 +39,28 @@ export interface PaymentResultIn {
   failure_reason?: string | null
 }
 
+export interface Holding {
+  instrument_id: string
+  instrument_name: string
+  instrument_type: InstrumentType
+  invested: number
+  current_value: number | null
+  gain: number | null
+  gain_pct: number | null
+}
+
+/** Totals cover only the holdings that could be valued. */
+export interface Portfolio {
+  invested: number
+  current_value: number
+  gain: number | null
+  gain_pct: number | null
+  unvalued_count: number
+  holdings: Holding[]
+}
+
 export const investmentsApi = {
+  portfolio: () => apiGet<Portfolio>('/api/v1/investments/portfolio'),
   accounts: (type: InstrumentType) =>
     apiGet<InvestmentAccount[]>(`/api/v1/investments/accounts?instrument_type=${type}`),
   list: () => apiGet<Investment[]>('/api/v1/investments'),

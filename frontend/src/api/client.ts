@@ -16,7 +16,7 @@ export class ApiError extends Error {
 
 /** FastAPI errors: `detail` is a string, or a list of {msg} for 422s. */
 function errorDetail(errData: any, fallback: string): string {
-  if (Array.isArray(errData?.detail)) return errData.detail.map((d: { msg: string }) => d.msg).join('; ')
+  if (Array.isArray(errData?.detail)) return errData.detail.map((d: { msg: string }) => d.msg.replace(/^Value error, /, '')).join('; ')
   return errData?.detail || fallback
 }
 
@@ -48,6 +48,7 @@ export async function apiGet<T>(path: string, init?: { signal?: AbortSignal }): 
     throw new ApiError(message, response.status)
   }
 
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
@@ -68,6 +69,7 @@ export async function apiPost<T>(path: string, body: any): Promise<T> {
     throw new ApiError(message, response.status)
   }
 
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
@@ -88,6 +90,7 @@ export async function apiPut<T>(path: string, body: any): Promise<T> {
     throw new ApiError(message, response.status)
   }
 
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
@@ -99,9 +102,16 @@ export async function apiPatch<T>(path: string, body: any): Promise<T> {
   })
 
   if (!response.ok) {
-    throw new ApiError(`PATCH ${path} failed with status ${response.status}`, response.status)
+    let message = `PATCH ${path} failed with status ${response.status}`
+    try {
+      message = errorDetail(await response.json(), message)
+    } catch {
+      // Non-JSON error body — keep the generic message.
+    }
+    throw new ApiError(message, response.status)
   }
 
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 

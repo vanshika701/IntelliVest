@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes, useParams } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { GlobalSearch, SEARCH_DEBOUNCE_MS } from './GlobalSearch'
 
@@ -22,6 +22,10 @@ function InstrumentStub() {
   return <p>Instrument page {id}</p>
 }
 
+function SearchStub() {
+  return <p>Search page {useLocation().search}</p>
+}
+
 function renderSearch() {
   return render(
     <MemoryRouter initialEntries={['/']}>
@@ -29,6 +33,7 @@ function renderSearch() {
       <Routes>
         <Route path="/" element={null} />
         <Route path="/instrument/:id" element={<InstrumentStub />} />
+        <Route path="/search" element={<SearchStub />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -77,13 +82,36 @@ describe('GlobalSearch', () => {
     await screen.findByText('Edelweiss Gold ETF')
 
     const options = screen.getAllByRole('option')
-    expect(options[0]).toHaveAttribute('aria-selected', 'true')
-    await user.keyboard('{ArrowDown}')
+    expect(options[0]).toHaveAttribute('aria-selected', 'false')
+    await user.keyboard('{ArrowDown}{ArrowDown}')
     expect(screen.getAllByRole('option')[1]).toHaveAttribute('aria-selected', 'true')
     expect(input).toHaveAttribute('aria-activedescendant', screen.getAllByRole('option')[1].id)
 
     await user.keyboard('{Enter}')
     expect(await screen.findByText('Instrument page mf-2')).toBeInTheDocument()
+  })
+
+  it('lists all matches when Enter is pressed without choosing one, even while hovering', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(GOLD_RESULTS)))
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    renderSearch()
+
+    await user.type(screen.getByRole('combobox'), 'gold')
+    await act(async () => {
+      vi.advanceTimersByTime(SEARCH_DEBOUNCE_MS)
+    })
+    await user.hover(await screen.findByText('Edelweiss Gold ETF'))
+    await user.keyboard('{Enter}')
+    expect(await screen.findByText('Search page ?q=gold')).toBeInTheDocument()
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('lists matches when Enter is pressed before results arrive', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})))
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    renderSearch()
+    await user.type(screen.getByRole('combobox'), 'sbi gold{Enter}')
+    expect(await screen.findByText('Search page ?q=sbi%20gold')).toBeInTheDocument()
   })
 
   it('closes the dropdown on Escape', async () => {

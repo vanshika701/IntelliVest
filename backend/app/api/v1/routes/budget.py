@@ -45,6 +45,11 @@ async def get_analysis(basis: Basis = "auto", user_id: str = Depends(get_current
     return result
 
 
+@router.get("/health-score")
+async def get_health_score(user_id: str = Depends(get_current_user_id)):
+    return await budget_service.get_health_score(user_id)
+
+
 @router.get("/improve")
 async def get_improve(
     focus: str = Query("all", description="Category id, or 'all' for the whole budget"),
@@ -70,9 +75,18 @@ async def create_goal(body: GoalIn, user_id: str = Depends(get_current_user_id))
 
 
 @router.post("/goals/preview")
-async def preview_goal(body: GoalIn, user_id: str = Depends(get_current_user_id)):
-    """Compute a plan without saving it (used while the user tweaks inputs)."""
-    return await budget_service.preview_goal(user_id, body.model_dump())
+async def preview_goal(body: GoalIn, goal_id: str | None = None, user_id: str = Depends(get_current_user_id)):
+    """Compute a plan without saving it (used while the user tweaks
+    inputs). `goal_id` is the saved goal being edited, if any."""
+    return await budget_service.preview_goal(user_id, body.model_dump(), goal_id)
+
+
+@router.put("/goals/{goal_id}")
+async def update_goal(goal_id: str, body: GoalIn, user_id: str = Depends(get_current_user_id)):
+    updated = await budget_service.update_goal(user_id, goal_id, body.model_dump())
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found")
+    return updated
 
 
 @router.delete("/goals/{goal_id}", status_code=status.HTTP_204_NO_CONTENT)

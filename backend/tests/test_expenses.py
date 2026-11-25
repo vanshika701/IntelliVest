@@ -65,7 +65,7 @@ def test_income_always_gets_the_income_category(
     response = client.post(
         "/api/v1/expenses",
         headers=auth_headers,
-        json={"amount": 50000, "description": "Salary", "expense_type": "income"},
+        json={"amount": 50000, "description": "Salary", "expense_type": "income", "income_source": "salary"},
     )
     assert response.status_code == 201
     assert response.json()["category"] == "income"
@@ -112,7 +112,7 @@ def test_summary_aggregates_income_and_expense(
     client.post(
         "/api/v1/expenses",
         headers=auth_headers,
-        json={"amount": 1000, "description": "Salary", "expense_type": "income"},
+        json={"amount": 1000, "description": "Salary", "expense_type": "income", "income_source": "salary"},
     )
     client.post(
         "/api/v1/expenses",
@@ -220,3 +220,79 @@ def test_csv_upload_rejects_non_csv_files(client: TestClient, auth_headers: dict
     )
 
     assert response.status_code == 400
+
+
+def _income(client, headers, **extra):
+    return client.post(
+        "/api/v1/expenses",
+        headers=headers,
+        json={"amount": 1000, "description": "x", "expense_type": "income", **extra},
+    )
+
+
+def test_income_needs_a_known_source(client: TestClient, auth_headers: dict[str, str]) -> None:
+    assert _income(client, auth_headers).status_code == 422
+    assert _income(client, auth_headers, income_source="lottery").status_code == 422
+    for source in ("bonus", "dividends", "freelance"):
+        assert _income(client, auth_headers, income_source=source).json()["income_source"] == source
+    summary = client.get("/api/v1/expenses/summary", headers=auth_headers).json()
+    assert summary["by_income_source"] == {"bonus": 1000, "dividends": 1000, "freelance": 1000}
+
+
+def test_csv_income_source_comes_from_the_label_only(client: TestClient, auth_headers: dict[str, str]) -> None:
+    csv_content = (
+        "Date,Description,Category,Type,Amount\n"
+        "2026-01-05,A,Salary,Income,50000\n"
+        "2026-01-06,B,Dividend,Income,500\n"
+        "2026-01-07,Salary credit,,Income,10\n"
+    )
+    client.post(
+        "/api/v1/expenses/upload-csv", headers=auth_headers, files={"file": ("s.csv", csv_content, "text/csv")}
+    )
+    items = client.get("/api/v1/expenses", headers=auth_headers).json()["items"]
+    assert {i["description"]: i["income_source"] for i in items} == {
+        "A": "salary",
+        "B": "dividends",
+        "Salary credit": "other_income",
+    }
+
+
+def test_update_expense(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = client.post(
+        "/api/v1/expenses",
+        headers=auth_headers,
+        json={"amount": 100, "description": "Coffee", "category": "other"},
+    ).json()
+    url = f"/api/v1/expenses/{created['id']}"
+    body = client.patch(url, headers=auth_headers, json={"category": "food_dining"}).json()
+    assert body["category"] == "food_dining" and body["amount"] == 100
+
+    assert client.patch(url, headers=auth_headers, json={"category": "nope"}).status_code == 422
+    assert client.patch(url, headers=auth_headers, json={"income_source": "salary"}).status_code == 422
+    assert client.patch("/api/v1/expenses/bad-id", headers=auth_headers, json={"amount": 1}).status_code == 404
+
+    creds = {"email": "b@example.com", "password": "password123"}
+    client.post("/api/v1/auth/register", json={**creds, "full_name": "B", "date_of_birth": "2000-05-17"})
+    token = client.post("/api/v1/auth/login", json=creds).json()["access_token"]
+    other = {"Authorization": f"Bearer {token}"}
+    assert client.patch(url, headers=other, json={"amount": 1}).status_code == 404
+
+    income = _income(client, auth_headers, income_source="salary").json()
+    income_url = f"/api/v1/expenses/{income['id']}"
+    updated = client.patch(income_url, headers=auth_headers, json={"income_source": "bonus"}).json()
+    assert updated["income_source"] == "bonus"
+    assert client.patch(income_url, headers=auth_headers, json={"category": "groceries"}).status_code == 422
+
+
+def test_csv_upload_rejects_bad_amounts_and_unreadable_files(client: TestClient, auth_headers: dict[str, str]) -> None:
+    def upload(content: bytes):
+        return client.post("/api/v1/expenses/upload-csv", headers=auth_headers, files={"file": ("s.csv", content, "text/csv")})
+
+    result = upload(b"Date,Description,Amount\n2026-01-05,A,nan\n2026-01-05,B,inf\n2026-01-05,C,10\n").json()
+    assert (result["imported"], len(result["errors"])) == (1, 2)
+    assert upload(b"\xff\xfe\x00bad").status_code == 400
+
+
+def test_blank_descriptions_are_rejected(client: TestClient, auth_headers: dict[str, str]) -> None:
+    body = {"amount": 5, "description": "   ", "category": "groceries"}
+    assert client.post("/api/v1/expenses", headers=auth_headers, json=body).status_code == 422

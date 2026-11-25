@@ -15,7 +15,8 @@ export function ProtectedRoute() {
     );
   }
 
-  if (!user) {
+  // An account without a date of birth adds it on the sign-in page first.
+  if (!user?.has_date_of_birth) {
     return <Navigate to="/auth" replace />;
   }
 

@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, CheckCircle2, Info, MessageSquareText, Target, Trash2 } from 'lucide-react'
-import { budgetApi, type BudgetMeta, type GoalInput, type GoalPlan, type GoalsList } from '../../api/budget'
+import { AlertTriangle, CheckCircle2, Info, MessageSquareText, Pencil, Target, Trash2 } from 'lucide-react'
+import { budgetApi, type BudgetMeta, type GoalInput, type GoalPlan, type GoalsList, type SavedGoal } from '../../api/budget'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
 import { toMonths, validateMoney } from '../../lib/budget'
 import { formatINR } from '../../lib/format'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
+import { NumberInput } from '../ui/NumberInput'
 
 const label = 'block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider'
 
@@ -97,6 +98,8 @@ export function GoalsPanel({ meta, refreshKey }: { meta: BudgetMeta; refreshKey:
   const [preview, setPreview] = useState<GoalPlan | null>(null)
   const [goals, setGoals] = useState<GoalsList | null>(null)
   const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [explanations, setExplanations] = useState<Record<string, string>>({})
 
   const horizon = toMonths(years, months)
@@ -115,9 +118,9 @@ export function GoalsPanel({ meta, refreshKey }: { meta: BudgetMeta; refreshKey:
   useEffect(() => {
     if (!debouncedKey) return
     let cancelled = false
-    budgetApi.previewGoal(JSON.parse(debouncedKey)).then((p) => { if (!cancelled) setPreview(p) }).catch(() => {})
+    budgetApi.previewGoal(JSON.parse(debouncedKey), editingId).then((p) => { if (!cancelled) setPreview(p) }).catch(() => {})
     return () => { cancelled = true }
-  }, [debouncedKey, refreshKey])
+  }, [debouncedKey, refreshKey, editingId])
 
   function loadGoals() {
     budgetApi.goals().then(setGoals).catch(() => setGoals(null))
@@ -127,20 +130,52 @@ export function GoalsPanel({ meta, refreshKey }: { meta: BudgetMeta; refreshKey:
   async function save() {
     if (!input || !name.trim()) return
     setSaving(true)
+    setActionError(null)
     try {
-      await budgetApi.createGoal({ ...input, name: name.trim() })
-      setName('')
-      setTarget('')
+      const body = { ...input, name: name.trim() }
+      if (editingId) await budgetApi.updateGoal(editingId, body)
+      else await budgetApi.createGoal(body)
+      resetForm()
+      setExplanations({})
       loadGoals()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Could not save the goal')
     } finally {
       setSaving(false)
     }
   }
 
+  function resetForm() {
+    setEditingId(null)
+    setName('')
+    setTarget('')
+    setYears('3')
+    setMonths('')
+    setRet('')
+    setStep(String(meta.default_step_up_pct))
+  }
+
+  function edit(g: SavedGoal) {
+    setEditingId(g.id)
+    setName(g.name)
+    setTarget(String(g.target_amount))
+    setYears(String(Math.floor(g.horizon_months / 12)))
+    setMonths(String(g.horizon_months % 12))
+    setRet(g.annual_return_pct == null ? '' : String(g.annual_return_pct))
+    setStep(g.step_up_pct == null ? '' : String(g.step_up_pct))
+    document.getElementById('g-name')?.focus()
+  }
+
   async function remove(id: string) {
     if (!confirm('Delete this goal?')) return
-    await budgetApi.deleteGoal(id)
-    loadGoals()
+    setActionError(null)
+    try {
+      await budgetApi.deleteGoal(id)
+      if (id === editingId) resetForm()
+      loadGoals()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Could not delete the goal')
+    }
   }
 
   async function explain(id: string) {
@@ -154,38 +189,41 @@ export function GoalsPanel({ meta, refreshKey }: { meta: BudgetMeta; refreshKey:
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="glass-card p-5 rounded-2xl space-y-4">
-          <h3 className="text-sm font-medium text-[var(--color-text-primary)] flex items-center gap-2"><Target className="w-4 h-4" /> New savings goal</h3>
+          <h3 className="text-sm font-medium text-[var(--color-text-primary)] flex items-center gap-2"><Target className="w-4 h-4" /> {editingId ? 'Edit goal' : 'New savings goal'}</h3>
           <div>
             <label htmlFor="g-name" className={label}>Goal</label>
             <Input id="g-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Car" maxLength={80} />
           </div>
           <div>
             <label htmlFor="g-target" className={label}>Target amount (₹)</label>
-            <Input id="g-target" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="e.g. 800000" className="font-mono" />
+            <NumberInput id="g-target" value={target} onValueChange={setTarget} placeholder="e.g. 800000" className="font-mono" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="g-years" className={label}>Years</label>
-              <Input id="g-years" inputMode="numeric" value={years} onChange={(e) => setYears(e.target.value)} className="font-mono" />
+              <NumberInput id="g-years" decimals={0} value={years} onValueChange={setYears} className="font-mono" />
             </div>
             <div>
               <label htmlFor="g-months" className={label}>+ Months</label>
-              <Input id="g-months" inputMode="numeric" value={months} onChange={(e) => setMonths(e.target.value)} placeholder="0" className="font-mono" />
+              <NumberInput id="g-months" decimals={0} value={months} onValueChange={setMonths} placeholder="0" className="font-mono" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="g-ret" className={label}>Return % / yr</label>
-              <Input id="g-ret" inputMode="decimal" value={ret} onChange={(e) => setRet(e.target.value)} placeholder={defaultFor ? String(defaultFor.annual_return_pct) : ''} className="font-mono" />
+              <NumberInput id="g-ret" value={ret} onValueChange={setRet} placeholder={defaultFor ? String(defaultFor.annual_return_pct) : ''} className="font-mono" />
             </div>
             <div>
               <label htmlFor="g-step" className={label}>Step-up % / yr</label>
-              <Input id="g-step" inputMode="decimal" value={step} onChange={(e) => setStep(e.target.value)} className="font-mono" />
+              <NumberInput id="g-step" value={step} onValueChange={setStep} className="font-mono" />
             </div>
           </div>
           {defaultFor && ret.trim() === '' && <p className="text-xs text-[var(--color-text-muted)]">Default return for this horizon: {defaultFor.label}.</p>}
+          {target && !error && !name.trim() && <p className="text-xs text-[var(--color-text-muted)]">Give the goal a name to save it.</p>}
           {target && error && <p className="text-xs text-[var(--color-losses)]" role="alert">{error}</p>}
-          <Button className="w-full" onClick={save} disabled={!input || !name.trim() || saving}>{saving ? 'Saving…' : 'Save goal'}</Button>
+          <Button className="w-full" onClick={save} disabled={!input || !name.trim() || saving}>{saving ? 'Saving…' : editingId ? 'Save changes' : 'Save goal'}</Button>
+          {editingId && <Button variant="ghost" className="w-full" onClick={resetForm}>Cancel editing</Button>}
+          {actionError && <p className="text-xs text-[var(--color-losses)]" role="alert">{actionError}</p>}
         </div>
 
         <div className="lg:col-span-2 glass-card p-5 rounded-2xl" aria-live="polite">
@@ -214,6 +252,7 @@ export function GoalsPanel({ meta, refreshKey }: { meta: BudgetMeta; refreshKey:
                       <MessageSquareText className="w-4 h-4" />
                     </Button>
                   )}
+                  <Button variant="ghost" size="sm" onClick={() => edit(g)} aria-label={`Edit ${g.name}`}><Pencil className="w-4 h-4" /></Button>
                   <Button variant="ghost" size="sm" onClick={() => remove(g.id)} aria-label={`Delete ${g.name}`}><Trash2 className="w-4 h-4" /></Button>
                 </div>
               </div>
@@ -223,10 +262,6 @@ export function GoalsPanel({ meta, refreshKey }: { meta: BudgetMeta; refreshKey:
           ))}
         </div>
       )}
-
-      <p className="text-xs text-[var(--color-text-muted)] flex items-start gap-2">
-        <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" aria-hidden /> {meta.disclaimer}
-      </p>
     </div>
   )
 }

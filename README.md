@@ -52,7 +52,9 @@ Three pipelines pull real data into MongoDB — market data (yfinance, no
 key needed), news (Indian financial RSS feeds, no key needed), and Reddit (asyncpraw). Each has a manual
 entry point for one-off runs, and all three also run automatically on a
 schedule (daily for prices, hourly for news/Reddit) whenever the backend
-is running, via `app/core/scheduler.py` (which also runs price-alert
+is running. Prices missed while it was off are fetched at the next start.
+Stock pages, the watchlist and alerts use Yahoo quotes (about 15 minutes
+delayed), falling back to the last stored close. Scheduling is in `app/core/scheduler.py` (which also runs price-alert
 evaluation every 5 minutes, for Phase 2's watchlist alerts):
 
 ```bash

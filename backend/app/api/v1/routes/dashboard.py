@@ -22,7 +22,7 @@ async def _recent_news(limit: int = 10) -> list[dict]:
     cursor = (
         get_news_collection()
         .find(
-            {},
+            {"tickers.0": {"$exists": True}},  # sector-only stories have no company to show
             {
                 "_id": 0,
                 "url": 1,

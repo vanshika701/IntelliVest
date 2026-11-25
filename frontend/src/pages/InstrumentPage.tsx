@@ -12,6 +12,7 @@ import { SentimentSection } from '../components/instrument/SentimentSection'
 import { NewsDigest } from '../components/instrument/NewsDigest'
 import { ReturnCalculator } from '../components/instrument/ReturnCalculator'
 import { InvestPanel } from '../components/instrument/InvestPanel'
+import { SectorNews } from '../components/SectorNews'
 import { Skeleton } from '../components/ui/Skeleton'
 
 export function InstrumentPage() {
@@ -22,7 +23,7 @@ export function InstrumentPage() {
 
 function InstrumentView({ id }: { id: string }) {
   const isStock = id.startsWith('stock-')
-  const detail = useApi(id, () => instrumentsApi.detail(id))
+  const detail = useApi(id, () => instrumentsApi.detail(id), isStock ? 60_000 : undefined)
   const history = useApi(id, () => instrumentsApi.history(id))
   const intraday = useApi(isStock ? id : null, () => instrumentsApi.intraday(id))
   const sentiment = useApi(id, () => instrumentsApi.sentiment(id))
@@ -120,6 +121,10 @@ function InstrumentView({ id }: { id: string }) {
           onRetry={digest.reload}
         />
       </SentimentSection>
+
+      {instrument?.sector && (
+        <SectorNews sector={instrument.sector.id} name={instrument.sector.name} excludeTicker={instrument.symbol} limit={6} />
+      )}
 
       {history.loading ? (
         <Skeleton className="h-80 w-full rounded-2xl" />

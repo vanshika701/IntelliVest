@@ -99,3 +99,9 @@ def test_delete_removes_watchlist_item(client: TestClient, auth_headers: dict[st
 
     listed = client.get("/api/v1/watchlist", headers=auth_headers).json()
     assert listed == []
+
+
+def test_malformed_tickers_are_rejected(client: TestClient, auth_headers: dict[str, str]) -> None:
+    for ticker in ("", "A B", "$$$"):
+        assert client.post("/api/v1/watchlist", headers=auth_headers, json={"ticker": ticker}).status_code == 422
+    assert client.post("/api/v1/watchlist", headers=auth_headers, json={"ticker": "M&M.NS"}).status_code == 201

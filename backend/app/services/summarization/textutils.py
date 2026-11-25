@@ -8,9 +8,41 @@ ELLIPSIS = "…"
 # share of the allowed words; fall back to a plain word boundary instead.
 MIN_CLAUSE_KEEP_RATIO = 0.6
 
+_SENTENCE_END = re.compile(r"[.!?][\"'”’)\]]*(?=\s)|\n")
+
+
+_COMPLETE_SENTENCE_END = re.compile(
+    r"(?<!\bRs)(?<!\bMr)(?<!\bMs)(?<!\bDr)(?<!\bNo)(?<!\bCo)(?<!\bvs)(?<!\bLtd)(?<!\bInc)(?<!\bMrs)(?<!\bPvt)"
+    r"(?<!\.)[.!?](?!\.)[\"'”’)\]]*(?=\s|$)"
+)
+
+
+def complete_sentences(text: str) -> str:
+    """`text` without a trailing unfinished sentence ("...prices of its cars
+    and SUVs ..."). Empty when it contains no complete sentence."""
+    ends = [m.end() for m in _COMPLETE_SENTENCE_END.finditer(text)]
+    return text[: ends[-1]].strip() if ends else ""
+
 
 def count_words(text: str) -> int:
     return len(text.split())
+
+
+def first_words(text: str, max_words: int) -> str:
+    """At most the first `max_words` words of a summarizer *input*. Keeps
+    line breaks (they mark headings) and drops a trailing cut-off sentence
+    unless that would lose more than half of the text."""
+    words = list(re.finditer(r"\S+", text))
+    if len(words) <= max_words:
+        return text
+    if max_words <= 0:
+        return ""
+    end = words[max_words - 1].end()
+    # One extra character, so a sentence ending exactly at the cut is seen.
+    ends = [m.end() for m in _SENTENCE_END.finditer(text[: end + 1])]
+    if ends and ends[-1] >= end / 2:
+        end = min(end, ends[-1])
+    return text[:end].rstrip()
 
 
 def trim_to_words(text: str, max_words: int) -> str:

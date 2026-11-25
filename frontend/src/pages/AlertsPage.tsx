@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { apiGet, apiPost, apiDelete, apiPatch } from '../api/client';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
+import { FieldError } from '../components/ui/FieldError';
+import { NumberInput } from '../components/ui/NumberInput';
 import { BellRing, Plus, Trash2, Power, PowerOff, TrendingUp, TrendingDown, Target } from 'lucide-react';
+import { validateMoney } from '../lib/budget';
+import { validateRange } from '../lib/validation';
 import { cn } from '../lib/utils';
 
 const STOCK_UNIVERSE = [
@@ -22,6 +25,13 @@ export function AlertsPage() {
   const [targetPrice, setTargetPrice] = useState('');
   const [thresholdPct, setThresholdPct] = useState('5.0');
   
+  const [submitted, setSubmitted] = useState(false);
+
+  const errors = {
+    price: validateMoney(targetPrice, { required: true }) ?? (Number(targetPrice) > 0 ? null : 'Must be more than ₹0'),
+    margin: condition === 'within_pct' ? validateRange(thresholdPct, 0.1, 50) : null,
+  };
+
   useEffect(() => {
     loadAlerts();
   }, []);
@@ -40,15 +50,19 @@ export function AlertsPage() {
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
+    setSubmitted(true);
+    if (errors.price || errors.margin) return;
     try {
       await apiPost('/api/v1/alerts', {
         ticker,
         condition,
         target_price: parseFloat(targetPrice),
-        threshold_pct: parseFloat(thresholdPct)
+        // Only within_pct uses it; a half-typed margin must not block other rules.
+        threshold_pct: condition === 'within_pct' ? parseFloat(thresholdPct) : 5
       });
       setIsAddOpen(false);
       setTargetPrice('');
+      setSubmitted(false);
       await loadAlerts();
     } catch (e: any) {
       alert(e.message);
@@ -171,7 +185,7 @@ export function AlertsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
           <div className="bg-[var(--color-background-secondary)] border border-[var(--color-border-subtle)] p-6 rounded-xl w-full max-w-sm shadow-2xl">
             <h3 className="text-xl font-bold text-[var(--color-text-primary)] mb-5">Create Alert Rule</h3>
-            <form onSubmit={handleAdd} className="space-y-4">
+            <form noValidate onSubmit={handleAdd} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider">Target Asset</label>
                 <select className="flex h-10 w-full rounded-md border border-[var(--color-border-strong)] bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)] text-[var(--color-text-primary)] [&>option]:bg-[var(--color-background-secondary)]" value={ticker} onChange={(e) => setTicker(e.target.value)}>
@@ -190,13 +204,15 @@ export function AlertsPage() {
               
               <div>
                 <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider">Target Price (₹)</label>
-                <Input required type="number" step="0.01" min="0.01" value={targetPrice} onChange={(e) => setTargetPrice(e.target.value)} placeholder="0.00" className="font-mono text-lg"/>
+                <NumberInput required aria-label="Target price" value={targetPrice} onValueChange={setTargetPrice} placeholder="0.00" className="font-mono text-lg"/>
+                <FieldError message={submitted ? errors.price : null} />
               </div>
 
               {condition === 'within_pct' && (
                 <div>
                   <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider">Proximity Margin (%)</label>
-                  <Input required type="number" step="0.1" min="0.1" max="50" value={thresholdPct} onChange={(e) => setThresholdPct(e.target.value)} placeholder="5.0"/>
+                  <NumberInput required aria-label="Proximity margin" value={thresholdPct} onValueChange={setThresholdPct} placeholder="5.0"/>
+                  <FieldError message={submitted ? errors.margin : null} />
                 </div>
               )}
               

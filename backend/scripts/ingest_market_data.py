@@ -16,6 +16,7 @@ from app.core.logging import configure_logging
 from app.data.indexes import ensure_indexes
 from app.data.mongo import close_mongo_connection, connect_to_mongo
 from app.services.market_data_service import ingest_stock_universe
+from app.services.price_date_migration import migrate_price_dates
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ async def main() -> None:
     configure_logging()
     await connect_to_mongo()
     await ensure_indexes()
+    await migrate_price_dates()
 
     try:
         results = await ingest_stock_universe(STOCK_UNIVERSE)

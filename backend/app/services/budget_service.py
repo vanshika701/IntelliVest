@@ -13,12 +13,16 @@ from app.core.budget_config import (
     DISCLAIMER,
     EMERGENCY_FUND_MAX_MONTHS,
     EMERGENCY_FUND_MIN_MONTHS,
+    INCOME_GROUPS,
+    INCOME_SOURCES,
     RETURN_ASSUMPTIONS,
+    default_return_for,
 )
 from app.data import budget_repository as repo
 from app.services import budget_explainer
 from app.services.budget_rules import analyze_budget, improve_focus, inr
-from app.services.goal_planner import plan_goal
+from app.services.goal_planner import plan_goal, required_flat_sip
+from app.services.health_score import health_score
 
 
 def categories_meta() -> dict:
@@ -33,6 +37,14 @@ def categories_meta() -> dict:
                 "note": c.note,
             }
             for c in CATEGORIES
+        ],
+        "income_groups": [
+            {
+                "id": group,
+                "name": name,
+                "sources": [{"id": s.id, "name": s.name} for s in INCOME_SOURCES if s.group == group],
+            }
+            for group, name in INCOME_GROUPS.items()
         ],
         "bucket_targets_pct": BUCKET_TARGETS_PCT,
         "debt_to_income_critical_pct": DEBT_TO_INCOME_CRITICAL_PCT,
@@ -84,11 +96,17 @@ def _window_start(now: datetime, months: int) -> datetime:
 
 async def actual_monthly_spend(user_id: str, now: datetime | None = None) -> dict:
     """Average monthly spend per category over the last ACTUAL_WINDOW_MONTHS
-    calendar months (including the current one), dividing by the number of
-    months that actually have expenses so a new user isn't averaged down."""
+    completed calendar months that have expenses. The current month is left
+    out because it isn't finished; it is used only when there is nothing
+    else, and then flagged `partial` so callers don't treat it as a full month."""
     now = now or datetime.now(UTC)
-    since = _window_start(now, ACTUAL_WINDOW_MONTHS)
-    rows = await repo.spend_by_category_and_month(user_id, since)
+    since = _window_start(now, ACTUAL_WINDOW_MONTHS + 1)
+    current = now.strftime("%Y-%m")
+    rows = [r for r in await repo.spend_by_category_and_month(user_id, since) if r["month"] <= current]
+    completed = [r for r in rows if r["month"] < current]
+    partial = bool(rows) and not completed
+    if not partial:
+        rows = completed
     months = sorted({r["month"] for r in rows})
     by_category: dict[str, float] = {}
     for r in rows:
@@ -97,6 +115,7 @@ async def actual_monthly_spend(user_id: str, now: datetime | None = None) -> dic
     n = max(len(months), 1)
     return {
         "has_data": bool(rows),
+        "partial": partial,
         "months": months,
         "window_start": since,
         "by_category": {k: round(v / n, 2) for k, v in by_category.items()},
@@ -115,13 +134,25 @@ async def _inputs(user_id: str, basis: str) -> tuple[dict | None, dict, str]:
 
 def _analysis(profile: dict | None, actual: dict, basis: str) -> dict:
     estimates = (profile or {}).get("estimates", {})
-    spend = actual["by_category"] if basis == "actual" else estimates
+    filled: set[str] = set()
+    if basis == "actual":
+        spend = dict(actual["by_category"])
+        for cat_id, estimate in estimates.items():
+            # Nothing logged, or an unfinished month below the estimate:
+            # neither shows the category costs less, so keep the estimate.
+            logged = spend.get(cat_id)
+            if estimate and (logged is None or (actual["partial"] and logged < estimate)):
+                spend[cat_id] = float(estimate)
+                filled.add(cat_id)
+    else:
+        spend = estimates
     return analyze_budget(
         income=float((profile or {}).get("monthly_income", 0) or 0),
         spend=spend,
         estimates=estimates if profile else None,
         emergency_fund=(profile or {}).get("emergency_fund"),
         basis=basis,
+        filled_from_estimate=filled,
     )
 
 
@@ -150,6 +181,7 @@ async def overview(user_id: str) -> dict:
         "profile_warnings": profile_warnings(profile) if profile else [],
         "actual": {
             "has_data": actual["has_data"],
+            "partial": actual["partial"],
             "months": actual["months"],
             "window_start": actual["window_start"],
         },
@@ -163,6 +195,19 @@ async def analysis(user_id: str, basis: str = "auto") -> dict | None:
     if profile is None:
         return None
     return _analysis(profile, actual, basis)
+
+
+async def get_health_score(user_id: str) -> dict:
+    result = await analysis(user_id, "auto")
+    if result is None:
+        return {
+            "score": None,
+            "band": None,
+            "complete": False,
+            "components": [],
+            "message": "Set up your budget to see your score.",
+        }
+    return health_score(result)
 
 
 async def improve(user_id: str, focus: str, basis: str = "auto") -> dict | None:
@@ -182,7 +227,7 @@ async def _surplus_and_overspent(user_id: str) -> tuple[float | None, list[dict]
     return result["surplus"], [by_id[i] for i in result["overspent"]]
 
 
-def _plan(goal: dict, surplus, overspent) -> dict:
+def _plan(goal: dict, surplus, overspent, committed: float = 0.0) -> dict:
     return plan_goal(
         name=goal["name"],
         target=goal["target_amount"],
@@ -191,25 +236,54 @@ def _plan(goal: dict, surplus, overspent) -> dict:
         step_up_pct=goal.get("step_up_pct"),
         monthly_surplus=surplus,
         overspent=overspent,
+        committed=committed,
     )
 
 
-async def preview_goal(user_id: str, goal: dict) -> dict:
+def _flat_sip(goal: dict) -> float:
+    rate = goal.get("annual_return_pct")
+    if rate is None:
+        rate = default_return_for(goal["horizon_months"]).annual_return_pct
+    return required_flat_sip(goal["target_amount"], goal["horizon_months"], rate)
+
+
+async def _committed_before(user_id: str, goal_id: str | None) -> float:
+    """Flat SIPs of the goals created before `goal_id` (all of them for a new
+    goal). Older goals get first claim on the surplus, so two goals that only
+    fit separately aren't both called affordable."""
+    total = 0.0
+    for goal in await repo.list_goals(user_id):
+        if goal["id"] == goal_id:
+            break
+        total += _flat_sip(goal)
+    return total
+
+
+async def preview_goal(user_id: str, goal: dict, goal_id: str | None = None) -> dict:
     surplus, overspent = await _surplus_and_overspent(user_id)
-    return _plan(goal, surplus, overspent)
+    return _plan(goal, surplus, overspent, await _committed_before(user_id, goal_id))
 
 
 async def create_goal(user_id: str, goal: dict) -> dict:
     doc = {**goal, "user_id": user_id, "created_at": datetime.now(UTC)}
     stored = await repo.insert_goal(doc)
-    surplus, overspent = await _surplus_and_overspent(user_id)
-    return {**stored, "plan": _plan(stored, surplus, overspent)}
+    return {**stored, "plan": await preview_goal(user_id, stored, stored["id"])}
+
+
+async def update_goal(user_id: str, goal_id: str, goal: dict) -> dict | None:
+    stored = await repo.update_goal(user_id, goal_id, goal)
+    if stored is None:
+        return None
+    return {**stored, "plan": await preview_goal(user_id, stored, goal_id)}
 
 
 async def list_goals(user_id: str) -> dict:
     goals = await repo.list_goals(user_id)
     surplus, overspent = await _surplus_and_overspent(user_id)
-    items = [{**g, "plan": _plan(g, surplus, overspent)} for g in goals]
+    items, committed = [], 0.0
+    for g in goals:
+        items.append({**g, "plan": _plan(g, surplus, overspent, committed)})
+        committed += _flat_sip(g)
     total_flat = round(sum(i["plan"]["flat"]["monthly"] for i in items), 2)
     combined = None
     if surplus is not None and items:
@@ -245,8 +319,7 @@ async def explain(user_id: str, kind: str, focus: str | None, goal_id: str | Non
         goal = await repo.get_goal(user_id, goal_id or "")
         if goal is None:
             return None
-        surplus, overspent = await _surplus_and_overspent(user_id)
-        plan = _plan(goal, surplus, overspent)
+        plan = await preview_goal(user_id, goal, goal["id"])
         a = plan["assumption"]
         facts = [
             plan["summary"],

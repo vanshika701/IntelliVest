@@ -15,6 +15,7 @@ useful if something calls it on a schedule.
 """
 
 import logging
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -22,9 +23,10 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.constants import FINANCE_SUBREDDITS, STOCK_UNIVERSE
 from app.services.alert_service import evaluate_all_alerts
-from app.services.market_data_service import ingest_stock_universe
+from app.services.market_data_service import IST, catch_up, ingest_stock_universe
 from app.services.news_service import ingest_news_for_universe
 from app.services.reddit_service import ingest_reddit_posts
+from app.services.sector_service import refresh_sectors
 from app.services.sentiment_service import score_pending_articles
 
 logger = logging.getLogger(__name__)
@@ -35,6 +37,12 @@ scheduler = AsyncIOScheduler()
 async def _run_market_data_ingestion() -> None:
     logger.info("Scheduled job starting: market data ingestion")
     await ingest_stock_universe(STOCK_UNIVERSE)
+    await refresh_sectors()
+
+
+async def _run_market_data_catch_up() -> None:
+    if await catch_up(STOCK_UNIVERSE):
+        await refresh_sectors()
 
 
 async def _run_news_ingestion() -> None:
@@ -43,6 +51,7 @@ async def _run_news_ingestion() -> None:
     # Score right after ingesting, so new articles carry sentiment within
     # the same run (Phase 5: "score as new articles arrive").
     await score_pending_articles()
+    await refresh_sectors()
 
 
 async def _run_reddit_ingestion() -> None:
@@ -60,8 +69,19 @@ def start_scheduler() -> None:
     # market close (15:30 IST) with a buffer for the day's data to settle.
     scheduler.add_job(
         _run_market_data_ingestion,
-        trigger=CronTrigger(hour=18, minute=0),
+        trigger=CronTrigger(hour=18, minute=0, timezone=IST),
         id="market_data_ingestion",
+        replace_existing=True,
+    )
+    # The daily run is missed whenever the app is off or the laptop asleep, so
+    # check shortly after startup and then regularly.
+    soon = datetime.now(IST) + timedelta(seconds=15)
+    scheduler.add_job(
+        _run_market_data_catch_up,
+        trigger=IntervalTrigger(minutes=30),
+        id="market_data_catch_up",
+        next_run_time=soon,
+        misfire_grace_time=None,
         replace_existing=True,
     )
     # News and social sentiment move much faster than daily prices.
@@ -69,6 +89,8 @@ def start_scheduler() -> None:
         _run_news_ingestion,
         trigger=IntervalTrigger(hours=1),
         id="news_ingestion",
+        next_run_time=soon + timedelta(minutes=1),
+        misfire_grace_time=None,
         replace_existing=True,
     )
     scheduler.add_job(
@@ -88,7 +110,7 @@ def start_scheduler() -> None:
     )
     scheduler.start()
     logger.info(
-        "Ingestion scheduler started (market data daily, news/Reddit hourly, alerts every 5min)"
+        "Ingestion scheduler started (market data daily with catch-up, news/Reddit hourly, alerts every 5min)"
     )
 
 

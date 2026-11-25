@@ -196,6 +196,8 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 **Owner:** _unassigned_
 
+**Status: built (2026-11-25)** on prices and news sentiment. Phase 4 predictions join the rollup once they exist. See `docs/PHASE_6_SECTORS.md`.
+
 **Goal:** Aggregate the per-stock signals from Phases 4–5 into sector-wide views.
 
 **What gets built:**
@@ -238,7 +240,7 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 **Owner:** _unassigned_
 
-**Status: complete (2026-11-21).** Redefined from "Financial Health Assessment" to a rule-based smart budgeter. The same health ratios (savings rate, debt-to-income, emergency-fund coverage) are computed by a deterministic, unit-tested rules engine. The single combined health score is not built yet. See `docs/PHASE_8_BUDGETING.md` for the checklist, assumptions and sources.
+**Status: complete (2026-11-21).** Redefined from "Financial Health Assessment" to a rule-based smart budgeter. The same health ratios (savings rate, debt-to-income, emergency-fund coverage) are computed by a deterministic, unit-tested rules engine. The combined health score, income sources and the checklist fixes were added 2026-11-25. See `docs/PHASE_8_BUDGETING.md` for the checklist, assumptions and sources.
 
 **What was built:**
 - A fixed list of 13 expense categories (Needs / Wants / Savings) in `backend/app/core/budget_config.py`. Users pick the category; AI auto-categorization was removed from the app, and old labels are migrated on startup.

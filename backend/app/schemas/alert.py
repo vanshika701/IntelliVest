@@ -13,9 +13,9 @@ class AlertCondition(str, Enum):
 
 
 class AlertCreate(BaseModel):
-    ticker: str = Field(min_length=1, max_length=20)
+    ticker: str = Field(pattern=r"^[A-Za-z0-9^][A-Za-z0-9&^.\-]{0,19}$")
     condition: AlertCondition
-    target_price: float = Field(gt=0)
+    target_price: float = Field(gt=0, le=1e10)
     # Only used when condition == "within_pct" — how close the current
     # price must be to the target to trigger (e.g. 5 means "within 5%").
     threshold_pct: float = Field(default=5.0, ge=0.1, le=50.0)

@@ -6,7 +6,7 @@ import {
   BellRing, 
   Bot,
   LogOut,
-  PiggyBank
+  Layers
 } from 'lucide-react';
 import { useAuth } from '../../AuthContext';
 import { cn } from '../../lib/utils';
@@ -19,9 +19,9 @@ export function Sidebar() {
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: LineChart, label: 'Watchlist', path: '/watchlist' },
+    { icon: Layers, label: 'Sectors', path: '/sectors' },
     { icon: Wallet, label: 'Budgeting', path: '/budget' },
     { icon: BellRing, label: 'Alerts', path: '/alerts' },
-    { icon: PiggyBank, label: 'Investments', path: '/investments' },
     { icon: Bot, label: 'AI Advisor', path: '/ai', disabled: true },
   ];
 

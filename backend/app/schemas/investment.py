@@ -57,3 +57,24 @@ class InvestmentResponse(BaseModel):
     is_mock: bool = True
     created_at: datetime
     updated_at: datetime
+
+
+class Holding(BaseModel):
+    instrument_id: str
+    instrument_name: str
+    instrument_type: InstrumentType
+    invested: float
+    current_value: float | None  # None when there is no price
+    gain: float | None
+    gain_pct: float | None
+
+
+class Portfolio(BaseModel):
+    """Totals cover only the holdings that could be valued."""
+
+    invested: float
+    current_value: float
+    gain: float | None
+    gain_pct: float | None
+    unvalued_count: int
+    holdings: list[Holding]
