@@ -46,3 +46,11 @@ class Sector(BaseModel):
     series: list[SeriesPoint]
     stocks: list[SectorStock]
     computed_at: datetime
+
+
+class SectorArticle(BaseModel):
+    url: str
+    title: str
+    source: str | None = None
+    published_at: datetime
+    label: Label | None = None  # None until scored

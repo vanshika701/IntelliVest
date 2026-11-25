@@ -29,13 +29,18 @@ async def upsert_news_articles(records: list[dict]) -> int:
     operations = []
     for record in records:
         tickers = record["tickers"]
-        scalar_fields = {k: v for k, v in record.items() if k != "tickers"}
+        # Like tickers, sector tags from several searches add up.
+        sectors = record.get("sectors", [])
+        scalar_fields = {k: v for k, v in record.items() if k not in ("tickers", "sectors")}
+        add = {"tickers": {"$each": tickers}}
+        if sectors:
+            add["sectors"] = {"$each": sectors}
         operations.append(
             UpdateOne(
                 {"url": record["url"]},
                 {
                     "$set": {**scalar_fields, "ingested_at": now},
-                    "$addToSet": {"tickers": {"$each": tickers}},
+                    "$addToSet": add,
                 },
                 upsert=True,
             )
@@ -88,3 +93,29 @@ async def get_scored_articles_for_ticker(ticker: str, since: datetime) -> list[d
         {"_id": 0, "url": 1, "title": 1, "source": 1, "published_at": 1, "sentiment": 1},
     ).sort("published_at", -1)
     return await cursor.to_list(length=None)
+
+
+_HEADLINE_FIELDS = {
+    "_id": 0, "url": 1, "title": 1, "source": 1, "published_at": 1, "tickers": 1, "sentiment": 1,
+}  # fmt: skip
+
+
+async def get_sector_headlines(sector: str, since: datetime, limit: int) -> list[dict]:
+    """Articles found by the sector's own search, newest first."""
+    cursor = (
+        get_news_collection()
+        .find({"sectors": sector, "published_at": {"$gte": since}}, _HEADLINE_FIELDS)
+        .sort("published_at", -1)
+        .limit(limit)
+    )
+    return await cursor.to_list(length=limit)
+
+
+async def get_headlines_for_tickers(tickers: list[str], since: datetime, limit: int) -> list[dict]:
+    cursor = (
+        get_news_collection()
+        .find({"tickers": {"$in": tickers}, "published_at": {"$gte": since}}, _HEADLINE_FIELDS)
+        .sort("published_at", -1)
+        .limit(limit)
+    )
+    return await cursor.to_list(length=limit)

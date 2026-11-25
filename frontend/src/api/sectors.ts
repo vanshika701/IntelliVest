@@ -37,4 +37,22 @@ export interface Sector {
   computed_at: string
 }
 
-export const sectorsApi = { list: () => apiGet<Sector[]>('/api/v1/sectors') }
+export interface SectorArticle {
+  url: string
+  title: string
+  source: string | null
+  published_at: string
+  label: SentimentLabel | null
+}
+
+const base = (id: string) => `/api/v1/sectors/${encodeURIComponent(id)}`
+
+export const sectorsApi = {
+  list: () => apiGet<Sector[]>('/api/v1/sectors'),
+  get: (id: string) => apiGet<Sector>(base(id)),
+  news: (id: string, options: { excludeTicker?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams({ limit: String(options.limit ?? 8) })
+    if (options.excludeTicker) params.set('exclude_ticker', options.excludeTicker)
+    return apiGet<SectorArticle[]>(`${base(id)}/news?${params}`)
+  },
+}

@@ -122,7 +122,7 @@ def test_investments_are_private_to_each_user(client: TestClient, auth_headers: 
     order = _one_time(client, auth_headers).json()
     client.post(
         "/api/v1/auth/register",
-        json={"email": "other@example.com", "password": "password123", "full_name": "Other"},
+        json={"email": "other@example.com", "password": "password123", "full_name": "Other", "date_of_birth": "2000-05-17"},
     )
     token = client.post(
         "/api/v1/auth/login", json={"email": "other@example.com", "password": "password123"}

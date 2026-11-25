@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
-import { LogIn, UserPlus } from 'lucide-react';
+import { CalendarCheck, KeyRound, LogIn, UserPlus } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { useAuth, type User } from '../AuthContext';
-import { apiGet, apiPost } from '../api/client';
+import { apiGet, apiPost, apiPut } from '../api/client';
 
 // apiGet reads its Bearer token from localStorage — the token has to be
 // written there before the /me call below, since AuthContext's login()
@@ -14,30 +14,86 @@ function storeTokenForApiClient(token: string) {
   localStorage.setItem('intellivest_token', token);
 }
 
+type Mode = 'login' | 'register' | 'reset' | 'birthdate';
+
+const COPY = {
+  login: { title: 'Sign in to your account', submit: 'Sign In', Icon: LogIn },
+  register: { title: 'Create an account', submit: 'Create Account', Icon: UserPlus },
+  reset: { title: 'Reset your password', submit: 'Reset Password', Icon: KeyRound },
+  birthdate: { title: 'One more step', submit: 'Save', Icon: CalendarCheck },
+} as const;
+
+/** Today in local time, as the date input expects it. */
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function Field({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <label className="block">
+      <span className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{label}</span>
+      <Input required {...props} />
+    </label>
+  );
+}
+
 export function AuthPage() {
-  const [isLogin, setIsLogin] = useState(true);
+  const [formMode, setFormMode] = useState<'login' | 'register' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
   const [fullName, setFullName] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  
-  const { user, login } = useAuth();
+
+  const { user, token, login, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
 
-  // Redirect if already logged in
-  if (user) {
+  if (authLoading) return null;
+  if (user?.has_date_of_birth) {
     return <Navigate to="/dashboard" replace />;
   }
+  // Accounts made before sign-up asked for a date of birth add it here.
+  const mode: Mode = user ? 'birthdate' : formMode;
+  const { title, submit, Icon } = COPY[mode];
+
+  const switchTo = (next: typeof formMode) => {
+    setFormMode(next);
+    setError('');
+    setNotice('');
+    setPassword('');
+    setConfirm('');
+    setBirthDate('');
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setNotice('');
+    if (mode === 'reset' && password !== confirm) {
+      setError("The passwords don't match.");
+      return;
+    }
     setIsLoading(true);
 
     try {
-      if (!isLogin) {
-        await apiPost('/api/v1/auth/register', { email, password, full_name: fullName });
+      if (mode === 'birthdate') {
+        await apiPut<void>('/api/v1/auth/date-of-birth', { date_of_birth: birthDate });
+        login(token!, { ...user!, has_date_of_birth: true });
+        navigate('/dashboard');
+        return;
+      }
+      if (mode === 'reset') {
+        await apiPost<void>('/api/v1/auth/reset-password', { email, date_of_birth: birthDate, new_password: password });
+        switchTo('login');
+        setNotice('Password changed. Sign in with your new password.');
+        return;
+      }
+      if (mode === 'register') {
+        await apiPost('/api/v1/auth/register', { email, password, full_name: fullName, date_of_birth: birthDate });
         // Fall through to log them in immediately after registration.
       }
 
@@ -45,7 +101,8 @@ export function AuthPage() {
       storeTokenForApiClient(data.access_token);
       const userProfile = await apiGet<User>('/api/v1/auth/me');
       login(data.access_token, userProfile);
-      navigate('/dashboard');
+      setBirthDate('');
+      if (userProfile.has_date_of_birth) navigate('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
     } finally {
@@ -53,81 +110,81 @@ export function AuthPage() {
     }
   };
 
+  const linkClass = 'font-medium text-[var(--color-brand)] hover:text-[var(--color-brand-hover)] transition-colors';
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--color-background-primary)] px-4 sm:px-6 lg:px-8">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--color-background-primary)] px-4 py-8 sm:px-6 lg:px-8">
       <div className="w-full max-w-md space-y-8 glass-card p-8 sm:p-10 relative overflow-hidden">
         {/* Decorative background glow */}
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-[var(--color-brand)] rounded-full mix-blend-screen filter blur-[80px] opacity-20"></div>
         <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-[var(--color-gains)] rounded-full mix-blend-screen filter blur-[80px] opacity-10"></div>
-        
+
         <div className="relative text-center">
           <div className="mx-auto h-12 w-12 rounded-xl bg-[var(--color-brand)] flex items-center justify-center font-bold text-2xl tracking-tighter text-white shadow-[0_0_20px_rgba(99,102,241,0.6)] mb-6">
             IV
           </div>
-          <h2 className="text-3xl font-bold tracking-tight text-[var(--color-text-primary)]">
-            {isLogin ? 'Sign in to your account' : 'Create an account'}
-          </h2>
+          <h2 className="text-3xl font-bold tracking-tight text-[var(--color-text-primary)]">{title}</h2>
           <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
-            {isLogin ? 'Or ' : 'Already have an account? '}
-            <button
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setError('');
-              }}
-              className="font-medium text-[var(--color-brand)] hover:text-[var(--color-brand-hover)] transition-colors"
-            >
-              {isLogin ? 'create a new account' : 'sign in instead'}
-            </button>
+            {mode === 'birthdate' ? (
+              'Add your date of birth so you can reset your password if you forget it. It can only be set once.'
+            ) : mode === 'reset' ? (
+              'Enter the date of birth you signed up with.'
+            ) : (
+              <>
+                {mode === 'login' ? 'Or ' : 'Already have an account? '}
+                <button type="button" onClick={() => switchTo(mode === 'login' ? 'register' : 'login')} className={linkClass}>
+                  {mode === 'login' ? 'create a new account' : 'sign in instead'}
+                </button>
+              </>
+            )}
           </p>
         </div>
 
         <form className="mt-8 space-y-6 relative" onSubmit={handleSubmit}>
           {error && (
-            <div className="rounded-md bg-[var(--color-losses-light)] border border-[rgba(244,63,94,0.2)] p-4 text-sm text-[var(--color-losses)]">
+            <div role="alert" className="rounded-md bg-[var(--color-losses-light)] border border-[rgba(244,63,94,0.2)] p-4 text-sm text-[var(--color-losses)]">
               {error}
+            </div>
+          )}
+          {notice && (
+            <div role="status" className="rounded-md bg-[var(--color-background-tertiary)] border border-[var(--color-border-strong)] p-4 text-sm text-[var(--color-gains)]">
+              {notice}
             </div>
           )}
 
           <div className="space-y-4">
-            {!isLogin && (
+            {mode === 'register' && (
+              <Field label="Full Name" type="text" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="John Doe" />
+            )}
+            {mode !== 'birthdate' && (
+              <Field label="Email address" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+            )}
+            {mode !== 'login' && (
+              <Field label="Date of birth" type="date" autoComplete="bday" min="1900-01-01" max={todayIso()} value={birthDate} onChange={(e) => setBirthDate(e.target.value)} className="[color-scheme:dark]" />
+            )}
+            {mode !== 'birthdate' && (
               <div>
-                <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">
-                  Full Name
-                </label>
-                <Input
-                  required
-                  type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="John Doe"
+                <Field
+                  label={mode === 'reset' ? 'New password' : 'Password'}
+                  type="password"
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  minLength={8}
                 />
+                {mode === 'login' && (
+                  <div className="mt-2 text-right text-sm">
+                    <button type="button" onClick={() => switchTo('reset')} className={linkClass}>
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
               </div>
             )}
-            <div>
-              <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">
-                Email address
-              </label>
-              <Input
-                required
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">
-                Password
-              </label>
-              <Input
-                required
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                minLength={8}
-              />
-            </div>
+            {mode === 'reset' && (
+              <Field label="Confirm new password" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="••••••••" minLength={8} />
+            )}
           </div>
 
           <Button type="submit" className="w-full h-11 text-base font-medium" disabled={isLoading}>
@@ -136,16 +193,20 @@ export function AuthPage() {
                 <span className="h-4 w-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></span>
                 Processing...
               </span>
-            ) : isLogin ? (
-              <span className="flex items-center gap-2">
-                <LogIn className="h-5 w-5" /> Sign In
-              </span>
             ) : (
               <span className="flex items-center gap-2">
-                <UserPlus className="h-5 w-5" /> Create Account
+                <Icon className="h-5 w-5" /> {submit}
               </span>
             )}
           </Button>
+
+          {(mode === 'reset' || mode === 'birthdate') && (
+            <div className="text-center text-sm">
+              <button type="button" onClick={() => (mode === 'reset' ? switchTo('login') : logout())} className={linkClass}>
+                {mode === 'reset' ? 'Back to sign in' : 'Sign out'}
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>

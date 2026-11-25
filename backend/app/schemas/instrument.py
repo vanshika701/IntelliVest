@@ -38,6 +38,11 @@ class InstrumentStats(BaseModel):
     source: str
 
 
+class InstrumentSector(BaseModel):
+    id: str
+    name: str
+
+
 class InstrumentDetail(BaseModel):
     id: str
     name: str
@@ -45,6 +50,7 @@ class InstrumentDetail(BaseModel):
     symbol: str
     subtitle: str | None = None
     category: str | None = None
+    sector: InstrumentSector | None = None  # stocks
     currency: str
     price: float | None = None
     price_date: date | None = None

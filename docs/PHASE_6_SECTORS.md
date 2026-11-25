@@ -7,6 +7,10 @@ Built 2026-11-25.
 - [x] Sentiment rollups: average FinBERT score, label and article counts over 7 days
 - [x] Recomputed after each price and news job and at startup; requests only read `sector_snapshots`
 - [x] `GET /api/v1/sectors` and `/api/v1/sectors/{id}`; Sectors page
+- [x] Sector page (`/sectors/{id}`): every stock used, plus sector news. Stock pages show their sector
+      and its news (2026-11-26)
+- [x] Sector news: one Google News search per sector in the hourly job, tagged `sectors` on the stored
+      article; topped up with company news. Covers the proposal's "sector-wide developments"
 - [ ] Add Phase 4 predictions to the rollup once they are stored
 
 **Rules:** every stock counts equally. Trend is up or down when the 1 month (21 trading days) change

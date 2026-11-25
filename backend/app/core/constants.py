@@ -73,6 +73,35 @@ SECTORS: dict[str, tuple[str, list[str]]] = {
     "pharma": ("Pharma", ["SUNPHARMA.NS"]),
 }
 
+TICKER_TO_SECTOR: dict[str, str] = {t: sid for sid, (_, tickers) in SECTORS.items() for t in tickers}
+
+# Google News searches for sector-wide headlines (company news is separate).
+SECTOR_NEWS_QUERIES: dict[str, str] = {
+    "auto": '"auto sector" OR "auto stocks" OR "Nifty Auto"',
+    "banking": '"banking sector" OR "bank stocks" OR "Nifty Bank"',
+    "consumer": '"consumer durables" OR "consumer stocks" OR "jewellery stocks" OR "paint stocks"',
+    "energy": '"energy stocks" OR "oil and gas stocks" OR "Nifty Energy"',
+    "financial_services": '"NBFC stocks" OR "NBFC sector" OR "Nifty Financial Services"',
+    "fmcg": '"FMCG sector" OR "FMCG stocks" OR "Nifty FMCG"',
+    "infrastructure": '"infrastructure stocks" OR "infra stocks" OR "cement stocks" OR "cement sector"',
+    "it": '"IT stocks" OR "IT sector" OR "Nifty IT"',
+    "pharma": '"pharma sector" OR "pharma stocks" OR "Nifty Pharma"',
+}
+
+# A found headline must name its sector; search engines also match page text.
+# Regex fragments, whole words, case-insensitive.
+SECTOR_HEADLINE_TERMS: dict[str, str] = {
+    "auto": r"autos?|automobiles?|automakers?|carmakers?|two-wheelers?|passenger vehicles?|EVs?",
+    "banking": r"banks?|banking|bankex|PSBs?",
+    "consumer": r"consumer|jewellery|jewellers?|paints?|durables?",
+    "energy": r"energy|oil|gas|power|refiners?|renewables?|solar",
+    "financial_services": r"NBFCs?|financials?|financial services|fintech|microfinance|lenders?",
+    "fmcg": r"FMCG|consumer staples|packaged foods?",
+    "infrastructure": r"infra|infrastructure|cement|capital goods|construction",
+    "it": r"IT|I\.T\.|[Tt]ech|[Tt]echnology|[Ss]oftware",
+    "pharma": r"pharma|pharmaceuticals?|drugmakers?|drug makers?|healthcare",
+}
+
 # How headlines actually refer to each company, used to tag articles from
 # the general market feeds with tickers. Values are regex fragments
 # (matched case-insensitively, as whole words); the negative lookaheads

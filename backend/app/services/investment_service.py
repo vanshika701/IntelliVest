@@ -57,6 +57,15 @@ def next_installment_date(day_of_month: int, today: date) -> date:
     return first_of_next_month.replace(day=day_of_month)
 
 
+def installment_dates(sip: dict, today: date) -> list[date]:
+    """Due dates up to today. The stored date is the first instalment."""
+    due, out = date.fromisoformat(sip["next_installment_date"]), []
+    while due <= today:
+        out.append(due)
+        due = next_installment_date(sip["day_of_month"], due)
+    return out
+
+
 async def _create(user_id: str, kind: str, instrument_id: str, amount: float, account_id: str, **extra) -> dict:
     instrument = await get_instrument(instrument_id)
     stats = instrument["stats"]
@@ -126,4 +135,10 @@ async def record_payment_result(
 
 
 async def list_investments(user_id: str) -> list[dict]:
-    return await list_user_investments(user_id)
+    today = datetime.now(IST).date()
+    items = await list_user_investments(user_id)
+    for item in items:
+        # Stored once, as the first instalment; show the upcoming one.
+        if item["status"] == "active" and item["next_installment_date"] <= today.isoformat():
+            item["next_installment_date"] = next_installment_date(item["day_of_month"], today).isoformat()
+    return items

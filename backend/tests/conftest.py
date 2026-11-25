@@ -10,6 +10,7 @@ from app.data.indexes import ensure_indexes
 from app.data.mongo import close_mongo_connection, connect_to_mongo, get_database
 from app.main import app
 from app.services import fund_aum_provider, fund_meta_provider, quote_service
+from app.services.auth_service import reset_limiter
 
 TEST_DB_NAME = "intellivest_test"
 
@@ -21,6 +22,7 @@ def _no_live_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     fund_meta_provider._failures.clear()
     monkeypatch.setattr(fund_meta_provider, "_fetch_fund", lambda _isin: {})
     monkeypatch.setattr(fund_meta_provider, "_fetch_stock", lambda _ticker: {})
+    reset_limiter.reset()
     for cache in (fund_aum_provider._cache, fund_aum_provider._failures, quote_service._cache):
         cache.clear()
     # Fresh locks: each test runs its own event loop.
@@ -67,7 +69,7 @@ def auth_headers(client: TestClient) -> dict[str, str]:
     """
     client.post(
         "/api/v1/auth/register",
-        json={"email": "fixture-user@example.com", "password": "password123", "full_name": "Fixture User"},
+        json={"email": "fixture-user@example.com", "password": "password123", "full_name": "Fixture User", "date_of_birth": "2000-05-17"},
     )
     login = client.post(
         "/api/v1/auth/login",

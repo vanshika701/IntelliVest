@@ -9,6 +9,7 @@ from app.schemas.investment import (
     InvestmentResponse,
     OneTimeOrderCreate,
     PaymentResultIn,
+    Portfolio,
     SipCreate,
 )
 from app.services.instrument_service import DataProviderError, InstrumentNotFound
@@ -21,6 +22,7 @@ from app.services.investment_service import (
     list_investments,
     record_payment_result,
 )
+from app.services.portfolio_service import get_portfolio
 
 router = APIRouter(prefix="/investments", tags=["investments"])
 
@@ -47,6 +49,11 @@ async def get_accounts(
 @router.get("", response_model=list[InvestmentResponse])
 async def get_investments(user_id: str = Depends(get_current_user_id)):
     return await list_investments(user_id)
+
+
+@router.get("/portfolio", response_model=Portfolio)
+async def get_user_portfolio(user_id: str = Depends(get_current_user_id)):
+    return await get_portfolio(user_id)
 
 
 @router.post("/one-time", response_model=InvestmentResponse, status_code=status.HTTP_201_CREATED)

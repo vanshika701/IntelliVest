@@ -272,7 +272,7 @@ def test_update_expense(client: TestClient, auth_headers: dict[str, str]) -> Non
     assert client.patch("/api/v1/expenses/bad-id", headers=auth_headers, json={"amount": 1}).status_code == 404
 
     creds = {"email": "b@example.com", "password": "password123"}
-    client.post("/api/v1/auth/register", json={**creds, "full_name": "B"})
+    client.post("/api/v1/auth/register", json={**creds, "full_name": "B", "date_of_birth": "2000-05-17"})
     token = client.post("/api/v1/auth/login", json=creds).json()["access_token"]
     other = {"Authorization": f"Bearer {token}"}
     assert client.patch(url, headers=other, json={"amount": 1}).status_code == 404

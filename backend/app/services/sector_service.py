@@ -10,7 +10,11 @@ from datetime import UTC, datetime, timedelta
 
 from app.core.constants import SECTORS, TICKER_TO_COMPANY_NAME
 from app.data import sector_repository as repo
-from app.data.news_repository import get_scored_articles_for_ticker
+from app.data.news_repository import (
+    get_headlines_for_tickers,
+    get_scored_articles_for_ticker,
+    get_sector_headlines,
+)
 from app.data.prices_repository import get_close_series
 from app.services.sentiment_service import MIN_ARTICLES_FOR_LABEL, overall_label
 
@@ -141,3 +145,25 @@ async def list_sectors() -> list[dict]:
 
 async def get_sector(sector: str) -> dict | None:
     return await repo.get_snapshot(sector)
+
+
+async def sector_news(sector: str, exclude_ticker: str | None = None, limit: int = 8) -> list[dict] | None:
+    """Stored sector-wide headlines, topped up with news about its companies.
+    `exclude_ticker` drops stories a stock's own page already covers."""
+    if sector not in SECTORS:
+        return None
+    since = datetime.now(UTC) - timedelta(days=SENTIMENT_DAYS)
+    tickers = [t for t in SECTORS[sector][1] if t != exclude_ticker]
+    rows = await get_sector_headlines(sector, since, 100)
+    rows += await get_headlines_for_tickers(tickers, since, 100)
+    out, seen = [], set()
+    for row in rows:
+        title = row["title"].strip().lower()
+        if title in seen or exclude_ticker in row.get("tickers", []):
+            continue
+        seen.add(title)
+        sentiment = row.pop("sentiment", None) or {}
+        out.append({**row, "label": sentiment.get("label")})
+        if len(out) == limit:
+            break
+    return sorted(out, key=lambda r: r["published_at"], reverse=True)

@@ -48,6 +48,7 @@ export async function apiGet<T>(path: string, init?: { signal?: AbortSignal }): 
     throw new ApiError(message, response.status)
   }
 
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
@@ -68,6 +69,7 @@ export async function apiPost<T>(path: string, body: any): Promise<T> {
     throw new ApiError(message, response.status)
   }
 
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
@@ -88,6 +90,7 @@ export async function apiPut<T>(path: string, body: any): Promise<T> {
     throw new ApiError(message, response.status)
   }
 
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 
@@ -108,6 +111,7 @@ export async function apiPatch<T>(path: string, body: any): Promise<T> {
     throw new ApiError(message, response.status)
   }
 
+  if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
 

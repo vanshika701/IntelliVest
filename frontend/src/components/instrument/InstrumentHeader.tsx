@@ -1,4 +1,5 @@
 import { TrendingDown, TrendingUp } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import type { InstrumentDetail } from '../../api/instruments'
 import { DASH, formatDate, formatINR, formatSignedPct } from '../../lib/format'
 import { cn } from '../../lib/utils'
@@ -18,6 +19,14 @@ export function InstrumentHeader({ instrument }: { instrument: InstrumentDetail 
             <TypeTag type={instrument.type} />
             {instrument.category && (
               <span className="text-xs text-[var(--color-text-muted)]">{instrument.category}</span>
+            )}
+            {instrument.sector && (
+              <Link
+                to={`/sectors/${instrument.sector.id}`}
+                className="rounded-full bg-[var(--color-brand-light)] px-2 py-0.5 text-xs font-medium text-[var(--color-brand)] hover:text-[var(--color-brand-hover)]"
+              >
+                Sector: {instrument.sector.name}
+              </Link>
             )}
           </div>
           <h2 className="text-xl font-bold tracking-tight text-[var(--color-text-primary)] sm:text-2xl">

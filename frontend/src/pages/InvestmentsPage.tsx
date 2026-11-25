@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
-import { AlertCircle, PiggyBank, RefreshCw } from 'lucide-react'
+import { AlertCircle, ArrowLeft, PiggyBank, RefreshCw } from 'lucide-react'
 import { investmentsApi, type Investment, type InvestmentStatus } from '../api/investments'
+import { HoldingsTable } from '../components/investments/HoldingsTable'
 import { useApi } from '../hooks/useApi'
 import { formatDate, formatINR } from '../lib/format'
 import { ordinal } from '../lib/ordinal'
@@ -57,11 +58,26 @@ function InvestmentRow({ investment }: { investment: Investment }) {
 
 export function InvestmentsPage() {
   const investments = useApi('investments', investmentsApi.list)
+  const portfolio = useApi('portfolio', investmentsApi.portfolio)
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
+      <Link to="/dashboard" className="inline-flex items-center gap-1 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]">
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Dashboard
+      </Link>
+
+      {portfolio.loading ? (
+        <Skeleton className="h-48 w-full rounded-2xl" />
+      ) : portfolio.error ? (
+        <p role="alert" className="text-sm text-[var(--color-losses)]">
+          Couldn't work out what your investments are worth. <button type="button" onClick={portfolio.reload} className="underline">Retry</button>
+        </p>
+      ) : portfolio.data?.holdings.length ? (
+        <HoldingsTable portfolio={portfolio.data} />
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-[var(--color-text-secondary)]">One-time orders and SIPs you've placed.</p>
+        <p className="text-sm text-[var(--color-text-secondary)]">Every one-time order and SIP you've placed. A SIP counts as invested once an instalment is due.</p>
         <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-400">
           Demo data — no real money moved
         </span>

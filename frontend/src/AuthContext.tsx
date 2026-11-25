@@ -5,6 +5,7 @@ export interface User {
   id: string;
   email: string;
   full_name: string;
+  has_date_of_birth: boolean;
 }
 
 interface AuthContextType {

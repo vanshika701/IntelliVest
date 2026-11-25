@@ -39,6 +39,7 @@ export interface InstrumentDetail {
   symbol: string
   subtitle: string | null
   category: string | null
+  sector: { id: string; name: string } | null
   currency: string
   price: number | null
   price_date: string | null

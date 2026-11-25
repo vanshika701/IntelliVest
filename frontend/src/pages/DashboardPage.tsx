@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Newspaper, BellRing, TrendingUp, TrendingDown, Clock, ArrowRight, LineChart } from 'lucide-react';
 import { apiGet } from '../api/client';
 import { HealthScoreCard } from '../components/budget/HealthScoreCard';
+import { InvestmentsCard } from '../components/investments/InvestmentsCard';
 import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
 
@@ -95,6 +96,8 @@ export function DashboardPage() {
         
         <HealthScoreCard />
       </div>
+
+      <InvestmentsCard />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Watchlist Quick View */}

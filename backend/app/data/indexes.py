@@ -48,6 +48,9 @@ async def ensure_indexes() -> None:
         name="tickers_published_at",
     )
 
+    # Sector-wide headlines (Phase 6).
+    await news.create_index([("sectors", 1), ("published_at", -1)], name="sectors_published_at")
+
     reddit = get_reddit_collection()
     # Reddit's own post ID is our dedup key.
     await reddit.create_index("post_id", name="uniq_post_id", unique=True)
