@@ -55,6 +55,11 @@ export function WatchlistPage() {
 
   useEffect(() => {
     loadWatchlist();
+    // Quotes refresh every minute on the server.
+    const timer = setInterval(() => {
+      if (!document.hidden) loadWatchlist();
+    }, 60_000);
+    return () => clearInterval(timer);
   }, []);
 
   async function loadWatchlist() {

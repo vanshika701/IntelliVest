@@ -2,8 +2,10 @@
 
 from datetime import UTC, datetime
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from app.core.config import settings
 from app.data.collections import get_expenses_collection
@@ -86,7 +88,7 @@ def test_goals_crud_and_affordability(client: TestClient, auth_headers) -> None:
     goal = {"name": "Car", "target_amount": 800_000, "horizon_months": 36}
 
     preview = client.post("/api/v1/budget/goals/preview", headers=auth_headers, json=goal).json()
-    assert preview["assumption"]["annual_return_pct"] == 7
+    assert preview["assumption"]["annual_return_pct"] == 6
     # Surplus = income − needs − wants = 1,00,000 − 45,000 = 55,000; SIP ≈ 19.7k fits.
     assert preview["affordability"]["status"] == "affordable"
 
@@ -117,25 +119,26 @@ def test_explainer_number_guard() -> None:
 
 
 async def test_explainer_falls_back_when_llm_alters_numbers(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "budget_explainer_provider", "anthropic")
+    monkeypatch.setattr(settings, "budget_explainer_provider", "groq")
+    monkeypatch.setattr(settings, "groq_api_key", SecretStr("k"))
 
     async def fake_bad(_facts):
         return "Save ₹9,999 now!"
 
-    monkeypatch.setattr(budget_explainer, "_ask_claude", fake_bad)
+    monkeypatch.setattr(budget_explainer, "_ask_llm", fake_bad)
     out = await budget_explainer.explain(["Spend ₹6,000."])
     assert out == {"text": "Spend ₹6,000.", "source": "template"}
 
     async def fake_good(_facts):
         return "Aim to keep it around ₹6,000."
 
-    monkeypatch.setattr(budget_explainer, "_ask_claude", fake_good)
+    monkeypatch.setattr(budget_explainer, "_ask_llm", fake_good)
     assert (await budget_explainer.explain(["Spend ₹6,000."]))["source"] == "llm"
 
     async def fake_error(_facts):
         raise RuntimeError("no network")
 
-    monkeypatch.setattr(budget_explainer, "_ask_claude", fake_error)
+    monkeypatch.setattr(budget_explainer, "_ask_llm", fake_error)
     assert (await budget_explainer.explain(["Spend ₹6,000."]))["source"] == "template"
 
 
@@ -207,18 +210,24 @@ def test_second_goal_only_gets_what_the_first_leaves(client: TestClient, auth_he
 
 def test_health_score_known_cases() -> None:
     perfect = health_score(
-        analyze_budget(100_000, {"housing": 30_000, "groceries": 10_000}, emergency_fund=240_000)
+        analyze_budget(100_000, {"housing": 30_000, "groceries": 10_000, "utilities": 5_000}, emergency_fund=270_000)
     )
     assert (perfect["score"], perfect["band"], perfect["complete"]) == (100, "Good", True)
-    # EMIs at 40%: debt 50/100; 10% overspend: spending 50/100. No emergency figure.
+    # EMIs at 40%: debt 50/100. Groceries, bills and emergency fund not entered.
     debt = health_score(analyze_budget(100_000, {"emi_debt": 40_000}))
     assert {c["id"]: c["score"] for c in debt["components"]} == {
         "savings": 100,
         "debt": 50,
         "emergency": None,
-        "spending": 50,
+        "housing": 100,
+        "groceries": None,
+        "household": None,
+        "lifestyle": 100,
     }
-    assert debt["complete"] is False and debt["score"] == 70  # (30*100 + 25*50 + 20*50) / 75
+    assert debt["complete"] is False and debt["score"] == 89  # 5950 / 67
+    # Rent at 1.5x its 35% maximum earns half.
+    rent = health_score(analyze_budget(100_000, {"housing": 52_500}))
+    assert {c["id"]: c["score"] for c in rent["components"]}["housing"] == 50
     assert health_score(analyze_budget(0, {}))["score"] is None
 
 
@@ -227,3 +236,26 @@ def test_health_score_endpoint(client: TestClient, auth_headers) -> None:
     assert client.get(url, headers=auth_headers).json()["score"] is None
     client.put("/api/v1/budget/profile", headers=auth_headers, json=PROFILE)
     assert 0 <= client.get(url, headers=auth_headers).json()["score"] <= 100
+
+
+async def test_explainer_request_and_missing_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    sent = {}
+
+    class FakeClient:
+        def __init__(self, **_kw): ...
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a): ...
+        async def post(self, url, headers, json):
+            sent.update(url=url, auth=headers["Authorization"], model=json["model"])
+            body = {"choices": [{"finish_reason": "stop", "message": {"content": "Around ₹6,000."}}]}
+            return httpx.Response(200, json=body, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(budget_explainer.httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr(settings, "budget_explainer_provider", "gemini")
+    monkeypatch.setattr(settings, "gemini_api_key", SecretStr(""))
+    assert not budget_explainer.llm_enabled()
+    monkeypatch.setattr(settings, "gemini_api_key", SecretStr("k"))
+    assert (await budget_explainer.explain(["Spend ₹6,000."])) == {"text": "Around ₹6,000.", "source": "llm"}
+    assert sent["url"].endswith("/v1beta/openai/chat/completions") and sent["auth"] == "Bearer k"

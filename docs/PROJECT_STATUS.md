@@ -90,9 +90,9 @@ Alerts. Layout: `AppShell` = `Navbar` (page title, notifications bell, user chip
   have a 10 s timeout and retries; failures return 502 or a `partial` search result.
   _Assumption:_ ETF prices shown are AMFI NAVs, not live exchange prices.
 - **Mutual funds only have a daily NAV**, so 1D is disabled for MF/ETF with a tooltip.
-- **Rating, fund size (AUM), minimum SIP / minimum investment: no free API.** They sit behind a
-  `fundMetaProvider` (backend). The current implementation is a mock:
-  rating and AUM are `null` (shown as "—", never invented); minimum SIP (₹500) and minimum
+- **Rating and fund size now come from Yahoo and AMFI (see 2026-11-26 below); minimum SIP / investment still has no free API.** They sit behind a
+  `fundMetaProvider` (backend). Only the minimums are mocked:
+  a missing rating or size shows "—"; minimum SIP (₹500) and minimum
   one-time (₹1,000) are **placeholder defaults**, flagged `is_placeholder` and labelled
   "Placeholder" in the UI, so validation has something to check against. For stocks, the
   minimum is one share at the latest price (derived, not a placeholder).
@@ -172,7 +172,7 @@ mobile search → Infosys → 1D intraday chart.
 
 | What | Where | Status |
 |---|---|---|
-| Rating, fund size (AUM) | `fund_meta_provider.py` | Not available from free sources → `null`, shown as "—" |
+| Rating, fund size (AUM) | `fund_meta_provider.py`, `fund_aum_provider.py` | Live: Morningstar via Yahoo; AMFI quarterly average |
 | Minimum SIP ₹500 / one-time ₹1,000 for MFs | `fund_meta_provider.py` | Placeholder defaults, labelled "Placeholder" in the UI |
 | ETF minimums | `fund_meta_provider.py` | One unit at NAV (approximate), labelled placeholder |
 | Investment accounts / folios | `investment_service.DEMO_ACCOUNTS` | Demo list, labelled "(Demo)" |
@@ -181,10 +181,9 @@ mobile search → Infosys → 1D intraday chart.
 
 ### Known limitations
 - Since 2026-11-25: fund star ratings (Morningstar), stock analyst ratings and market caps come live
-  from Yahoo Finance. Fund size (AUM) is still unavailable.
+  from Yahoo Finance. 2026-11-26: fund size from AMFI, stock quotes (about 15 min delayed), price dates repaired, price catch-up at startup.
 - Stock search covers only the 20 tracked NSE stocks (the only ones with stored prices and news).
-- A stock's header price is the last stored daily close (refreshed daily at 18:00 IST), so it can
-  be a session behind the 1D intraday chart.
+- A stock's header price is a quote about 15 minutes delayed, or the last stored close if Yahoo fails.
 - Fund sentiment is an exact-phrase Google News search on the fund name: popular funds get
   headlines, many niche schemes show "Not enough news to determine sentiment". Headlines are
   scored on overall tone, not specifically for the fund.
@@ -193,7 +192,7 @@ mobile search → Infosys → 1D intraday chart.
 - In-memory caches are per API process (fine for one instance; use Redis if scaled out).
 
 ### What's left / next steps
-1. Real fund metadata (rating, AUM, minimums) from a paid feed or AMC factsheets → implement a
+1. Real fund metadata (minimums) from a paid feed or AMC factsheets → implement a
    second `FundMetaProvider`.
 2. Razorpay: backend order creation + signature verification/webhooks, a
    `RazorpayPaymentService` on the frontend, then `VITE_PAYMENT_PROVIDER=razorpay`.

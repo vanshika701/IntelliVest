@@ -13,6 +13,7 @@ from app.core.scheduler import start_scheduler, stop_scheduler
 from app.data.indexes import ensure_indexes
 from app.data.mongo import close_mongo_connection, connect_to_mongo
 from app.services.category_migration import migrate_expense_categories
+from app.services.price_date_migration import migrate_price_dates
 from app.services.sector_service import refresh_sectors
 from app.services.sentiment_service import warm_up_model
 
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await ensure_indexes()
     # Phase 8: map old free-text / ML categories onto the fixed list (idempotent).
     await migrate_expense_categories()
+    await migrate_price_dates()
     warm_up_task = None
     sector_task = None
     if settings.enable_scheduler:

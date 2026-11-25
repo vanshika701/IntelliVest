@@ -32,6 +32,13 @@ export function InstrumentHeader({ instrument }: { instrument: InstrumentDetail 
           <p className="text-xs text-[var(--color-text-muted)]">
             {priceLabel} · {formatDate(instrument.price_date)}
           </p>
+          {instrument.quote_fetched_at && (
+            <p className="text-xs text-[var(--color-text-muted)]">
+              {instrument.market_open
+                ? `Market open · about ${instrument.quote_delay_minutes} min delayed · updated ${formatDate(instrument.quote_fetched_at, 'h:mm a')}`
+                : 'Market closed · last traded price'}
+            </p>
+          )}
           <p className="text-3xl font-bold tracking-tight text-[var(--color-text-primary)]">
             {formatINR(instrument.price)}
           </p>

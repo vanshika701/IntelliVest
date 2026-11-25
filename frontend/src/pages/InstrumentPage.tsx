@@ -22,7 +22,7 @@ export function InstrumentPage() {
 
 function InstrumentView({ id }: { id: string }) {
   const isStock = id.startsWith('stock-')
-  const detail = useApi(id, () => instrumentsApi.detail(id))
+  const detail = useApi(id, () => instrumentsApi.detail(id), isStock ? 60_000 : undefined)
   const history = useApi(id, () => instrumentsApi.history(id))
   const intraday = useApi(isStock ? id : null, () => instrumentsApi.intraday(id))
   const sentiment = useApi(id, () => instrumentsApi.sentiment(id))

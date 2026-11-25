@@ -14,6 +14,7 @@ async def test_start_scheduler_registers_all_expected_jobs() -> None:
         job_ids = {job.id for job in scheduler.get_jobs()}
         assert job_ids == {
             "market_data_ingestion",
+            "market_data_catch_up",
             "news_ingestion",
             "reddit_ingestion",
             "alert_evaluation",

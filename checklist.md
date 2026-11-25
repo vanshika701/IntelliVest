@@ -38,7 +38,7 @@ How each one works, and the assumptions behind it:
 
 # Open items
 
-As of 2026-11-25. Item 5 is coded but needs a real API call to close it; 11 and 13 are open.
+As of 2026-11-26. Only item 5 is open: it needs a free API key and one real call.
 
 ## Fix first (affects whether the numbers and page can be trusted)
 
@@ -57,10 +57,11 @@ As of 2026-11-25. Item 5 is coded but needs a real API call to close it; 11 and 
 - [x] **4. The Budgeting page has no error state.** If the API fails it stays on "Loading metrics...".
   - Where: `loadData` in `frontend/src/pages/BudgetingPage.tsx`
   - Done when: a failure shows a message and a retry button.
-- [ ] **5. The LLM API key isn't picked up.** `ANTHROPIC_API_KEY` in `backend/.env` never reaches
-      the SDK, so the app always falls back to template text. `anthropic` is also not installed.
+- [ ] **5. LLM wording with a free API.** Claude has no lasting free tier, so this now uses Groq
+      (default) or Gemini over HTTP, with no extra package. Both endpoints were reached and the
+      fallback to template text works; no valid key has been used yet.
   - Where: `backend/app/core/config.py`, `backend/app/services/budget_explainer.py`
-  - Done when: the key is a setting passed to the client, and one real API call has been checked.
+  - Done when: `GROQ_API_KEY` is set in `backend/.env` and one real reply has been checked.
 
 ## Fix next
 
@@ -80,12 +81,10 @@ As of 2026-11-25. Item 5 is coded but needs a real API call to close it; 11 and 
 
 ## Housekeeping
 
-- [ ] **11. Verify sources.** Thresholds were checked from search summaries; the pages were not
-      opened. Confirm the Warren & Tyagi credit and find a source for the return rates, then
-      update `budget_config.py` and `docs/PHASE_8_BUDGETING.md`.
-- [x] **12. Commit the Phase 8 work.** It is only in the working folder.
-- [ ] **13. Restart the backend on port 8000.** It still runs the pre-Phase 8 code, so the page on
-      port 5173 doesn't load budget data.
+- [x] **11. Verify sources.** Pages opened 2026-11-25; results, including what could not be
+      verified, are in `docs/PHASE_8_BUDGETING.md`. Return defaults lowered to 6% / 8% / 11%.
+- [x] **12. Commit the Phase 8 work.** On branch `phase-8-and-6`.
+- [x] **13. Restart the backend on port 8000.** Done 2026-11-26.
 
 ---
 

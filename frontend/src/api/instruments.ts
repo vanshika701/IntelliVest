@@ -25,6 +25,7 @@ export interface InstrumentStats {
   analyst_count: number | null
   market_cap_crore: number | null
   aum_crore: number | null
+  aum_period: string | null
   min_sip: number | null
   min_investment: number | null
   placeholder_fields: string[]
@@ -44,6 +45,9 @@ export interface InstrumentDetail {
   previous_price: number | null
   day_change: number | null
   day_change_pct: number | null
+  quote_fetched_at: string | null
+  quote_delay_minutes: number | null
+  market_open: boolean
   supports_intraday: boolean
   stats: InstrumentStats
 }

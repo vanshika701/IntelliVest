@@ -16,7 +16,7 @@ import yfinance as yf
 from app.core.cache import MISSING, TTLCache
 from app.core.constants import STOCK_UNIVERSE, TICKER_TO_COMPANY_NAME
 from app.data.prices_repository import get_close_series
-from app.services import fund_meta_provider, mfapi_client
+from app.services import fund_meta_provider, mfapi_client, quote_service
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,14 @@ async def get_instrument(instrument_id: str) -> dict:
         subtitle, category = meta.get("fund_house"), meta.get("scheme_category")
 
     price = series[-1][1] if series else None
+    price_date = series[-1][0] if series else None
     previous = series[-2][1] if len(series) >= 2 else None
+    quote = (await quote_service.get_quotes()).get(ref) if kind == "stock" else None
+    if quote and (price_date is None or quote["date"] >= price_date):
+        price, price_date = quote["price"], quote["date"]
+        previous = quote["previous_close"] or previous
+    else:
+        quote = None
     day_change = round(price - previous, 4) if price is not None and previous else None
     day_change_pct = round(day_change / previous * 100, 4) if day_change is not None else None
 
@@ -143,16 +150,20 @@ async def get_instrument(instrument_id: str) -> dict:
         "category": category,
         "currency": "INR",
         "price": price,
-        "price_date": series[-1][0] if series else None,
+        "price_date": price_date,
         "previous_price": previous,
         "day_change": day_change,
         "day_change_pct": day_change_pct,
+        "quote_fetched_at": quote["fetched_at"] if quote else None,
+        "quote_delay_minutes": quote_service.DELAY_MINUTES if quote else None,
+        "market_open": bool(quote and quote["market_open"]),
         "supports_intraday": kind == "stock",
         "stats": await fund_meta_provider.get_meta(
             instrument_type,
             price,
             ticker=ref if kind == "stock" else None,
             isin=meta.get("isin_growth") or meta.get("isin_div_reinvestment"),
+            scheme_code=int(ref) if kind == "mf" else None,
         ),
     }
 

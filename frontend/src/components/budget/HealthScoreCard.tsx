@@ -34,11 +34,12 @@ export function HealthScoreCard() {
           </div>
           <details className="mt-3 text-xs">
             <summary className="cursor-pointer text-[var(--color-text-secondary)]">What's in this score</summary>
+            <p className="mt-2 text-[var(--color-text-muted)]">Points show how much each part counts towards the score, not how much of your income it should take.</p>
             <ul className="mt-2 space-y-2">
               {data.components.map((c) => (
                 <li key={c.id}>
                   <div className="flex justify-between text-[var(--color-text-primary)]">
-                    <span>{c.name} <span className="text-[var(--color-text-muted)]">({c.weight}% weight)</span></span>
+                    <span>{c.name} <span className="text-[var(--color-text-muted)]">({c.weight} of 100 points)</span></span>
                     <span className="font-mono">{c.score ?? '—'}</span>
                   </div>
                   <p className="text-[var(--color-text-muted)]">{c.detail}</p>

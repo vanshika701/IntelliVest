@@ -3,29 +3,21 @@ and return assumptions. Everything here is a product decision, not a
 secret, so it lives in code (reviewable, version-controlled) next to
 `constants.py` rather than in `.env`.
 
-Sources the defaults were sanity-checked against (2026-11):
-- 50/30/20 rule (needs / wants / savings of after-tax income) — Elizabeth
-  Warren & Amelia Warren Tyagi, "All Your Worth" (2005); restated by e.g.
-  Experian https://experian.com/blogs/ask-experian/what-is-the-50-30-20-rule
-  and U.S. Bank https://www.usbank.com/financial-education/save/50-30-20-rule.html
-  (both stress it is a framework, not a mandate).
-- Emergency fund of 3-6 months of essential expenses — American Express
-  https://www.americanexpress.com/en-us/credit-cards/credit-intel/50-30-20-rule/
-  and Empower https://www.empower.com/the-currency/play/50-30-20-budget-rule-explained.
-- Debt: the 28/36 rule caps total debt at 36% of GROSS income
-  (https://www.bankrate.com/mortgages/what-is-the-28-36-rule). Indian
-  lenders' FOIR allows 40-55% of gross, but advisers recommend keeping
-  EMIs within ~30-40% of TAKE-HOME (https://www.finnovate.in/learn/blog/home-loan-emi-affordability-india).
-  We measure against take-home, so a 30% guideline and a 36% hard flag
-  are deliberately conservative.
-- Housing ~30% of income is the common rent-burden line (the "28" in
-  28/36 is housing); 25-35% allows for Indian metro rents.
-- The other per-category ranges are rule-of-thumb starting points chosen
-  to sum sensibly inside the 50/30 split. They are NOT from a single
-  authority — tune them here.
-- Return assumptions: conservative long-run figures for illustration
-  (short horizon ≈ RD / short-duration debt fund yields of ~6-8%; 5y+ ≈
-  diversified equity long-run averages of ~10-12%). Not guaranteed.
+Sources (pages opened and read 2026-11-25; details and what could not be
+verified are in docs/PHASE_8_BUDGETING.md):
+- 50/30/20 of after-tax income, Warren & Tyagi, "All Your Worth" (2005):
+  https://www.experian.com/blogs/ask-experian/what-is-the-50-30-20-rule/
+- Emergency fund of 3-6 months:
+  https://www.empower.com/the-currency/play/50-30-20-budget-rule-explained
+- 28% housing / 36% total debt, of GROSS income (we use take-home, which is
+  stricter): https://www.bankrate.com/mortgages/what-is-the-28-36-rule/
+- India: 25-35% of take-home is a safe EMI level, though banks lend up to 40-55%
+  of gross: https://www.finnovate.in/learn/blog/home-loan-emi-affordability-india
+- Returns: 3-year SBI FD 6.3% (https://scripbox.com/mf/sbi-fd-interest-rates);
+  Nifty 50 TRI 20-year CAGR about 12.4% (Bajaj AMC quoting NSE,
+  https://www.bajajamc.com/knowledge-centre/nifty-50-historical-returns). We
+  assume less than both; the 3-5 year figure is our own value in between.
+- The other category ranges are our own rules of thumb, not from a source.
 """
 
 from dataclasses import dataclass
@@ -119,10 +111,30 @@ ACTUAL_WINDOW_MONTHS = 3
 
 # --- Financial health score (0-100). Weights and scales are our own product
 # choices built on the thresholds above; they are not from a published index.
-HEALTH_WEIGHTS: dict[str, float] = {"savings": 30, "debt": 25, "emergency": 25, "spending": 20}
+# A weight is how many of the 100 points a part is worth, not a share of income.
+HEALTH_WEIGHTS: dict[str, float] = {
+    "savings": 20,
+    "emergency": 15,
+    "debt": 15,
+    "housing": 12,
+    "groceries": 8,
+    "household": 10,
+    "lifestyle": 20,
+}
+# Spending parts of the score, and the categories each one covers. Full marks up
+# to the sum of their guideline maximums, none at HEALTH_SPEND_ZERO_RATIO times it.
+HEALTH_SPEND_GROUPS: dict[str, tuple[str, list[str]]] = {
+    "housing": ("Rent / housing", ["housing"]),
+    "groceries": ("Groceries", ["groceries"]),
+    "household": ("Bills, transport and health", ["utilities", "transportation", "health_insurance"]),
+    "lifestyle": ("Lifestyle spending", ["food_dining", "shopping_personal", "entertainment", "travel"]),
+}
+# Living rent-free or spending nothing on lifestyle is real; no groceries or
+# bills at all means they weren't entered.
+HEALTH_ZERO_IS_REAL = {"housing", "lifestyle"}
+HEALTH_SPEND_ZERO_RATIO = 2.0
 HEALTH_DEBT_FULL_PCT = 30.0  # EMI share of income that still earns full marks
 HEALTH_DEBT_ZERO_PCT = 50.0  # EMI share that earns none
-HEALTH_OVERSPEND_ZERO_PCT = 20.0  # overspend (% of income) that earns none
 HEALTH_BANDS: list[tuple[float, str]] = [(75, "Good"), (50, "Fair"), (0, "Needs attention")]
 
 # Top N other over-benchmark categories listed alongside a focus category.
@@ -140,8 +152,8 @@ class ReturnAssumption:
 
 # Default expected annual return by goal horizon (first match wins).
 RETURN_ASSUMPTIONS: list[ReturnAssumption] = [
-    ReturnAssumption(36, 7.0, "Up to 3 years: debt / hybrid funds, RDs (~6-8%)"),
-    ReturnAssumption(60, 9.0, "3-5 years: hybrid / balanced funds (~8-10%)"),
+    ReturnAssumption(36, 6.0, "Up to 3 years: FDs, RDs, short-duration debt funds (~6%)"),
+    ReturnAssumption(60, 8.0, "3-5 years: hybrid / balanced funds (between debt and equity)"),
     ReturnAssumption(None, 11.0, "5+ years: equity-oriented funds (~10-12%)"),
 ]
 

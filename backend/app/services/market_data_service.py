@@ -8,15 +8,23 @@ either of those.
 
 import asyncio
 import logging
+from datetime import UTC, date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import yfinance as yf
 
 from app.core.retry import with_retry
-from app.data.prices_repository import upsert_prices
+from app.data.prices_repository import get_oldest_latest_date, upsert_prices
 from app.services.ingestion_types import IngestResult
 
 logger = logging.getLogger(__name__)
+
+IST = ZoneInfo("Asia/Kolkata")
+# NSE closes at 15:30 IST; by now the day's bar is final.
+DAY_FINAL_AT = time(16, 0)
+CATCH_UP_RETRY = timedelta(hours=3)
+_last_catch_up: datetime | None = None
 
 
 @with_retry
@@ -28,20 +36,32 @@ async def _fetch_history(ticker: str, period: str) -> pd.DataFrame:
     return await asyncio.to_thread(yf.Ticker(ticker).history, period=period, interval="1d")
 
 
-def clean_history(ticker: str, history: pd.DataFrame) -> list[dict]:
-    """Turn yfinance's raw DataFrame into clean, storage-ready records."""
+def last_final_weekday(now: datetime) -> date:
+    """The latest weekday whose trading has finished (holidays not known)."""
+    local = now.astimezone(IST)
+    day = local.date() if local.time() >= DAY_FINAL_AT else local.date() - timedelta(days=1)
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return day
+
+
+def clean_history(ticker: str, history: pd.DataFrame, now: datetime | None = None) -> list[dict]:
+    """Turn yfinance's raw DataFrame into clean, storage-ready records.
+    Today's bar is left out until the market has closed."""
+    now = now or datetime.now(UTC)
     # A row missing any OHLCV field isn't usable — better to drop it than
     # let a null silently corrupt an average or a backtest later.
     history = history.dropna(subset=["Open", "High", "Low", "Close", "Volume"])
 
     records = []
     for index, row in history.iterrows():
-        # yfinance returns timestamps in the exchange's local timezone
-        # (e.g. Asia/Kolkata for .NS tickers). Normalize to UTC midnight
-        # so "date" means the same thing no matter which exchange a
-        # ticker trades on — this is the timezone-handling step the
-        # phase's "concepts to learn" calls out explicitly.
-        trade_date = index.tz_convert("UTC").normalize().to_pydatetime()
+        # yfinance's index is midnight in the exchange's timezone. Keep that
+        # calendar day and label it UTC. Converting the instant to UTC would
+        # move every IST date back by one.
+        local_now = now.astimezone(index.tzinfo)
+        if index.date() == local_now.date() and local_now.time() < DAY_FINAL_AT:
+            continue
+        trade_date = datetime(index.year, index.month, index.day, tzinfo=UTC)
         records.append(
             {
                 "ticker": ticker,
@@ -91,3 +111,19 @@ async def ingest_stock_universe(
             status,
         )
     return results
+
+
+async def catch_up(tickers: list[str], now: datetime | None = None) -> bool:
+    """Ingest if stored prices are behind, e.g. the app was off at the daily
+    run. On an exchange holiday nothing new exists, so tries are spaced out."""
+    global _last_catch_up
+    now = now or datetime.now(UTC)
+    stored = await get_oldest_latest_date(tickers)
+    if stored is not None and stored.date() >= last_final_weekday(now):
+        return False
+    if _last_catch_up is not None and now - _last_catch_up < CATCH_UP_RETRY:
+        return False
+    _last_catch_up = now
+    logger.info("Stored prices end at %s; catching up", stored.date() if stored else "nothing")
+    await ingest_stock_universe(tickers)
+    return True

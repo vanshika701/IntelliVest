@@ -17,6 +17,7 @@ from app.data.alert_repository import (
     toggle_alert_active,
 )
 from app.data.collections import get_prices_collection
+from app.services import quote_service
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,9 @@ async def remove_alert(user_id: str, alert_id: str) -> bool:
 
 
 async def _get_latest_close(ticker: str) -> float | None:
-    """Fetch the most recent closing price for a ticker."""
+    """Latest quote for a ticker, or its last stored close if there is none."""
+    if quote := (await quote_service.get_quotes()).get(ticker):
+        return quote["price"]
     prices_col = get_prices_collection()
     doc = await prices_col.find_one(
         {"ticker": ticker},

@@ -4,9 +4,8 @@ Live from Yahoo Finance (the source the app already uses for stock prices):
 - funds: Morningstar overall star rating, looked up by the scheme's ISIN;
 - stocks: market cap and the analysts' consensus.
 
-Yahoo's fund AUM is missing or implausible for most Indian schemes, so
-`aum_crore` stays None rather than show a wrong number. Fund minimums are
-still placeholders. Each lookup has a timeout, is cached, and returns no
+Fund size comes from AMFI, by scheme code (Yahoo's is missing or implausible
+for most Indian schemes). Fund minimums are still placeholders. Each lookup has a timeout, is cached, and returns no
 values on failure, so it can never break the instrument page.
 """
 
@@ -17,6 +16,7 @@ import math
 import yfinance as yf
 
 from app.core.cache import MISSING, TTLCache
+from app.services import fund_aum_provider
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,11 @@ async def _live(key: str, fetch, arg: str) -> dict:
 
 
 async def get_meta(
-    instrument_type: str, price: float | None, ticker: str | None = None, isin: str | None = None
+    instrument_type: str,
+    price: float | None,
+    ticker: str | None = None,
+    isin: str | None = None,
+    scheme_code: int | None = None,
 ) -> dict:
     one_unit = math.ceil(price) if price else None
     meta = {
@@ -82,6 +86,7 @@ async def get_meta(
         "analyst_count": None,
         "market_cap_crore": None,
         "aum_crore": None,
+        "aum_period": None,
         # ETFs: one unit at NAV, approximate since they trade at exchange prices.
         "min_sip": one_unit,
         "min_investment": one_unit,
@@ -98,4 +103,6 @@ async def get_meta(
         meta |= {"min_sip": PLACEHOLDER_MF_MIN_SIP, "min_investment": PLACEHOLDER_MF_MIN_INVESTMENT}
     if isin:
         meta |= await _live(f"fund:{isin}", _fetch_fund, isin)
+    if scheme_code is not None:
+        meta |= await fund_aum_provider.get_aum(scheme_code)
     return meta

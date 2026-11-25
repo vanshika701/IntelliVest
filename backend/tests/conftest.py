@@ -1,3 +1,5 @@
+import asyncio
+
 import pymongo
 import pytest
 import pytest_asyncio
@@ -7,7 +9,7 @@ from app.core.config import settings
 from app.data.indexes import ensure_indexes
 from app.data.mongo import close_mongo_connection, connect_to_mongo, get_database
 from app.main import app
-from app.services import fund_meta_provider
+from app.services import fund_aum_provider, fund_meta_provider, quote_service
 
 TEST_DB_NAME = "intellivest_test"
 
@@ -19,6 +21,17 @@ def _no_live_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
     fund_meta_provider._failures.clear()
     monkeypatch.setattr(fund_meta_provider, "_fetch_fund", lambda _isin: {})
     monkeypatch.setattr(fund_meta_provider, "_fetch_stock", lambda _ticker: {})
+    for cache in (fund_aum_provider._cache, fund_aum_provider._failures, quote_service._cache):
+        cache.clear()
+    # Fresh locks: each test runs its own event loop.
+    monkeypatch.setattr(fund_aum_provider, "_lock", asyncio.Lock())
+    monkeypatch.setattr(quote_service, "_lock", asyncio.Lock())
+
+    async def no_aum() -> dict:
+        return {"data": []}
+
+    monkeypatch.setattr(fund_aum_provider, "_fetch", no_aum)
+    monkeypatch.setattr(quote_service, "_download", dict)
 
 
 @pytest.fixture

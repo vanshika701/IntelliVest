@@ -61,15 +61,15 @@ def test_step_up_schedule_years_and_months() -> None:
 
 def test_very_short_horizon_one_month() -> None:
     plan = plan_goal("Phone", 20_000, 1)
-    # One deposit that grows for one month at the default short-horizon rate (7%).
-    assert plan["flat"]["monthly"] == pytest.approx(20_000 / (1 + 0.07 / 12), abs=0.01)
+    # One deposit that grows for one month at the default short-horizon rate (6%).
+    assert plan["flat"]["monthly"] == pytest.approx(20_000 / (1 + 0.06 / 12), abs=0.01)
     assert plan["step_up"]["start_monthly"] == plan["flat"]["monthly"]
     assert any("year or less" in n for n in plan["notes"])
 
 
 def test_default_return_depends_on_horizon() -> None:
-    assert plan_goal("A", 1e5, 24)["assumption"]["annual_return_pct"] == 7
-    assert plan_goal("B", 1e5, 48)["assumption"]["annual_return_pct"] == 9
+    assert plan_goal("A", 1e5, 24)["assumption"]["annual_return_pct"] == 6
+    assert plan_goal("B", 1e5, 48)["assumption"]["annual_return_pct"] == 8
     assert plan_goal("C", 1e5, 120)["assumption"]["annual_return_pct"] == 11
     custom = plan_goal("D", 1e5, 120, annual_return_pct=8)["assumption"]
     assert custom["annual_return_pct"] == 8 and custom["is_default"] is False
@@ -105,7 +105,7 @@ def test_unaffordable_suggests_options_with_amounts() -> None:
     extend = aff["options"][0]
     assert extend["horizon_months"] > 36 and extend["monthly"] <= 15_000
     reduce = aff["options"][1]
-    assert reduce["target_amount"] == pytest.approx(15_000 * flat_factor(36, 7), abs=0.01)
+    assert reduce["target_amount"] == pytest.approx(15_000 * flat_factor(36, 6), abs=0.01)
     free = aff["options"][2]
     assert free["total"] <= aff["gap"] + 0.01
     assert free["cuts"][0]["amount"] == 4_000

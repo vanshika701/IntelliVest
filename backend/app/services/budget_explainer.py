@@ -5,20 +5,40 @@ recommendation, plus template sentences. This layer may only REPHRASE
 those sentences:
 
 - provider "template" (default): returns the engine's own sentences.
-- provider "anthropic": asks Claude to rewrite them in plain, friendly
-  language. The reply is rejected (template used instead) if it contains
+- provider "groq" or "gemini": asks an LLM with a free tier to rewrite them in
+  plain, friendly language, through its OpenAI-compatible API. The reply is rejected (template used instead) if it contains
   any number that wasn't in the input, so the LLM can't invent or alter
-  figures. Any error, refusal or missing SDK also falls back to the template.
+  figures. Any error or missing key also falls back to the template.
 
 The LLM is never used for categorisation or for any decision.
 """
 
 import logging
 import re
+from dataclasses import dataclass
+
+import httpx
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Provider:
+    base_url: str
+    default_model: str
+    key_setting: str
+
+
+PROVIDERS = {
+    # Preferred: Groq says it doesn't retain inference data by default, while
+    # Gemini's free tier uses content to improve Google's products.
+    "groq": Provider("https://api.groq.com/openai/v1", "openai/gpt-oss-120b", "groq_api_key"),
+    "gemini": Provider(
+        "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.5-flash-lite", "gemini_api_key"
+    ),
+}
 
 # The ₹ and % signs are part of the token, so "₹30" can't become "30%".
 _NUMBER_RE = re.compile(r"₹?\d[\d,]*(?:\.\d+)?%?")
@@ -58,7 +78,13 @@ def numbers_are_preserved(source: str, output: str) -> bool:
 
 
 def llm_enabled() -> bool:
-    return settings.budget_explainer_provider == "anthropic"
+    return _api_key() is not None
+
+
+def _api_key() -> str | None:
+    provider = PROVIDERS.get(settings.budget_explainer_provider)
+    key = getattr(settings, provider.key_setting) if provider else None
+    return (key.get_secret_value().strip() or None) if key else None
 
 
 async def explain(facts: list[str]) -> dict:
@@ -67,8 +93,8 @@ async def explain(facts: list[str]) -> dict:
     if not llm_enabled() or not template:
         return {"text": template, "source": "template"}
     try:
-        text = await _ask_claude(template)
-    except Exception:  # any SDK/network/config failure -> template
+        text = await _ask_llm(template)
+    except Exception:  # any network/config/format failure -> template
         logger.warning("Budget explainer LLM call failed; using template text", exc_info=True)
         return {"text": template, "source": "template"}
     if not text or not numbers_are_preserved(template, text):
@@ -77,25 +103,24 @@ async def explain(facts: list[str]) -> dict:
     return {"text": text, "source": "llm"}
 
 
-async def _ask_claude(facts: str) -> str | None:
-    import anthropic  # optional dependency: `pip install anthropic`
-
-    key = settings.anthropic_api_key
-    client = anthropic.AsyncAnthropic(
-        # None lets the SDK use its own environment lookup.
-        api_key=key.get_secret_value() if key and key.get_secret_value() else None,
-        timeout=30.0,
-        max_retries=1,
-    )
-    response = await client.beta.messages.create(
-        model=settings.budget_explainer_model,
-        max_tokens=2000,
-        system=_SYSTEM_PROMPT,
-        output_config={"effort": "low"},
-        betas=["server-side-fallback-2026-07-01"],
-        fallbacks="default",
-        messages=[{"role": "user", "content": f"Facts:\n{facts}"}],
-    )
-    if response.stop_reason == "refusal":
+async def _ask_llm(facts: str) -> str | None:
+    provider = PROVIDERS[settings.budget_explainer_provider]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            f"{provider.base_url}/chat/completions",
+            headers={"Authorization": f"Bearer {_api_key()}"},
+            json={
+                "model": settings.budget_explainer_model or provider.default_model,
+                "max_tokens": 2000,
+                "reasoning_effort": "low",
+                "messages": [
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": f"Facts:\n{facts}"},
+                ],
+            },
+        )
+    response.raise_for_status()
+    choice = response.json()["choices"][0]
+    if choice.get("finish_reason") != "stop":  # cut off or filtered
         return None
-    return "".join(b.text for b in response.content if b.type == "text").strip() or None
+    return (choice["message"].get("content") or "").strip() or None

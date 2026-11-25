@@ -47,3 +47,6 @@ CLAUDE.md
 # Locally logged summarization data (article text + summaries) — may contain
 # copyrighted article text, so never committed.
 data/*.jsonl
+
+# Local database backups
+data/backups/

@@ -8,18 +8,34 @@ out and the others are re-weighted, with `complete` False.
 
 from app.core.budget_config import (
     BUCKET_TARGETS_PCT,
+    CATEGORY_BY_ID,
     EMERGENCY_FUND_MAX_MONTHS,
     HEALTH_BANDS,
     HEALTH_DEBT_FULL_PCT,
     HEALTH_DEBT_ZERO_PCT,
-    HEALTH_OVERSPEND_ZERO_PCT,
+    HEALTH_SPEND_GROUPS,
+    HEALTH_SPEND_ZERO_RATIO,
     HEALTH_WEIGHTS,
+    HEALTH_ZERO_IS_REAL,
 )
-from app.services.budget_rules import inr
 
 
 def _clamp(x: float) -> float:
     return max(0.0, min(100.0, x))
+
+
+def _spend_parts(analysis: dict) -> list[tuple[str, str, float | None, str]]:
+    amounts = {c["category"]: c["amount"] for c in analysis["categories"]}
+    parts = []
+    for pid, (name, ids) in HEALTH_SPEND_GROUPS.items():
+        cap = sum(CATEGORY_BY_ID[i].max_pct or 0 for i in ids)
+        pct = round(sum(amounts[i] for i in ids) / analysis["income"] * 100, 1)
+        if pct == 0 and pid not in HEALTH_ZERO_IS_REAL:
+            parts.append((pid, name, None, "Add this spending to include it."))
+            continue
+        value = _clamp((HEALTH_SPEND_ZERO_RATIO - pct / cap) / (HEALTH_SPEND_ZERO_RATIO - 1) * 100)
+        parts.append((pid, name, value, f"{pct:g}% of income; up to {cap:g}% gets full marks."))
+    return parts
 
 
 def health_score(analysis: dict) -> dict:
@@ -37,7 +53,6 @@ def health_score(analysis: dict) -> dict:
     savings = analysis["savings_rate_pct"]
     debt = next(c for c in analysis["categories"] if c["category"] == "emi_debt")["pct_of_income"]
     months = analysis["emergency_fund"]["months_covered"]
-    overspend = analysis["total_overspend"] / income * 100
 
     parts: list[tuple[str, str, float | None, str]] = [
         (
@@ -60,12 +75,7 @@ def health_score(analysis: dict) -> dict:
             if months is None
             else f"Covers {months:g} months of essentials; {EMERGENCY_FUND_MAX_MONTHS} gets full marks.",
         ),
-        (
-            "spending",
-            "Spending within guidelines",
-            _clamp((1 - overspend / HEALTH_OVERSPEND_ZERO_PCT) * 100),
-            f"{inr(analysis['total_overspend'])}/month over the category guidelines.",
-        ),
+        *_spend_parts(analysis),
     ]
     measured = [(pid, value) for pid, _, value, _ in parts if value is not None]
     total_weight = sum(HEALTH_WEIGHTS[pid] for pid, _ in measured)

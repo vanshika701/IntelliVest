@@ -54,7 +54,13 @@ export function StatsStrip({ instrument }: { instrument: InstrumentDetail }) {
         <Stat
           label={isStock ? 'Market cap' : 'Fund size (AUM)'}
           value={crore(isStock ? stats.market_cap_crore : stats.aum_crore)}
-          hint={(isStock ? stats.market_cap_crore : stats.aum_crore) === null ? unavailable : undefined}
+          hint={
+            (isStock ? stats.market_cap_crore : stats.aum_crore) === null
+              ? unavailable
+              : isStock
+                ? undefined
+                : `All plans together, average for ${stats.aum_period ?? 'the latest quarter'} (AMFI)`
+          }
         />
       </dl>
     </section>
