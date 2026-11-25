@@ -52,7 +52,7 @@ SEBI-registered investment adviser.
       collection, `GET/PUT /api/v1/risk-profile`, tests.
 - [x] **2. Asset allocation.** Profile × horizon → equity / debt / gold %,
       as tested pure functions with documented sources.
-- [ ] **3. Market statistics job.** From stored prices: daily returns,
+- [x] **3. Market statistics job.** From stored prices: daily returns,
       volatility, shrunk covariance, correlations. Stored nightly in
       `market_stats`; recomputed after the price job.
 - [ ] **4. Equity optimizer.** Minimum-variance weights with stock and
