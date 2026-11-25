@@ -92,15 +92,17 @@ export function SpendingPie({ categories, comparison, hasActual }: Props) {
 }
 
 /** Per-category estimated vs actual table (also the accessible table view of the pie). */
-export function EstimateVsActual({ comparison, hasActual, months }: { comparison: ComparisonRow[]; hasActual: boolean; months: string[] }) {
+export function EstimateVsActual({ comparison, hasActual, partial, months }: { comparison: ComparisonRow[]; hasActual: boolean; partial: boolean; months: string[] }) {
   const rows = comparison.filter((r) => r.estimated > 0 || (r.actual ?? 0) > 0)
   return (
     <div className="glass-card rounded-2xl overflow-hidden">
       <div className="px-5 py-4 border-b border-[var(--color-border-subtle)]">
         <h3 className="text-sm font-medium text-[var(--color-text-primary)]">Estimated vs actual (per month)</h3>
         <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
-          {hasActual
-            ? `Actual = average of ${months.length} month${months.length === 1 ? '' : 's'} with logged expenses (${months.join(', ')}).`
+          {partial
+            ? `Actual = logged so far in ${months.join(', ')}. The month isn't over, so checks use the higher of this and your estimate.`
+            : hasActual
+            ? `Actual = average of ${months.length} month${months.length === 1 ? '' : 's'} completed with logged expenses (${months.join(', ')}).`
             : 'Log expenses to compare against your estimates.'}
         </p>
       </div>

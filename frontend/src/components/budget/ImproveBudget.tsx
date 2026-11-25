@@ -77,6 +77,9 @@ export function ImproveBudget({ meta, analysis }: Props) {
             </span>
           </div>
 
+          {analysis.filled_from_estimate.length > 0 && (
+            <p className="text-xs text-[var(--color-text-muted)]">Using your estimates for categories without complete logs: {analysis.filled_from_estimate.join(', ')}.</p>
+          )}
           {error && <p className="text-sm text-[var(--color-losses)]">{error}</p>}
           {result && (
             <>

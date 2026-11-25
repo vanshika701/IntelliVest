@@ -180,6 +180,8 @@ mobile search → Infosys → 1D intraday chart.
 | Payment verification | `investment_service.record_payment_result` | Trusts the client's result — must verify Razorpay signatures server-side before going live |
 
 ### Known limitations
+- Since 2026-11-25: fund star ratings (Morningstar), stock analyst ratings and market caps come live
+  from Yahoo Finance. Fund size (AUM) is still unavailable.
 - Stock search covers only the 20 tracked NSE stocks (the only ones with stored prices and news).
 - A stock's header price is the last stored daily close (refreshed daily at 18:00 IST), so it can
   be a session behind the 1D intraday chart.

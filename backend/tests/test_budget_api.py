@@ -6,7 +6,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import settings
-from app.services import budget_explainer
+from app.data.collections import get_expenses_collection
+from app.services import budget_explainer, budget_service
+from app.services.budget_rules import analyze_budget
+from app.services.health_score import health_score
 
 PROFILE = {
     "monthly_income": 100_000,
@@ -134,3 +137,93 @@ async def test_explainer_falls_back_when_llm_alters_numbers(monkeypatch: pytest.
 
     monkeypatch.setattr(budget_explainer, "_ask_claude", fake_error)
     assert (await budget_explainer.explain(["Spend ₹6,000."]))["source"] == "template"
+
+
+def test_explainer_guard_rejects_swaps_words_and_unit_changes() -> None:
+    src = "You're overspending by ₹3,000/month. Suggested target: ₹6,000 (9%)."
+    ok = budget_explainer.numbers_are_preserved
+    assert not ok(src, "Overspending by ₹6,000; aim for ₹3,000.")
+    assert not ok(src, "You're over by three thousand rupees.")
+    assert not ok(src, "Cut it in half from ₹3,000.")
+    assert not ok(src, "That's ₹9.")
+    assert ok(src, "No one enjoys cutting back, but ₹3,000 less gets you to ₹6,000.")
+
+
+async def _log(user_id, amount, category, when):
+    await get_expenses_collection().insert_one(
+        {"user_id": user_id, "amount": amount, "category": category, "expense_type": "expense", "date": when}
+    )
+
+
+async def test_unfinished_month_does_not_lower_the_average(mongo_test_db) -> None:
+    now = datetime(2026, 11, 3, tzinfo=UTC)
+    await _log("u", 10_000, "groceries", datetime(2026, 9, 10, tzinfo=UTC))
+    await _log("u", 12_000, "groceries", datetime(2026, 10, 10, tzinfo=UTC))
+    await _log("u", 500, "groceries", datetime(2026, 11, 2, tzinfo=UTC))
+    await _log("u", 99_000, "groceries", datetime(2026, 12, 2, tzinfo=UTC))  # future-dated
+    actual = await budget_service.actual_monthly_spend("u", now)
+    assert actual["by_category"] == {"groceries": 11_000} and actual["partial"] is False
+    assert actual["months"] == ["2026-09", "2026-10"]
+
+    await _log("new", 500, "groceries", datetime(2026, 11, 2, tzinfo=UTC))
+    assert (await budget_service.actual_monthly_spend("new", now))["partial"] is True
+
+
+def test_unlogged_categories_use_the_estimate() -> None:
+    profile = {"monthly_income": 100_000, "estimates": {"housing": 30_000, "groceries": 10_000}}
+    actual = {"by_category": {"groceries": 2_000}, "partial": False}
+    result = budget_service._analysis(profile, actual, "actual")
+    assert result["total_spend"] == 32_000
+    assert result["filled_from_estimate"] == ["Housing & Rent"]
+    # An unfinished month below the estimate isn't evidence of lower spending.
+    result = budget_service._analysis(profile, {**actual, "partial": True}, "actual")
+    assert result["total_spend"] == 40_000
+    over = budget_service._analysis(profile, {"by_category": {"groceries": 15_000}, "partial": True}, "actual")
+    assert over["total_spend"] == 45_000
+
+
+def test_second_goal_only_gets_what_the_first_leaves(client: TestClient, auth_headers) -> None:
+    # Surplus 55,000; each goal needs about 39,800/month.
+    client.put("/api/v1/budget/profile", headers=auth_headers, json=PROFILE)
+    url = "/api/v1/budget/goals"
+    goal = {"name": "Car", "target_amount": 1_600_000, "horizon_months": 36}
+    first = client.post(url, headers=auth_headers, json=goal).json()
+    second = client.post(url, headers=auth_headers, json={**goal, "name": "Trip"}).json()
+    assert first["plan"]["affordability"]["status"] == "affordable"
+    assert second["plan"]["affordability"]["status"] == "not_affordable"
+    assert "after your other goals" in second["plan"]["affordability"]["message"]
+
+    # Previewing an edit of the first goal must not count it (or later goals) against itself.
+    preview = client.post(f"{url}/preview?goal_id={first['id']}", headers=auth_headers, json=goal).json()
+    assert preview["affordability"]["committed"] == 0
+
+    smaller = {**goal, "name": "Small car", "target_amount": 400_000}
+    edited = client.put(f"{url}/{first['id']}", headers=auth_headers, json=smaller).json()
+    assert edited["name"] == "Small car"
+    items = client.get(url, headers=auth_headers).json()["items"]
+    assert [i["plan"]["affordability"]["status"] for i in items] == ["affordable", "affordable"]
+    assert client.put(f"{url}/bad", headers=auth_headers, json=goal).status_code == 404
+
+
+def test_health_score_known_cases() -> None:
+    perfect = health_score(
+        analyze_budget(100_000, {"housing": 30_000, "groceries": 10_000}, emergency_fund=240_000)
+    )
+    assert (perfect["score"], perfect["band"], perfect["complete"]) == (100, "Good", True)
+    # EMIs at 40%: debt 50/100; 10% overspend: spending 50/100. No emergency figure.
+    debt = health_score(analyze_budget(100_000, {"emi_debt": 40_000}))
+    assert {c["id"]: c["score"] for c in debt["components"]} == {
+        "savings": 100,
+        "debt": 50,
+        "emergency": None,
+        "spending": 50,
+    }
+    assert debt["complete"] is False and debt["score"] == 70  # (30*100 + 25*50 + 20*50) / 75
+    assert health_score(analyze_budget(0, {}))["score"] is None
+
+
+def test_health_score_endpoint(client: TestClient, auth_headers) -> None:
+    url = "/api/v1/budget/health-score"
+    assert client.get(url, headers=auth_headers).json()["score"] is None
+    client.put("/api/v1/budget/profile", headers=auth_headers, json=PROFILE)
+    assert 0 <= client.get(url, headers=auth_headers).json()["score"] <= 100

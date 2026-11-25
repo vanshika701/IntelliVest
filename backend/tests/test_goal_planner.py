@@ -114,3 +114,16 @@ def test_unaffordable_suggests_options_with_amounts() -> None:
 def test_no_surplus_and_unknown_budget() -> None:
     assert plan_goal("X", 1e5, 24, monthly_surplus=-2_000)["affordability"]["status"] == "not_affordable"
     assert plan_goal("X", 1e5, 24)["affordability"]["status"] == "unknown"
+
+
+def test_step_up_is_offered_when_only_its_start_fits() -> None:
+    plan = plan_goal("Car", 800_000, 60, monthly_surplus=9_500)
+    assert plan["flat"]["monthly"] > 9_500 >= plan["step_up"]["start_monthly"]
+    option = plan["affordability"]["options"][0]
+    assert option["type"] == "step_up" and option["monthly"] == plan["step_up"]["start_monthly"]
+
+
+def test_committed_goals_reduce_what_is_available() -> None:
+    plan = plan_goal("Car", 800_000, 36, monthly_surplus=25_000, committed=10_000)
+    assert plan["affordability"]["status"] == "not_affordable"
+    assert plan["affordability"]["available"] == 15_000

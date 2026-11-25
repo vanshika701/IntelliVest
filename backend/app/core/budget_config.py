@@ -69,6 +69,41 @@ SPENDING_CATEGORY_IDS: list[str] = [c.id for c in CATEGORIES]
 INCOME_CATEGORY_ID = "income"
 FALLBACK_CATEGORY_ID = "other"
 
+
+# --- Income sources ---------------------------------------------------------
+
+IncomeGroup = Literal["job", "investments", "other"]
+INCOME_GROUPS: dict[IncomeGroup, str] = {"job": "Job", "investments": "Investments", "other": "Other"}
+
+
+@dataclass(frozen=True)
+class IncomeSource:
+    id: str  # stored on income records, so never rename
+    name: str
+    group: IncomeGroup
+
+
+INCOME_SOURCES: list[IncomeSource] = [
+    IncomeSource("salary", "Salary", "job"),
+    IncomeSource("bonus", "Bonus / incentive", "job"),
+    IncomeSource("commission", "Commission / overtime", "job"),
+    IncomeSource("part_time", "Part-time job", "job"),
+    IncomeSource("stipend", "Internship stipend", "job"),
+    IncomeSource("dividends", "Dividends", "investments"),
+    IncomeSource("interest", "Interest (FD, RD, savings, bonds)", "investments"),
+    IncomeSource("capital_gains", "Profit from selling investments", "investments"),
+    IncomeSource("rental", "Rental income", "investments"),
+    IncomeSource("business", "Business", "other"),
+    IncomeSource("freelance", "Freelance / gig work", "other"),
+    IncomeSource("content_royalties", "Content / royalties", "other"),
+    IncomeSource("pension", "Pension", "other"),
+    IncomeSource("scholarship_benefits", "Scholarship / government benefit", "other"),
+    IncomeSource("gift_family", "Gift / family support", "other"),
+    IncomeSource("refund_cashback", "Refund / cashback", "other"),
+    IncomeSource("other_income", "Other income", "other"),
+]
+INCOME_SOURCE_BY_ID: dict[str, IncomeSource] = {s.id: s for s in INCOME_SOURCES}
+
 # 50/30/20 targets as % of take-home income.
 BUCKET_TARGETS_PCT: dict[Bucket, float] = {"needs": 50, "wants": 30, "savings": 20}
 
@@ -81,6 +116,14 @@ EMERGENCY_FUND_MAX_MONTHS = 6
 
 # How many calendar months of logged expenses "actual" spending averages over.
 ACTUAL_WINDOW_MONTHS = 3
+
+# --- Financial health score (0-100). Weights and scales are our own product
+# choices built on the thresholds above; they are not from a published index.
+HEALTH_WEIGHTS: dict[str, float] = {"savings": 30, "debt": 25, "emergency": 25, "spending": 20}
+HEALTH_DEBT_FULL_PCT = 30.0  # EMI share of income that still earns full marks
+HEALTH_DEBT_ZERO_PCT = 50.0  # EMI share that earns none
+HEALTH_OVERSPEND_ZERO_PCT = 20.0  # overspend (% of income) that earns none
+HEALTH_BANDS: list[tuple[float, str]] = [(75, "Good"), (50, "Fair"), (0, "Needs attention")]
 
 # Top N other over-benchmark categories listed alongside a focus category.
 TOP_OTHER_OVERSPENDS = 3

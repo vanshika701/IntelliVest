@@ -132,6 +132,7 @@ def analyze_budget(
     estimates: dict[str, float] | None = None,
     emergency_fund: float | None = None,
     basis: str = "estimated",
+    filled_from_estimate: set[str] | None = None,
 ) -> dict:
     """Full rule-based analysis.
 
@@ -145,6 +146,10 @@ def analyze_budget(
         assess_category(c.id, float(spend.get(c.id, 0) or 0), income, estimates.get(c.id))
         for c in CATEGORIES
     ]
+
+    filled = filled_from_estimate or set()
+    for row in categories:
+        row["from_estimate"] = basis == "estimated" or row["category"] in filled
 
     totals = {"needs": 0.0, "wants": 0.0, "savings": 0.0}
     for row in categories:
@@ -210,6 +215,7 @@ def analyze_budget(
 
     return {
         "basis": basis,
+        "filled_from_estimate": [c["name"] for c in categories if c["category"] in filled],
         "income": _r(income),
         "total_spend": _r(total_spend),
         "surplus": _r(surplus),
@@ -275,6 +281,8 @@ def improve_focus(analysis: dict, focus: str) -> dict:
     else:
         focus_row = by_id[focus]
         summary = focus_row["message"]
+        if analysis["basis"] == "actual" and focus_row["from_estimate"] and focus_row["amount"] > 0:
+            summary += " This uses your estimate, because your logged spending here isn't complete yet."
         if focus_row["vs_estimate"] and analysis["basis"] == "actual" and focus_row["estimate"] is not None:
             diff = focus_row["vs_estimate"]
             word = "more" if diff > 0 else "less"

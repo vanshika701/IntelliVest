@@ -3,6 +3,8 @@
 from datetime import UTC, datetime
 
 from bson import ObjectId
+from bson.errors import InvalidId
+from pymongo import ReturnDocument
 
 from app.data.collections import get_expenses_collection
 
@@ -53,11 +55,36 @@ async def count_expenses_for_user(user_id: str) -> int:
     return await get_expenses_collection().count_documents({"user_id": user_id})
 
 
+def _owned(user_id: str, expense_id: str) -> dict | None:
+    try:
+        return {"_id": ObjectId(expense_id), "user_id": user_id}
+    except InvalidId:
+        return None
+
+
+async def get_expense(user_id: str, expense_id: str) -> dict | None:
+    query = _owned(user_id, expense_id)
+    return await get_expenses_collection().find_one(query) if query else None
+
+
+async def update_expense(user_id: str, expense_id: str, changes: dict) -> dict | None:
+    query = _owned(user_id, expense_id)
+    if query is None:
+        return None
+    doc = await get_expenses_collection().find_one_and_update(
+        query, {"$set": changes}, return_document=ReturnDocument.AFTER
+    )
+    if doc:
+        doc["id"] = str(doc.pop("_id"))
+    return doc
+
+
 async def delete_expense(user_id: str, expense_id: str) -> bool:
     """Delete an expense if it belongs to the given user. Returns True if deleted."""
-    result = await get_expenses_collection().delete_one(
-        {"_id": ObjectId(expense_id), "user_id": user_id}
-    )
+    query = _owned(user_id, expense_id)
+    if query is None:
+        return False
+    result = await get_expenses_collection().delete_one(query)
     return result.deleted_count > 0
 
 
@@ -67,7 +94,7 @@ async def get_expense_summary(user_id: str) -> dict:
         {"$match": {"user_id": user_id}},
         {
             "$group": {
-                "_id": {"expense_type": "$expense_type", "category": "$category"},
+                "_id": {"expense_type": "$expense_type", "category": "$category", "source": "$income_source"},
                 "total": {"$sum": "$amount"},
             }
         },
@@ -78,14 +105,17 @@ async def get_expense_summary(user_id: str) -> dict:
     total_income = 0.0
     total_expense = 0.0
     by_category: dict[str, float] = {}
+    by_income_source: dict[str, float] = {}
 
     for row in results:
         exp_type = row["_id"]["expense_type"]
-        category = row["_id"]["category"]
+        category = row["_id"].get("category")
         total = row["total"]
 
         if exp_type == "income":
             total_income += total
+            source = row["_id"].get("source") or "unspecified"
+            by_income_source[source] = by_income_source.get(source, 0.0) + total
         else:
             total_expense += total
             # Spending only: income used to leak into the category pie.
@@ -96,4 +126,5 @@ async def get_expense_summary(user_id: str) -> dict:
         "total_expense": total_expense,
         "net": total_income - total_expense,
         "by_category": by_category,
+        "by_income_source": by_income_source,
     }

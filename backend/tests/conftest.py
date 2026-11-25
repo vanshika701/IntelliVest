@@ -7,8 +7,18 @@ from app.core.config import settings
 from app.data.indexes import ensure_indexes
 from app.data.mongo import close_mongo_connection, connect_to_mongo, get_database
 from app.main import app
+from app.services import fund_meta_provider
 
 TEST_DB_NAME = "intellivest_test"
+
+
+@pytest.fixture(autouse=True)
+def _no_live_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Instrument pages look ratings up on Yahoo; tests must stay offline."""
+    fund_meta_provider._cache.clear()
+    fund_meta_provider._failures.clear()
+    monkeypatch.setattr(fund_meta_provider, "_fetch_fund", lambda _isin: {})
+    monkeypatch.setattr(fund_meta_provider, "_fetch_stock", lambda _ticker: {})
 
 
 @pytest.fixture

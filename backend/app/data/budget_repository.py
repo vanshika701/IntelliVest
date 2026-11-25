@@ -61,6 +61,18 @@ async def get_goal(user_id: str, goal_id: str) -> dict | None:
     return doc
 
 
+async def update_goal(user_id: str, goal_id: str, data: dict) -> dict | None:
+    oid = _oid(goal_id)
+    if oid is None:
+        return None
+    doc = await get_savings_goals_collection().find_one_and_update(
+        {"_id": oid, "user_id": user_id}, {"$set": data}, return_document=ReturnDocument.AFTER
+    )
+    if doc:
+        doc["id"] = str(doc.pop("_id"))
+    return doc
+
+
 async def delete_goal(user_id: str, goal_id: str) -> bool:
     oid = _oid(goal_id)
     if oid is None:

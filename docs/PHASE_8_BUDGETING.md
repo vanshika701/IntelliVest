@@ -29,8 +29,10 @@ _Completed 2026-11-21 on branch `feature-instrument-search-invest`._
 - [x] Tests: SIP maths, rules engine, migration, API, explainer guard, and frontend
       validation and chart helpers.
 
-The original plan's single "financial health score" was not built. The ratios it would
-combine (savings rate, DTI, emergency-fund months) now exist in the rules engine.
+Added 2026-11-25: income sources in three groups (Job / Investments / Other), editing of
+transactions and goals, an error state, and a 0-100 health score (`services/health_score.py`):
+savings 30%, debt 25%, emergency fund 25%, spending within guidelines 20%. The weights and scales
+are our own choices, in `budget_config.py`.
 
 ## How it works
 
@@ -46,8 +48,10 @@ combine (savings rate, DTI, emergency-fund months) now exist in the rules engine
 | UI | `frontend/src/pages/BudgetingPage.tsx`, `frontend/src/components/budget/*` |
 
 **Definitions**
-- **Actual monthly spend** is the average over the calendar months, within the last 3
-  (including the current month), that have at least one expense logged.
+- **Actual monthly spend** is the average over the completed months, within the last 3, that
+  have expenses. The current month is used only when there is nothing else. A category with
+  nothing logged, or an unfinished month below the estimate, uses the estimate, and the UI says so.
+- **Goals** claim the surplus in the order they were created.
 - **Surplus** = income − (Needs + Wants). The Savings & Investments allocation counts as
   available for goal SIPs.
 - **Savings rate** (50/30/20) = surplus ÷ income.
@@ -101,8 +105,8 @@ BUDGET_EXPLAINER_MODEL=claude-opus-5-5   # any Claude model id
 ```
 
 When enabled, an "Explain in plain words" button appears. The server recomputes everything
-and sends only the engine's own sentences to the model. If the reply contains any number
-that wasn't in those sentences, the template text is returned instead. The same happens if
+and sends only the engine's own sentences to the model. If the reply contains a number
+that wasn't in those sentences, reorders numbers, or writes them as words, the template text is returned instead. The same happens if
 the model refuses, errors, or the SDK is missing.
 
 ## Running and testing
@@ -112,7 +116,7 @@ docker compose up -d                       # MongoDB
 cd backend && ../.venv/Scripts/python -m uvicorn app.main:app --reload   # migration runs on startup
 cd frontend && npm run dev                 # open /budget
 
-cd backend && ../.venv/Scripts/python -m pytest -q    # 218 tests
+cd backend && ../.venv/Scripts/python -m pytest -q
 cd frontend && npm test && npx tsc -b && npm run lint
 ```
 

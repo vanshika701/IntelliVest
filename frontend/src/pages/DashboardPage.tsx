@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Newspaper, BellRing, TrendingUp, TrendingDown, Clock, ArrowRight, LineChart } from 'lucide-react';
 import { apiGet } from '../api/client';
+import { HealthScoreCard } from '../components/budget/HealthScoreCard';
 import { cn } from '../lib/utils';
 import { Link } from 'react-router-dom';
 
@@ -92,16 +93,7 @@ export function DashboardPage() {
           </div>
         </div>
         
-        {/* Placeholder for future ML Insight */}
-        <div className="glass-card p-6 rounded-2xl relative overflow-hidden group bg-gradient-to-br from-[var(--color-background-secondary)] to-[rgba(99,102,241,0.05)] border-[rgba(99,102,241,0.2)]">
-          <p className="text-sm font-medium text-[var(--color-brand)] mb-1 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[var(--color-brand)]"></span>
-            AI Portfolio Health
-          </p>
-          <div className="flex items-center justify-center h-[72px]">
-             <span className="text-[var(--color-text-muted)] text-sm italic">Connecting ML Pipeline (Phase 8)...</span>
-          </div>
-        </div>
+        <HealthScoreCard />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

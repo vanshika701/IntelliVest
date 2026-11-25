@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     # anthropic` and ANTHROPIC_API_KEY). Numbers always come from the engine.
     budget_explainer_provider: str = "template"
     budget_explainer_model: str = "claude-opus-5-5"
+    anthropic_api_key: SecretStr | None = None
 
     # Phase 10 blockchain. Off by default; nothing below is used until it is
     # on. Checked at startup by app/services/blockchain/config.py. Test

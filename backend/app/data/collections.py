@@ -22,6 +22,10 @@ def get_reddit_collection() -> AsyncIOMotorCollection:
     return get_database()["reddit_posts"]
 
 
+def get_sector_snapshots_collection() -> AsyncIOMotorCollection:
+    return get_database()["sector_snapshots"]
+
+
 def get_users_collection() -> AsyncIOMotorCollection:
     return get_database()["users"]
 

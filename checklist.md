@@ -9,7 +9,7 @@ overspend, and how much they can set aside each month for a goal such as a car.
 The original plan called this phase "Financial Health Assessment": compute ratios such as savings
 rate, debt-to-income and emergency-fund coverage, and combine them into one health score. It was
 redefined as a smart budgeter and goal planner. The ratios are built; the combined score is not
-(item 9).
+(item 9; built 2026-11-25).
 
 **The main rule:** every number, flag and recommendation comes from fixed formulas and rules, not
 from an AI model. Users need to be able to see why they got a piece of advice, the same inputs
@@ -38,23 +38,23 @@ How each one works, and the assumptions behind it:
 
 # Open items
 
-As of 2026-11-24.
+As of 2026-11-25. Item 5 is coded but needs a real API call to close it; 11 and 13 are open.
 
 ## Fix first (affects whether the numbers and page can be trusted)
 
-- [ ] **1. "Actual" runs low early in the month.** A partial current month counts as a full one.
+- [x] **1. "Actual" runs low early in the month.** A partial current month counts as a full one.
   - Where: `actual_monthly_spend` in `backend/app/services/budget_service.py`
   - Done when: a partial month no longer lowers the average, with a test.
-- [ ] **2. Missing actual data reads as ₹0.** Once any expense is logged, categories with nothing
+- [x] **2. Missing actual data reads as ₹0.** Once any expense is logged, categories with nothing
       logged count as zero, which can inflate the surplus.
   - Where: `_analysis` in `backend/app/services/budget_service.py`
   - Done when: unlogged categories are handled explicitly (e.g. fall back to the estimate and
     say so in the UI), with a test.
-- [ ] **3. An expense's category can't be changed.** Records in "Other" can only be deleted and
+- [x] **3. An expense's category can't be changed.** Records in "Other" can only be deleted and
       re-added.
   - Where: `backend/app/api/v1/routes/expenses.py`, `frontend/src/pages/BudgetingPage.tsx`
   - Done when: there is an update endpoint and an edit control, with a test.
-- [ ] **4. The Budgeting page has no error state.** If the API fails it stays on "Loading metrics...".
+- [x] **4. The Budgeting page has no error state.** If the API fails it stays on "Loading metrics...".
   - Where: `loadData` in `frontend/src/pages/BudgetingPage.tsx`
   - Done when: a failure shows a message and a retry button.
 - [ ] **5. The LLM API key isn't picked up.** `ANTHROPIC_API_KEY` in `backend/.env` never reaches
@@ -64,26 +64,26 @@ As of 2026-11-24.
 
 ## Fix next
 
-- [ ] **6. The LLM number check is limited.** It only checks that each number appears somewhere in
+- [x] **6. The LLM number check is limited.** It only checks that each number appears somewhere in
       the source, so swapped figures or numbers written as words would pass.
   - Where: `numbers_are_preserved` in `backend/app/services/budget_explainer.py`
-- [ ] **7. Goal affordability has gaps.** Only the flat SIP is checked, each goal is checked as if
+- [x] **7. Goal affordability has gaps.** Only the flat SIP is checked, each goal is checked as if
       it were the only one, and the step-up plan is never offered as a way to fit.
   - Where: `_affordability` in `backend/app/services/goal_planner.py`
-- [ ] **8. Saved goals can't be edited,** only deleted.
+- [x] **8. Saved goals can't be edited,** only deleted.
   - Where: `backend/app/api/v1/routes/budget.py`, `frontend/src/components/budget/GoalsPanel.tsx`
 
 ## Not built
 
-- [ ] **9. Combined financial health score** on the dashboard (the plan's original Phase 8 goal).
-- [ ] **10. Tests for the new React components.** Only their helper functions are tested.
+- [x] **9. Combined financial health score** on the dashboard (the plan's original Phase 8 goal).
+- [x] **10. Tests for the new React components.** Only their helper functions are tested.
 
 ## Housekeeping
 
 - [ ] **11. Verify sources.** Thresholds were checked from search summaries; the pages were not
       opened. Confirm the Warren & Tyagi credit and find a source for the return rates, then
       update `budget_config.py` and `docs/PHASE_8_BUDGETING.md`.
-- [ ] **12. Commit the Phase 8 work.** It is only in the working folder.
+- [x] **12. Commit the Phase 8 work.** It is only in the working folder.
 - [ ] **13. Restart the backend on port 8000.** It still runs the pre-Phase 8 code, so the page on
       port 5173 doesn't load budget data.
 

@@ -13,6 +13,8 @@ import { BudgetingPage } from './pages/BudgetingPage'
 import { AlertsPage } from './pages/AlertsPage'
 import { InstrumentPage } from './pages/InstrumentPage'
 import { InvestmentsPage } from './pages/InvestmentsPage'
+import { SearchPage } from './pages/SearchPage'
+import { SectorsPage } from './pages/SectorsPage'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -30,6 +32,8 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="/alerts" element={<AlertsPage />} />
                 <Route path="/instrument/:id" element={<InstrumentPage />} />
                 <Route path="/investments" element={<InvestmentsPage />} />
+                <Route path="/search" element={<SearchPage />} />
+                <Route path="/sectors" element={<SectorsPage />} />
                 
                 {/* Fallback to dashboard */}
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />

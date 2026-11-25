@@ -16,8 +16,7 @@ import yfinance as yf
 from app.core.cache import MISSING, TTLCache
 from app.core.constants import STOCK_UNIVERSE, TICKER_TO_COMPANY_NAME
 from app.data.prices_repository import get_close_series
-from app.services import mfapi_client
-from app.services.fund_meta_provider import fund_meta_provider
+from app.services import fund_meta_provider, mfapi_client
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +148,12 @@ async def get_instrument(instrument_id: str) -> dict:
         "day_change": day_change,
         "day_change_pct": day_change_pct,
         "supports_intraday": kind == "stock",
-        "stats": await fund_meta_provider.get_meta(instrument_type, price),
+        "stats": await fund_meta_provider.get_meta(
+            instrument_type,
+            price,
+            ticker=ref if kind == "stock" else None,
+            isin=meta.get("isin_growth") or meta.get("isin_div_reinvestment"),
+        ),
     }
 
 

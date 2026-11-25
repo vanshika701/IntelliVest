@@ -4,10 +4,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from fastapi.responses import Response
 
 from app.api.deps import get_current_user_id
-from app.schemas.expense import CsvUploadResult, ExpenseCreate, ExpenseResponse, ExpenseSummary
+from app.schemas.expense import (
+    CsvUploadResult,
+    ExpenseCreate,
+    ExpenseResponse,
+    ExpenseSummary,
+    ExpenseUpdate,
+)
 from app.services.expense_service import (
     SAMPLE_CSV_CONTENT,
     add_expense,
+    edit_expense,
     import_csv,
     list_expenses,
     remove_expense,
@@ -29,6 +36,17 @@ async def get_expenses(
 @router.post("", response_model=ExpenseResponse, status_code=status.HTTP_201_CREATED)
 async def create_expense(body: ExpenseCreate, user_id: str = Depends(get_current_user_id)):
     return await add_expense(user_id, body.model_dump())
+
+
+@router.patch("/{expense_id}", response_model=ExpenseResponse)
+async def update_expense(expense_id: str, body: ExpenseUpdate, user_id: str = Depends(get_current_user_id)):
+    try:
+        updated = await edit_expense(user_id, expense_id, body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    if updated is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Expense not found")
+    return updated
 
 
 @router.delete("/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)

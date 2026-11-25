@@ -81,12 +81,14 @@ def plan_goal(
     step_up_pct: float | None = None,
     monthly_surplus: float | None = None,
     overspent: list[dict] | None = None,
+    committed: float = 0.0,
 ) -> dict:
     """Plan A (flat) vs Plan B (step-up), affordability and options.
 
     `overspent` is the rules engine's over-benchmark categories (each with
     `name` and `overspend_amount`), used to suggest where money can come
-    from. `monthly_surplus` None means "unknown" (no budget set up).
+    from. `committed` is the flat SIP total of goals that come before this
+    one; it is taken out of the surplus first. `monthly_surplus` None means "unknown" (no budget set up).
     """
     assumption = default_return_for(months)
     rate_is_default = annual_return_pct is None
@@ -119,7 +121,8 @@ def plan_goal(
     )
 
     affordability = _affordability(
-        target, months, rate, rate_is_default, flat, monthly_surplus, overspent or []
+        target, months, rate, rate_is_default, flat, monthly_surplus, overspent or [],
+        committed, step, step_start, schedule,
     )
 
     return {
@@ -153,7 +156,9 @@ def plan_goal(
     }
 
 
-def _affordability(target, months, rate, rate_is_default, flat, surplus, overspent) -> dict:
+def _affordability(
+    target, months, rate, rate_is_default, flat, surplus, overspent, committed, step, step_start, schedule
+) -> dict:
     if surplus is None:
         return {
             "status": "unknown",
@@ -162,12 +167,21 @@ def _affordability(target, months, rate, rate_is_default, flat, surplus, overspe
             "options": [],
         }
 
-    surplus = round(surplus, 2)
+    total_surplus = round(surplus, 2)
+    committed = round(committed, 2)
+    # From here on, "surplus" is what's left after the earlier goals.
+    surplus = round(total_surplus - committed, 2)
+    base = {"monthly_surplus": total_surplus, "committed": committed, "available": surplus}
+    label = (
+        f"the {inr(surplus)} left of your monthly surplus after your other goals"
+        if committed > 0
+        else f"your monthly surplus of {inr(surplus)}"
+    )
     if surplus >= flat:
         return {
             "status": "affordable",
-            "monthly_surplus": surplus,
-            "message": f"The {inr(flat)}/month SIP fits within your monthly surplus of {inr(surplus)}.",
+            **base,
+            "message": f"The {inr(flat)}/month SIP fits within {label}.",
             "options": [],
         }
 
@@ -175,6 +189,16 @@ def _affordability(target, months, rate, rate_is_default, flat, surplus, overspe
     options: list[dict] = []
 
     if surplus > 0:
+        # Smallest change first: same target and date, lower start.
+        if months > 12 and step > 0 and step_start <= surplus:
+            options.append(
+                {
+                    "type": "step_up",
+                    "monthly": round(step_start, 2),
+                    "message": f"Use the step-up plan: start at {inr(step_start)}/month, which fits now. It rises "
+                    f"{step:g}% a year to {inr(schedule[-1]['monthly'])}/month, so your surplus has to grow too.",
+                }
+            )
         # Option 1: extend the timeline until the flat SIP fits.
         for m in range(months + 1, MAX_EXTENSION_SEARCH_MONTHS + 1):
             r = default_return_for(m).annual_return_pct if rate_is_default else rate
@@ -222,14 +246,18 @@ def _affordability(target, months, rate, rate_is_default, flat, surplus, overspe
             }
         )
 
-    if surplus <= 0:
+    if surplus <= 0 and committed > 0 and total_surplus > 0:
         msg = (
-            f"You have no monthly surplus right now (income minus spending is {inr(surplus)}), "
+            f"Your other goals already need {inr(committed)}/month of your {inr(total_surplus)} monthly surplus, "
+            f"so a {inr(flat)}/month SIP doesn't fit yet."
+        )
+    elif surplus <= 0:
+        msg = (
+            f"You have no monthly surplus right now (income minus spending is {inr(total_surplus)}), "
             f"so a {inr(flat)}/month SIP doesn't fit yet."
         )
     else:
         msg = (
-            f"The {inr(flat)}/month SIP is {inr(gap)} more than your monthly surplus of "
-            f"{inr(surplus)}."
+            f"The {inr(flat)}/month SIP is {inr(gap)} more than {label}."
         )
-    return {"status": "not_affordable", "monthly_surplus": surplus, "gap": round(gap, 2), "message": msg, "options": options}
+    return {"status": "not_affordable", **base, "gap": round(gap, 2), "message": msg, "options": options}

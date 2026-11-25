@@ -22,6 +22,8 @@ export function LayoutProvider({ children }: { children: React.ReactNode }) {
     // Determine page title based on path
     const path = location.pathname;
     if (path.startsWith('/instrument/')) setPageTitle('Instrument Details');
+    else if (path.startsWith('/search')) setPageTitle('Search Results');
+    else if (path.startsWith('/sectors')) setPageTitle('Sector Intelligence');
     else if (path.startsWith('/investments')) setPageTitle('My Investments');
     else if (path.includes('watchlist')) setPageTitle('Watchlist & Markets');
     else if (path.includes('budget')) setPageTitle('Budgeting & Expenses');

@@ -59,6 +59,20 @@ TICKER_TO_COMPANY_NAME: dict[str, str] = {
     "ULTRACEMCO.NS": "UltraTech Cement",
 }
 
+# Phase 6 sector map: id -> (display name, tickers). Every tracked stock is in
+# exactly one sector (tests/test_sectors.py checks this).
+SECTORS: dict[str, tuple[str, list[str]]] = {
+    "auto": ("Auto", ["MARUTI.NS", "TMPV.NS"]),
+    "banking": ("Banking", ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "KOTAKBANK.NS", "AXISBANK.NS"]),
+    "consumer": ("Consumer Goods", ["TITAN.NS", "ASIANPAINT.NS"]),
+    "energy": ("Energy", ["RELIANCE.NS"]),
+    "financial_services": ("Financial Services", ["BAJFINANCE.NS"]),
+    "fmcg": ("FMCG", ["HINDUNILVR.NS", "ITC.NS", "NESTLEIND.NS"]),
+    "infrastructure": ("Infrastructure & Materials", ["LT.NS", "ULTRACEMCO.NS"]),
+    "it": ("IT", ["TCS.NS", "INFY.NS", "WIPRO.NS"]),
+    "pharma": ("Pharma", ["SUNPHARMA.NS"]),
+}
+
 # How headlines actually refer to each company, used to tag articles from
 # the general market feeds with tickers. Values are regex fragments
 # (matched case-insensitively, as whole words); the negative lookaheads

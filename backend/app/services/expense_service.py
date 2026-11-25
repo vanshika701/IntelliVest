@@ -11,12 +11,15 @@ from datetime import UTC, datetime
 from app.data.expense_repository import (
     count_expenses_for_user,
     delete_expense,
+    get_expense,
     get_expense_summary,
     get_expenses_for_user,
     insert_expense,
     insert_many_expenses,
+    update_expense,
 )
-from app.services.category_migration import map_legacy_category
+from app.schemas.expense import check_income_source, resolve_category
+from app.services.category_migration import map_income_source, map_legacy_category
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,7 @@ logger = logging.getLogger(__name__)
 # the parser accept" never drift apart.
 SAMPLE_CSV_CONTENT = (
     "Date,Description,Category,Type,Amount\n"
-    "2026-01-05,Monthly salary,Income,Income,75000\n"
+    "2026-01-05,Monthly salary,Salary,Income,75000\n"
     "2026-01-07,Grocery shopping,Groceries,Expense,2450.50\n"
     "2026-01-10,Electricity bill,Utilities & Bills,Expense,1800\n"
     "2026-01-12,Dinner with friends,Food & Dining Out,Expense,1200\n"
@@ -52,6 +55,29 @@ async def list_expenses(user_id: str, skip: int = 0, limit: int = 50) -> dict:
     for item in items:
         item["id"] = str(item.pop("_id"))
     return {"items": items, "total": total, "skip": skip, "limit": limit}
+
+
+async def edit_expense(user_id: str, expense_id: str, data: dict) -> dict | None:
+    """Update one record. None if it isn't the user's; ValueError if the
+    category or income source doesn't suit the record's type."""
+    existing = await get_expense(user_id, expense_id)
+    if existing is None:
+        return None
+    changes = {k: v for k, v in data.items() if v is not None}
+    if existing.get("expense_type") == "income":
+        if "category" in changes:
+            raise ValueError("Income records don't have a spending category")
+        if "income_source" in changes:
+            check_income_source(changes["income_source"])
+    else:
+        if "income_source" in changes:
+            raise ValueError("Expenses don't have an income source")
+        if "category" in changes:
+            changes["category"] = resolve_category(changes["category"])
+    if not changes:
+        existing["id"] = str(existing.pop("_id"))
+        return existing
+    return await update_expense(user_id, expense_id, changes)
 
 
 async def remove_expense(user_id: str, expense_id: str) -> bool:
@@ -214,6 +240,7 @@ async def import_csv(user_id: str, file_bytes: bytes) -> dict:
                 "description": description,
                 "category": category,
                 "expense_type": expense_type,
+                "income_source": map_income_source(label) if expense_type == "income" else None,
                 "date": date,
                 "created_at": now,
             }

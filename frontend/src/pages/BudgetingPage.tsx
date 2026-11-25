@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { apiGet, apiPost, apiDelete } from '../api/client';
-import { budgetApi, type BudgetMeta, type BudgetOverview } from '../api/budget';
+import { apiGet, apiDelete } from '../api/client';
+import { budgetApi, type BudgetMeta, type BudgetOverview, type Transaction, type TransactionSummary } from '../api/budget';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
 import { BudgetSetup } from '../components/budget/BudgetSetup';
 import { EstimateVsActual, SpendingPie } from '../components/budget/SpendingPie';
 import { ImproveBudget } from '../components/budget/ImproveBudget';
 import { GoalsPanel } from '../components/budget/GoalsPanel';
-import { Upload, Plus, Trash2, ArrowUpRight, ArrowDownRight, FileText, Download, SlidersHorizontal, AlertTriangle } from 'lucide-react';
+import { TransactionModal } from '../components/budget/TransactionModal';
+import { Upload, Pencil, Plus, RefreshCw, Trash2, ArrowUpRight, ArrowDownRight, FileText, Download, SlidersHorizontal, AlertTriangle } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { formatINR } from '../lib/format';
 
@@ -21,8 +21,8 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 export function BudgetingPage() {
-  const [expenses, setExpenses] = useState<any[]>([]);
-  const [summary, setSummary] = useState<any>(null);
+  const [expenses, setExpenses] = useState<Transaction[]>([]);
+  const [summary, setSummary] = useState<TransactionSummary | null>(null);
   const [meta, setMeta] = useState<BudgetMeta | null>(null);
   const [overview, setOverview] = useState<BudgetOverview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,65 +30,54 @@ export function BudgetingPage() {
   const [setupOpen, setSetupOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [amount, setAmount] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('');
-  const [expenseType, setExpenseType] = useState('expense');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [modal, setModal] = useState<'new' | Transaction | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
-    budgetApi.meta().then(setMeta).catch(() => setMeta(null));
     loadData();
   }, []);
 
   async function loadData() {
     setLoading(true);
+    setLoadError(null);
     try {
-      const [expData, sumData, ov] = await Promise.all([
-        apiGet<any>('/api/v1/expenses?limit=100'),
-        apiGet<any>('/api/v1/expenses/summary'),
+      const [metaData, expData, sumData, ov] = await Promise.all([
+        budgetApi.meta(),
+        apiGet<{ items: Transaction[] }>('/api/v1/expenses?limit=100'),
+        apiGet<TransactionSummary>('/api/v1/expenses/summary'),
         budgetApi.overview(),
       ]);
+      setMeta(metaData);
       setExpenses(expData.items);
       setSummary(sumData);
       setOverview(ov);
       setRefreshKey((k) => k + 1);
     } catch (e) {
-      console.error(e);
+      setLoadError(e instanceof Error ? e.message : 'Something went wrong');
     } finally {
       setLoading(false);
     }
   }
 
-  const categoryName = (id: string) =>
-    id === 'income' ? 'Income' : meta?.categories.find((c) => c.id === id)?.name ?? id;
-
-  async function handleAdd(e: React.FormEvent) {
-    e.preventDefault();
-    try {
-      await apiPost('/api/v1/expenses', {
-        amount: parseFloat(amount),
-        description,
-        // Income records get the "income" category server-side.
-        ...(expenseType === 'expense' ? { category } : {}),
-        expense_type: expenseType
-      });
-      setIsAddOpen(false);
-
-      // Reset form
-      setAmount('');
-      setDescription('');
-      setCategory('');
-      setExpenseType('expense');
-
-      await loadData();
-    } catch (e: any) {
-      alert(e.message);
-    }
+  function tagFor(tx: Transaction): string {
+    if (tx.expense_type === 'expense') return meta?.categories.find((c) => c.id === tx.category)?.name ?? tx.category;
+    const group = meta?.income_groups.find((g) => g.sources.some((s) => s.id === tx.income_source));
+    const source = group?.sources.find((s) => s.id === tx.income_source);
+    return group && source ? `${group.name} · ${source.name}` : 'Income · not specified';
   }
+
+  // Income split into Job / Investments / Other for the summary card.
+  const incomeByGroup = (() => {
+    const bySource = summary?.by_income_source ?? {};
+    const rows = (meta?.income_groups ?? []).map((g) => ({
+      name: g.name,
+      total: g.sources.reduce((sum, s) => sum + (bySource[s.id] ?? 0), 0),
+    }));
+    return [...rows, { name: 'Not specified', total: bySource.unspecified ?? 0 }].filter((r) => r.total > 0);
+  })();
 
   async function handleRemove(id: string) {
     if (!confirm('Delete this record?')) return;
@@ -169,7 +158,7 @@ export function BudgetingPage() {
                 {uploading ? 'Uploading...' : 'Import CSV'}
               </Button>
               <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
-              <Button className="flex-1 sm:flex-none h-9 text-xs" onClick={() => setIsAddOpen(true)}>
+              <Button className="flex-1 sm:flex-none h-9 text-xs" onClick={() => setModal('new')} disabled={!meta}>
                 <Plus className="w-4 h-4 mr-2" /> Add Log
               </Button>
             </>
@@ -177,7 +166,7 @@ export function BudgetingPage() {
         </div>
       </div>
 
-      {!loading && meta && !hasProfile && (
+      {!loading && meta && overview && !hasProfile && (
         <div className="glass-card p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center gap-4 border-l-4 border-l-[var(--color-brand)]">
           <div className="flex-1">
             <h3 className="font-semibold text-[var(--color-text-primary)]">Set up your smart budget</h3>
@@ -192,7 +181,16 @@ export function BudgetingPage() {
         <p key={w} className="flex items-center gap-2 text-sm text-[#fab219]"><AlertTriangle className="w-4 h-4" /> {w}</p>
       ))}
 
-      {loading || !overview ? (
+      {loadError && overview && (
+        <p role="alert" className="text-sm text-[var(--color-losses)]">Couldn't refresh: {loadError} <button type="button" onClick={loadData} className="underline">Retry</button></p>
+      )}
+
+      {!loading && !overview ? (
+        <div className="h-64 flex flex-col items-center justify-center gap-3 text-center">
+          <p role="alert" className="text-sm text-[var(--color-losses)]">Your budget couldn't be loaded. {loadError}</p>
+          <Button variant="outline" onClick={loadData}><RefreshCw className="w-4 h-4 mr-2" /> Retry</Button>
+        </div>
+      ) : loading || !overview ? (
         <div className="h-64 flex items-center justify-center text-[var(--color-text-muted)]">Loading metrics...</div>
       ) : tab === 'improve' ? (
         meta && overview.analysis ? <ImproveBudget meta={meta} analysis={overview.analysis} /> : (
@@ -208,6 +206,9 @@ export function BudgetingPage() {
                <div className="absolute -right-4 -top-4 opacity-5 group-hover:scale-110 transition-transform"><ArrowDownRight className="w-32 h-32 text-[var(--color-gains)]"/></div>
                <p className="text-sm font-medium text-[var(--color-text-secondary)] mb-1">Total Income</p>
                <h3 className="text-3xl font-bold text-[var(--color-gains)] tracking-tight">₹{(summary?.total_income || 0).toLocaleString('en-IN')}</h3>
+               <ul className="mt-2 space-y-0.5 text-xs text-[var(--color-text-secondary)]">
+                 {incomeByGroup.map((r) => <li key={r.name} className="flex justify-between"><span>{r.name}</span><span className="font-mono">{formatINR(r.total, 0)}</span></li>)}
+               </ul>
             </div>
             <div className="glass-card p-6 rounded-2xl border-l-4 border-l-[var(--color-losses)] group relative overflow-hidden">
                <div className="absolute -right-4 -top-4 opacity-5 group-hover:scale-110 transition-transform"><ArrowUpRight className="w-32 h-32 text-[var(--color-losses)]"/></div>
@@ -229,7 +230,7 @@ export function BudgetingPage() {
           </div>
 
           <div className="col-span-2 space-y-6">
-            {hasProfile && <EstimateVsActual comparison={overview.comparison} hasActual={overview.actual.has_data} months={overview.actual.months} />}
+            {hasProfile && <EstimateVsActual comparison={overview.comparison} hasActual={overview.actual.has_data} partial={overview.actual.partial} months={overview.actual.months} />}
 
             {/* Transaction List */}
             <div className="glass-card rounded-2xl flex flex-col h-[650px] overflow-hidden">
@@ -258,7 +259,7 @@ export function BudgetingPage() {
                           <div>
                             <p className="font-medium text-[var(--color-text-primary)]">{exp.description}</p>
                             <div className="flex items-center gap-2 mt-1">
-                              <span className="text-xs bg-[var(--color-background-secondary)] border border-[var(--color-border-strong)] px-2 py-0.5 rounded text-[var(--color-text-secondary)]">{categoryName(exp.category)}</span>
+                              <span className="text-xs bg-[var(--color-background-secondary)] border border-[var(--color-border-strong)] px-2 py-0.5 rounded text-[var(--color-text-secondary)]">{tagFor(exp)}</span>
                               <span className="text-xs text-[var(--color-text-muted)]">{new Date(exp.date).toLocaleDateString()}</span>
                             </div>
                           </div>
@@ -267,6 +268,9 @@ export function BudgetingPage() {
                           <span className={cn("font-semibold whitespace-nowrap", exp.expense_type === 'income' ? "text-[var(--color-gains)]" : "text-[var(--color-text-primary)]")}>
                             {exp.expense_type === 'income' ? '+' : '-'} ₹{exp.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                           </span>
+                          <button onClick={() => setModal(exp)} aria-label={`Edit ${exp.description}`} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-2 -mr-4 rounded flex-shrink-0">
+                            <Pencil className="w-4 h-4" />
+                          </button>
                           <button onClick={() => handleRemove(exp.id)} aria-label="Delete transaction" className="text-[var(--color-text-muted)] hover:text-[var(--color-losses)] opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-2 -mr-2 rounded flex-shrink-0">
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -290,50 +294,14 @@ export function BudgetingPage() {
         />
       )}
 
-      {/* Add Modal */}
-      {isAddOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-          <div className="bg-[var(--color-background-secondary)] border border-[var(--color-border-subtle)] p-6 rounded-xl w-full max-w-sm shadow-2xl">
-            <h3 className="text-xl font-bold text-[var(--color-text-primary)] mb-5">Add Transaction</h3>
-            <form onSubmit={handleAdd} className="space-y-4">
-              <div className="flex bg-[var(--color-background-tertiary)] rounded-md p-1 items-center justify-between border border-[var(--color-border-strong)]">
-                <button type="button" onClick={() => setExpenseType('expense')} className={cn("flex-1 py-1.5 text-sm font-medium rounded-sm transition-colors", expenseType === 'expense' ? "bg-[var(--color-losses)] text-white shadow-sm" : "text-[var(--color-text-secondary)] hover:text-white")}>Expense</button>
-                <button type="button" onClick={() => setExpenseType('income')} className={cn("flex-1 py-1.5 text-sm font-medium rounded-sm transition-colors", expenseType === 'income' ? "bg-[var(--color-gains)] text-white shadow-sm" : "text-[var(--color-text-secondary)] hover:text-white")}>Income</button>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider">Amount (₹)</label>
-                <Input required type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" autoFocus className="font-mono text-lg" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider">Description</label>
-                <Input required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Grocery, Salary" />
-              </div>
-
-              {expenseType === 'expense' && (
-                <div>
-                  <label htmlFor="add-category" className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider">Category</label>
-                  <select
-                    id="add-category"
-                    required
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="h-10 w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-background-secondary)] px-3 text-sm text-[var(--color-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]"
-                  >
-                    <option value="" disabled>Pick a category…</option>
-                    {meta?.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
-              )}
-
-              <div className="flex gap-3 pt-4 border-t border-[var(--color-border-subtle)] mt-2">
-                <Button type="button" variant="ghost" className="flex-1" onClick={() => setIsAddOpen(false)}>Cancel</Button>
-                <Button type="submit" className="flex-1">Save Log</Button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {modal && meta && (
+        <TransactionModal
+          key={modal === 'new' ? 'new' : modal.id}
+          meta={meta}
+          initial={modal === 'new' ? null : modal}
+          onClose={() => setModal(null)}
+          onSaved={() => { setModal(null); loadData(); }}
+        />
       )}
     </div>
   );

@@ -99,7 +99,13 @@ export async function apiPatch<T>(path: string, body: any): Promise<T> {
   })
 
   if (!response.ok) {
-    throw new ApiError(`PATCH ${path} failed with status ${response.status}`, response.status)
+    let message = `PATCH ${path} failed with status ${response.status}`
+    try {
+      message = errorDetail(await response.json(), message)
+    } catch {
+      // Non-JSON error body — keep the generic message.
+    }
+    throw new ApiError(message, response.status)
   }
 
   return response.json() as Promise<T>

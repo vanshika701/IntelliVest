@@ -25,7 +25,11 @@ class InstrumentSearchResponse(BaseModel):
 
 class InstrumentStats(BaseModel):
     rating: float | None = None
-    aum_crore: float | None = None
+    rating_source: str | None = None
+    analyst_rating: str | None = None  # stocks: e.g. "Buy"
+    analyst_count: int | None = None
+    market_cap_crore: float | None = None  # stocks
+    aum_crore: float | None = None  # funds
     min_sip: float | None = None
     min_investment: float | None = None
     # Fields holding placeholder values rather than real data.

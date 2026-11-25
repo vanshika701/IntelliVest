@@ -20,6 +20,10 @@ export interface InstrumentSearchResponse {
 
 export interface InstrumentStats {
   rating: number | null
+  rating_source: string | null
+  analyst_rating: string | null
+  analyst_count: number | null
+  market_cap_crore: number | null
   aum_crore: number | null
   min_sip: number | null
   min_investment: number | null
@@ -105,8 +109,8 @@ export interface NewsDigest {
 const base = (id: string) => `/api/v1/instruments/${encodeURIComponent(id)}`
 
 export const instrumentsApi = {
-  search: (query: string, signal?: AbortSignal) =>
-    apiGet<InstrumentSearchResponse>(`/api/v1/instruments/search?q=${encodeURIComponent(query)}&limit=12`, { signal }),
+  search: (query: string, signal?: AbortSignal, limit = 12) =>
+    apiGet<InstrumentSearchResponse>(`/api/v1/instruments/search?q=${encodeURIComponent(query)}&limit=${limit}`, { signal }),
   detail: (id: string) => apiGet<InstrumentDetail>(base(id)),
   history: (id: string) => apiGet<PriceHistory>(`${base(id)}/history`),
   intraday: (id: string) => apiGet<PriceHistory>(`${base(id)}/intraday`),
