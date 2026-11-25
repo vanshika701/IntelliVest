@@ -47,7 +47,7 @@ SEBI-registered investment adviser.
 
 ## Build steps
 
-- [ ] **1. Risk profile.** Questionnaire, capacity and tolerance scores,
+- [x] **1. Risk profile.** Questionnaire, capacity and tolerance scores,
       five profiles (Conservative to Aggressive). `risk_profiles`
       collection, `GET/PUT /api/v1/risk-profile`, tests.
 - [ ] **2. Asset allocation.** Profile × horizon → equity / debt / gold %,

@@ -16,6 +16,7 @@ from app.data.collections import (
     get_news_collection,
     get_prices_collection,
     get_reddit_collection,
+    get_risk_profiles_collection,
     get_savings_goals_collection,
     get_sector_snapshots_collection,
     get_users_collection,
@@ -116,9 +117,15 @@ async def ensure_indexes() -> None:
     # --- Phase 6 ---
     await get_sector_snapshots_collection().create_index("sector", name="uniq_sector", unique=True)
 
+    # --- Phase 7 ---
+    # One risk profile per user.
+    await get_risk_profiles_collection().create_index(
+        "user_id", name="uniq_risk_profile_user", unique=True
+    )
+
     logger.info(
         "MongoDB indexes ensured (prices, news_articles, reddit_posts, "
         "users, expenses, watchlist, alerts, investments, budget_profiles, savings_goals, "
-        "sector_snapshots)"
+        "sector_snapshots, risk_profiles)"
     )
 
