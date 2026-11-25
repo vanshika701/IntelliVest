@@ -454,3 +454,302 @@ total, up from 484), and the expanded 150-example stress test.
   every *confirmed, investigated* failure pattern from Run 5).
 - **Status: this is the shipped model, superseding Run 5.** Phase 3 is
   considered complete at this result.
+
+---
+
+## Phase 5 — Financial Sentiment Analysis
+
+**Base model:** [`ProsusAI/finbert`](https://huggingface.co/ProsusAI/finbert)
+(Araci, 2019) — pretrained financial-sentiment BERT, public, no gating.
+Usable directly via CPU inference with zero training — this is what
+ships by default (`backend/app/services/sentiment_service.py`).
+
+**Paper (optional fine-tune upgrade):** "Towards Efficient FinBERT via
+Quantization and Coreset for Financial Sentiment Analysis," FinNLP
+workshop, EMNLP-2025 ([aclanthology.org/2025.finnlp-2.6](https://aclanthology.org/2025.finnlp-2.6.pdf)).
+Fine-tunes FinBERT further, then applies coreset selection + quantization
+for a lighter, CPU/edge-friendly model — exactly the shape this project
+needs with no GPU access yet.
+
+**Dataset (for the fine-tune):** [`zeroshot/twitter-financial-news-sentiment`](https://huggingface.co/datasets/zeroshot/twitter-financial-news-sentiment)
+(Hugging Face, MIT license, no gating) — 9,543 train / 2,388 validation
+tweets, 3 classes (0=Bearish, 1=Bullish, 2=Neutral). Paper's own reported
+full fine-tune baseline: 83.4% accuracy / 0.833 macro-F1.
+
+**Benchmark ceiling (cited for context, different dataset/label scheme —
+not directly comparable, same honesty standard as Phase 3's DFTSen
+comparison):** FLARE (PIXIU, NeurIPS 2023) and FinBen (NeurIPS 2024)
+report off-the-shelf FinBERT at 0.912 F1 on Financial PhraseBank, within
+a few points of GPU-only instruction-tuned LLMs (FinMA-7B: 0.965,
+FinGPT: ~0.876) on the same public benchmark — the justification for
+using pretrained FinBERT as a CPU-only baseline rather than needing a
+GPU-heavy instruction-tuned model to get reasonable results.
+
+**What was actually built (2026-09-29):**
+- `backend/app/services/sentiment_service.py` — lazily loads a
+  sentiment-analysis pipeline. Prefers a local fine-tuned model at
+  `ml/models/sentiment_finbert/` if present (via
+  `ml/finetune_finbert_sentiment.py`), otherwise falls back to the
+  off-the-shelf `ProsusAI/finbert` checkpoint from Hugging Face Hub —
+  same graceful-degradation pattern as Phase 3's expense categorizer,
+  except sentiment scoring works immediately with zero setup, since the
+  base model needs no local training.
+- Wired into the existing Phase 1 news ingestion pipeline
+  (`backend/app/services/news_service.py`) — every article's
+  title+description is scored at ingestion time and stored
+  (`sentiment_label`, `sentiment_confidence`), never recomputed per
+  dashboard request. This follows Phase 5's own system-design note in
+  `PROJECT_PLAN.md` (score as part of the same background pipeline as
+  Phase 1) — no new scheduled job needed, just an extra step in the
+  existing one.
+- `GET /api/v1/news/sentiment-model-info` exposes model provenance
+  (pretrained vs. fine-tuned) and, if fine-tuned, its benchmark metrics —
+  same role as Phase 3's `categorization-model-info` endpoint.
+- **Verified live**, not just in tests: ran a real ingestion for
+  RELIANCE.NS against real MongoDB, confirmed real FinBERT sentiment
+  labels/confidences on real, current news articles through the running
+  API's dashboard endpoint (e.g. "₹31 trn wiped out; nearly 40% of Nifty
+  stocks down over 20%" → negative, 97.4%).
+- `ml/finetune_finbert_sentiment.py` — the optional fine-tune+quantization
+  script implementing the FinNLP paper's approach (not yet run for real;
+  see below). Fine-tunes FinBERT on the Twitter dataset, evaluates full
+  precision vs. dynamic int8 quantization (PyTorch's standard technique —
+  not the paper's exact multi-bit scheme, a real but different
+  compression method, documented as such rather than overclaiming an
+  exact replication), and ships the full-precision result (quantized
+  models don't round-trip through `save_pretrained`/`from_pretrained` as
+  cleanly, and the tradeoff needs measuring before it's worth that
+  complexity — see the script's own `selection_reasoning`).
+- **Two real bugs caught and fixed via a smoke-test dry run** (40 train /
+  20 validation rows, 1 epoch) before handing off the real training
+  invocation, same "verify before shipping" discipline as Phase 3:
+  1. `TrainingArguments` needs `accelerate>=1.1.0` — not previously a
+     project dependency; added.
+  2. `classification_report` crashed on the tiny smoke-test slice because
+     not all 3 classes appeared in 20 rows — fixed by passing an explicit
+     `labels=` parameter, making it robust regardless of scale (this
+     specific crash wouldn't occur on the real 2,388-row validation set,
+     but the fix is correct defensively either way).
+  3. PyTorch's dynamic quantization needs an explicit backend engine, and
+     `fbgemm` (the default the library assumes) isn't available on Apple
+     Silicon — only `qnnpack` is (confirmed via
+     `torch.backends.quantized.supported_engines`, not assumed). Fixed by
+     explicitly setting `torch.backends.quantized.engine = "qnnpack"`
+     when available.
+- **Bonus finding:** this M1 Mac has PyTorch MPS (Metal Performance
+  Shaders) acceleration available (`torch.backends.mps.is_available()`
+  → `True`). The fine-tune script uses it automatically when present.
+  This is unrelated to Phase 4 being on hold — Phase 4 needs proper
+  CUDA-class GPU compute for a full stock universe + Transformer variant,
+  which MPS doesn't provide — but for FinBERT's much smaller fine-tune,
+  MPS meaningfully speeds up training on this machine specifically.
+### Real fine-tune run (2026-09-29)
+
+Full dataset (9,543 train / 2,388 validation rows), 3 epochs, MPS device,
+2646.1s (~44 min) training time.
+
+- **Full-precision: 87.86% accuracy, 0.8412 macro-F1** — above the
+  paper's own reported 83.4%/0.833 baseline. Documented honestly rather
+  than presented as "we beat the paper," same standard as Phase 3's
+  DFTSen comparison: likely explained by normal run-to-run variance
+  (different random seed, exact hyperparameters, or train/eval split
+  mechanics aren't identical to the paper's), not a claim of a better
+  method. Per-category: strong on Neutral (0.918 F1, the majority class,
+  1566/2388 support), weaker on Bearish (0.786 F1, the minority class,
+  347/2388 support) — an expected imbalance effect, not a bug.
+- **Quantized (int8): 86.56% accuracy, 0.8147 macro-F1** — a real but
+  modest ~2.6-point macro-F1 drop for a **4.6x size reduction**
+  (417.67MB → 91.07MB). This is the genuine, measured tradeoff (using
+  PyTorch's standard dynamic quantization, not the paper's exact
+  multi-bit scheme — see the script's own documentation for why).
+  Interesting per-category detail: Bullish recall dropped sharply under
+  quantization (0.819 → 0.680) while Bearish/Neutral held up better —
+  quantization doesn't degrade uniformly across classes, worth knowing
+  if a future deployment target actually needs the smaller model.
+- **Shipped: full-precision.** `ml/models/sentiment_finbert/` now holds
+  the fine-tuned model; `sentiment_service.py` automatically prefers it
+  over the off-the-shelf checkpoint (confirmed live: reloaded the
+  backend, `GET /api/v1/news/sentiment-model-info` now returns this
+  run's real metrics, and a live re-ingestion scored new articles using
+  the fine-tuned Bearish/Bullish/Neutral label scheme successfully).
+- **One test fix required:** `test_sentiment_service.py`'s integration
+  test asserted the pretrained checkpoint's label vocabulary
+  (positive/negative/neutral) — now that a fine-tuned model is present
+  locally, it correctly loads that one instead, which uses a different
+  label scheme (Bearish/Bullish/Neutral, matching this dataset). Fixed
+  by accepting either vocabulary, since the service is designed to
+  support both configurations depending on what's present on a given
+  machine — not a bug in the service itself, just a test that assumed
+  one specific configuration.
+### Domain-shift check: does the tweet-trained fine-tune actually help production? (2026-09-29)
+
+**Question raised:** is one dataset (tweets) enough, given production
+actually scores news article headlines/descriptions, not tweets? Checked
+empirically rather than assumed — built
+`ml/evaluate_sentiment_on_realistic_news.py`: 30 hand-written, realistic
+financial news headlines (Sensex/Nifty moves, earnings, M&A, macro news —
+not tweets, not from either training dataset), ran both the off-the-shelf
+pretrained checkpoint and the fine-tuned model on the same set.
+
+**Result: the fine-tune made things worse for the actual task.**
+
+| | Pretrained FinBERT | Fine-tuned (on tweets) |
+|---|---|---|
+| Realistic news headlines (30 examples) | **83.3% accuracy, 0.7855 macro-F1** | **73.3% accuracy, 0.7044 macro-F1** |
+
+Despite scoring 87.86% on its own tweet validation split, the fine-tuned
+model under-calls clearly positive/negative news as Neutral far more
+than the pretrained checkpoint does — e.g. "India's GDP growth seen at
+7.2%" and "L&T wins ₹5,000 crore order" both wrongly predicted Neutral
+by the fine-tuned model but correctly caught by the pretrained one; "Foreign
+investors pull out ₹12,000 crore" (clearly negative) also missed only by
+the fine-tuned model. This is exactly the train/production distribution
+mismatch Phase 3 hit before its realistic-text stress test caught it —
+a dataset that looks good on its own held-out split can still be the
+wrong dataset for the actual deployment domain, and the only way to know
+is to test on that domain directly, not trust the training dataset's own
+metrics.
+
+**Root cause:** tweets and news headlines share financial vocabulary but
+differ structurally — tweets are short, informal, often ticker/hashtag-
+heavy fragments; news headlines are complete, formal sentences with
+different syntactic cues for expressing outlook. Fine-tuning pulled the
+model's decision boundary toward tweet-style patterns and away from
+whatever the original FinBERT pretraining (Financial PhraseBank-style
+analyst-report sentences — much closer to news-headline style) had
+already learned.
+
+**Fix applied:** `sentiment_service.py` now defaults to the pretrained
+checkpoint regardless of whether a fine-tuned model is present, gated
+behind a new `USE_FINETUNED_SENTIMENT_MODEL` setting (default `false`,
+documented in `backend/.env.example`). `get_model_info()` was also fixed
+to only report the fine-tuned model's benchmark metrics when that model
+is actually the one loaded — it was previously always reading
+`ml/models/sentiment_finbert/metrics.json` regardless of which model was
+in use, which would have made the info endpoint lie about what's
+actually running once fine-tuned artifacts existed.
+
+**What's kept, and why:** the fine-tuned model and `finetune_finbert_sentiment.py`
+are kept as-is — a real, working implementation of the paper's method
+with an honest, documented negative result, not deleted. A negative
+result that changes a shipped default is exactly the kind of finding
+this log exists to capture.
+
+**What a real fix would need:** fine-tuning on a dataset that actually
+matches news-headline style — Financial PhraseBank (analyst-report
+sentences, much closer to news headlines than tweets, though CC BY-NC-SA
+— non-commercial) is the natural candidate, either replacing or
+supplementing the Twitter dataset. Not done yet — a genuine next step,
+not merely a caveat, if this feature needs to earn back the ground lost
+here.
+
+- **Status:** Phase 5's sentiment half is live and shipped, defaulting
+  to the pretrained checkpoint (83.3% on realistic headlines) since it's
+  measurably better for the real task. The tweet-fine-tuned model is
+  built, benchmarked, and available for comparison but not the default.
+  Summarization half remains deferred pending an LLM choice.
+
+### Combined-dataset re-fine-tune: fixing the domain gap for real (2026-09-29)
+
+Rewrote `ml/finetune_finbert_sentiment.py` to fine-tune on **two**
+datasets instead of one, targeting the exact gap the domain-shift check
+found:
+
+- **zeroshot/twitter-financial-news-sentiment** (as before) — tweets,
+  informal/social coverage.
+- **Financial PhraseBank** (Malo et al., 2014), added specifically
+  because it's real financial news/analyst-report sentences — much
+  closer in style to the news headlines this app actually scores. The
+  canonical `takala/financial_phrasebank` repo uses a deprecated
+  Hugging Face "loading script" format the installed `datasets` library
+  (5.0.1) no longer supports at all (`RuntimeError: Dataset scripts are
+  no longer supported`); found and used
+  `warwickai/financial_phrasebank_mirror` instead, a community mirror in
+  standard Parquet format, 4,846 rows. **License: CC BY-NC-SA 3.0 —
+  non-commercial only**, flagged prominently in the script and here.
+  Its label convention (0=negative, 1=neutral, 2=positive) was
+  **confirmed empirically**, not trusted from the dataset card — checked
+  per-class counts against the well-documented original distribution
+  and spot-checked actual sentence content (e.g. a label-0 sentence
+  describes layoffs, a label-2 sentence describes profitability growth).
+
+**Labels unified onto FinBERT's own scheme** (positive/negative/neutral
+— confirmed via `AutoConfig.from_pretrained('ProsusAI/finbert').id2label`,
+not assumed) rather than the Twitter dataset's Bearish/Bullish/Neutral —
+this also fixes the earlier "different label scheme" limitation, since
+the fine-tuned model's output vocabulary now matches the pretrained
+checkpoint's exactly.
+
+**The realistic-news-headline stress test now runs automatically** at
+the end of every fine-tune run (imports `evaluate()` from
+`ml/evaluate_sentiment_on_realistic_news.py`), the same "verify against
+realistic text every run" discipline `train_expense_categorizer.py`
+established for Phase 3 — `metrics.json`'s `realistic_news_stress_test`
+field, including a direct `beats_pretrained_baseline` boolean, is always
+current, not a one-off manual check.
+
+**Smoke-tested** (30+30 combined rows, 1 epoch, redirected output) before
+handing off the real run — full pipeline (dual dataset loading, label
+unification, combined + per-source validation, the realistic-news stress
+test, quantization, saving) ran end-to-end with no crashes. The smoke
+test's own accuracy numbers are meaningless (tiny data, 1 epoch) — this
+was a mechanics check, not a quality check.
+
+**Status:** prepared and smoke-tested; the real run (full combined
+dataset, 3 epochs) is still pending, to be run by hand per the usual
+convention (`cd ml && python3 finetune_finbert_sentiment.py`). Whether
+`sentiment_service.py`'s default flips back to the fine-tuned model
+depends entirely on whether this run's `beats_pretrained_baseline` comes
+back `true` — not decided in advance.
+
+### Hardware constraint discovered: 8GB RAM, real run paused (2026-09-29)
+
+A real attempt at the combined-dataset run (above) was started and ran
+very slowly — investigated rather than assumed hung. Findings:
+
+- **This machine has only 8GB total RAM** (`sysctl hw.memsize`), not
+  previously measured/documented. The training process alone used
+  6.6GB resident; combined with Chrome, several VS Code renderer
+  processes, and Claude Code itself, the system was left with ~82MB
+  free and was swapping heavily (memory compressor active, large
+  swapin/swapout counts) — genuine disk I/O thrashing, not a code bug.
+  CPU usage on the process itself was only ~10-15%, consistent with
+  time spent waiting on swap rather than computing.
+- **Confirmed via `trainer_state.json` the run was progressing, not
+  stuck:** `global_step: 839` of `max_steps: 2517` — exactly 1 of 3
+  epochs complete in ~56 minutes. At that pace, full completion
+  (3 epochs + eval + quantization) was projected at ~2-3 hours, far
+  longer than the single-dataset run's 44 minutes — the extra ~40% of
+  training data (combined ~13.4k rows vs. 9.5k) doesn't explain a
+  ~3-4x slowdown; the swap thrashing does.
+  - Note for interpreting `ps`/`top` output on this kind of job going
+    forward: low reported CPU% during an MPS-accelerated run doesn't by
+    itself mean something is wrong (MPS compute doesn't show as CPU
+    time) — the actual signal that something was wrong here was the
+    memory-pressure numbers (free RAM, swap activity), not CPU% alone.
+- **Also found and cleaned up:** two of my own smoke-test runs earlier
+  had written checkpoints into the real `ml/_finetune_checkpoints/`
+  directory instead of a scratch location — a gap in the smoke test's
+  isolation (only `MODEL_DIR` was redirected, not the `TrainingArguments`
+  `output_dir`). Combined with the real run's own checkpoints, this had
+  grown to 7.4GB (checkpoints save full optimizer state alongside the
+  model — ~1.2GB per checkpoint for a 420MB model). Deleted — all
+  regenerable, none of it was final output.
+- **Decision:** run stopped (SIGTERM/SIGKILL, confirmed cleanly
+  terminated) rather than left running or restarted, at the user's
+  choice, to decide the approach later. Options on the table for next
+  time: close memory-heavy apps (Chrome, extra VS Code windows) before
+  starting to give the run more headroom, and/or lower `BATCH_SIZE`
+  (16 → 8) to reduce peak memory footprint directly — the more reliable
+  fix given the RAM ceiling is a fixed hardware constraint, not
+  something freeing up apps alone may fully solve on an 8GB machine.
+- **Status:** the combined-dataset fine-tune has NOT completed. The
+  currently-shipped/default sentiment model remains the plain pretrained
+  checkpoint (83.3% on realistic headlines) — nothing changes until a
+  real completed run says otherwise.
+- **Not yet built:** LLM-based news summarization (Phase 5's second
+  half) — deferred pending a decision on which LLM API to use; no strong
+  recent paper exists for this specific task (see the Phase 5 research
+  report), so the plan is prompting-based summarization evaluated via
+  ROUGE against the public FNS shared-task dataset as a methodology
+  convention, not a specific paper's method.
