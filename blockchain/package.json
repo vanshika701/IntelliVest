@@ -1,0 +1,26 @@
+{
+  "name": "intellivest-blockchain",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "compile": "node node_modules/hardhat/dist/src/cli.js compile",
+    "test": "node node_modules/hardhat/dist/src/cli.js test",
+    "node": "node node_modules/hardhat/dist/src/cli.js node",
+    "deploy:local": "node node_modules/hardhat/dist/src/cli.js run scripts/deploy.ts --network localhost"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-ethers": "4.2.2",
+    "@nomicfoundation/hardhat-ethers-chai-matchers": "3.0.13",
+    "@nomicfoundation/hardhat-mocha": "4.0.1",
+    "@nomicfoundation/hardhat-network-helpers": "3.0.12",
+    "chai": "6.3.0",
+    "ethers": "6.17.0",
+    "hardhat": "3.22.0",
+    "mocha": "12.0.3",
+    "node": "24.22.3"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "5.6.1"
+  }
+}

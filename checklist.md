@@ -91,7 +91,7 @@ As of 2026-11-24.
 
 # Phase 10 Checklist: Blockchain (Mode 2 AI + user-owned vault)
 
-Written 2026-11-25. Design agreed, **nothing built yet**. This is the detailed spec;
+Written 2026-11-25. **B1-B8 (setup and contracts) are built and tested; next is B9.** This is the detailed spec;
 `PROJECT_PLAN.md` Phase 10 is the summary. If they disagree, fix both.
 
 ## What we are building and why
@@ -184,23 +184,23 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
 
 ### Mandate terms
 
-- [ ] Allowed funds; per-trade, daily and monthly caps; maximum equity %; maximum slippage
-- [ ] Start and end date; required evidence steps; accepted model versions
-- [ ] Confidence threshold and amount above which the user must sign
-- [ ] Maximum trades per day; loss limit that pauses the AI until the owner resumes
+- [x] Allowed funds; per-trade, daily and monthly caps; maximum equity %; maximum slippage
+- [x] Start and end date; required evidence steps; accepted model versions
+- [x] Confidence threshold and amount above which the user must sign
+- [x] Maximum trades per day; loss limit that pauses the AI until the owner resumes
 
 ### Rules that must hold
 
-- [ ] Only the owner can withdraw, and only to the owner. Works when the AI is paused or revoked,
+- [x] Only the owner can withdraw, and only to the owner. Works when the AI is paused or revoked,
       a mandate has expired, prices are stale, or the backend is down.
-- [ ] IntelliVest has no admin function that moves vault assets or changes a mandate.
-- [ ] Confidence can only make a check stricter. It never bypasses a hard limit.
-- [ ] A new model version isn't usable by a vault until its owner accepts it.
-- [ ] Replayed, expired, duplicate or wrong-chain proposals are rejected.
-- [ ] Stale prices stop AI trades. Minimum received is always enforced.
-- [ ] A sentiment `NO_DATA` (too few articles) or the `lexicon` fallback is never treated as
+- [x] IntelliVest has no admin function that moves vault assets or changes a mandate.
+- [x] Confidence can only make a check stricter. It never bypasses a hard limit.
+- [x] A new model version isn't usable by a vault until its owner accepts it.
+- [x] Replayed, expired, duplicate or wrong-chain proposals are rejected.
+- [x] Stale prices stop AI trades. Minimum received is always enforced.
+- [x] A sentiment `NO_DATA` (too few articles) or the `lexicon` fallback is never treated as
       FinBERT. It goes to the user's signature, or is rejected, as the mandate says.
-- [ ] Vaults are not upgradeable. Use reentrancy protection and safe token transfers.
+- [x] Vaults are not upgradeable. Use reentrancy protection and safe token transfers.
 
 ## Can't be done yet
 
@@ -217,17 +217,18 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
 ## Build order
 
 ### A. Set up
-- [ ] **B1.** Use Node 24 as pinned in `.nvmrc`. Node 23.5.0 was installed on 2026-11-25.
-- [ ] **B2.** Create the Hardhat project in `blockchain/` and ignore its build output.
-- [ ] **B3.** Freeze the `Proposal` and evidence formats in `docs/PHASE_10_BLOCKCHAIN.md`, with
+- [x] **B1.** Use Node 24 as pinned in `.nvmrc`. `blockchain/` carries its own Node 24.22.3 (dev
+      dependency); the system Node is still 23.5.0.
+- [x] **B2.** Create the Hardhat project in `blockchain/` and ignore its build output.
+- [x] **B3.** Freeze the `Proposal` and evidence formats in `docs/PHASE_10_BLOCKCHAIN.md`, with
       shared test vectors so Solidity and Python produce the same hashes.
 
 ### B. Contracts
-- [ ] **B4.** Test tokens, price feed and `MockFundMarket`.
-- [ ] **B5.** `ModelRegistry` and `MandateManager`.
-- [ ] **B6.** `InvestmentVault`, with withdrawal tests written first.
-- [ ] **B7.** `AITaskManager`, including approve-by-user and reject paths.
-- [ ] **B8.** Tests for every rule above, plus a local deploy script. Done when all pass.
+- [x] **B4.** Test tokens, price feed and `MockFundMarket`.
+- [x] **B5.** `ModelRegistry` and `MandateManager`.
+- [x] **B6.** `InvestmentVault`, with withdrawal tests written first.
+- [x] **B7.** `AITaskManager`, including approve-by-user and reject paths.
+- [x] **B8.** Tests for every rule above, plus a local deploy script. Done when all pass.
 
 ### C. Backend
 - [ ] **B9.** Settings in `backend/app/core/config.py` and `.env.example`; keys only in `.env`.

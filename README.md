@@ -9,7 +9,7 @@ An AI-powered investment advisor + budgeting/watchlist platform. See
 backend/     FastAPI service (layered: api / services / data / core)
 frontend/    React + TypeScript + Tailwind app (Vite)
 ml/          Model training notebooks/scripts and saved artifacts
-blockchain/  Mode 2 AI + user-owned vault contracts (Phase 10 — not started yet)
+blockchain/  Mode 2 AI + user-owned vault contracts (Phase 10 — contracts built, not connected yet)
 docs/        Written docs/evaluation reports produced as phases complete
 ```
 

@@ -275,7 +275,7 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 ## Phase 10 — Blockchain: Mode 2 AI Trading with a User-Owned Vault
 
-> **Status: design agreed (2026-11-25), not started.** Replaces the earlier hash-only audit layer. Full spec, formats, rules and tasks: `checklist.md`, Phase 10. Infrastructure may start now with mocks; real integrations wait for Phases 4, 7 and 9.
+> **Status: in progress (2026-11-25): contracts built and tested locally (B1-B8); backend, frontend and real models not started.** Replaces the earlier hash-only audit layer. Full spec, formats, rules and tasks: `checklist.md`, Phase 10. Infrastructure may start now with mocks; real integrations wait for Phases 4, 7 and 9.
 
 **Owner:** _unassigned_
 

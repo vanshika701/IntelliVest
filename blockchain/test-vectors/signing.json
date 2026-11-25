@@ -1,0 +1,149 @@
+{
+  "domain": {
+    "name": "IntelliVest",
+    "version": "1",
+    "chainId": 31337,
+    "verifyingContract": "0x00000000000000000000000000000000000000AA"
+  },
+  "Evidence": {
+    "types": [
+      {
+        "type": "bytes32",
+        "name": "taskId"
+      },
+      {
+        "type": "uint8",
+        "name": "step"
+      },
+      {
+        "type": "uint8",
+        "name": "status"
+      },
+      {
+        "type": "bytes32",
+        "name": "modelId"
+      },
+      {
+        "type": "bytes32",
+        "name": "modelVersion"
+      },
+      {
+        "type": "bytes32",
+        "name": "inputHash"
+      },
+      {
+        "type": "bytes32",
+        "name": "outputHash"
+      },
+      {
+        "type": "int32",
+        "name": "score"
+      },
+      {
+        "type": "uint32",
+        "name": "count"
+      },
+      {
+        "type": "uint32",
+        "name": "horizonDays"
+      },
+      {
+        "type": "uint64",
+        "name": "asOf"
+      }
+    ],
+    "message": {
+      "taskId": "0xaaff8db9d0075498f192ae0ec43d6fe21a69fd8e7b121b5ae8b9ec569c9fab8a",
+      "step": 1,
+      "status": 0,
+      "modelId": "0xe9d1b4446f69d23b99956f4198a78c7f601869d7c08d2ef45f6afa060281bef5",
+      "modelVersion": "0x0984d5efd47d99151ae1be065a709e56c602102f24c1abc4008eb3f815a8d217",
+      "inputHash": "0x71fef67183b572476f752fa7881659e61f3c9af44e4150a1a89474e3a9da15bb",
+      "outputHash": "0xe9d65c25f1d91a301b8ddcc6ecd2c5b5ec81c53a5ff0aa50299b1b97c1649c9d",
+      "score": -1500,
+      "count": 5,
+      "horizonDays": 0,
+      "asOf": 1790000000
+    },
+    "structHash": "0x5f27603eb27197f8fc7eaa5fe6a7c23e03169c6a828eb8e79a6fca5949f2de17",
+    "digest": "0xfd097cef2af5357edcb2f6de67f1b957a1fbeacd2f9feeb72957d2587377dc63"
+  },
+  "Proposal": {
+    "types": [
+      {
+        "type": "bytes32",
+        "name": "taskId"
+      },
+      {
+        "type": "address",
+        "name": "vault"
+      },
+      {
+        "type": "address",
+        "name": "fund"
+      },
+      {
+        "type": "uint8",
+        "name": "side"
+      },
+      {
+        "type": "uint256",
+        "name": "amount"
+      },
+      {
+        "type": "uint256",
+        "name": "minimumReceived"
+      },
+      {
+        "type": "uint16",
+        "name": "confidence"
+      },
+      {
+        "type": "bytes32",
+        "name": "modelId"
+      },
+      {
+        "type": "bytes32",
+        "name": "modelVersion"
+      },
+      {
+        "type": "bytes32",
+        "name": "inputHash"
+      },
+      {
+        "type": "bytes32",
+        "name": "evidenceHash"
+      },
+      {
+        "type": "bytes32",
+        "name": "explanationHash"
+      },
+      {
+        "type": "uint256",
+        "name": "nonce"
+      },
+      {
+        "type": "uint64",
+        "name": "deadline"
+      }
+    ],
+    "message": {
+      "taskId": "0xaaff8db9d0075498f192ae0ec43d6fe21a69fd8e7b121b5ae8b9ec569c9fab8a",
+      "vault": "0x00000000000000000000000000000000000000BB",
+      "fund": "0x00000000000000000000000000000000000000CC",
+      "side": 0,
+      "amount": "5000000000",
+      "minimumReceived": "49500000",
+      "confidence": 8000,
+      "modelId": "0xe7e8d29be01a863f95a7083ad024b848874c2a66712f9644a7e936b2432c1d24",
+      "modelVersion": "0x0984d5efd47d99151ae1be065a709e56c602102f24c1abc4008eb3f815a8d217",
+      "inputHash": "0x71fef67183b572476f752fa7881659e61f3c9af44e4150a1a89474e3a9da15bb",
+      "evidenceHash": "0x9e0fa91cdfa4f39e922c5eca51de44adacd253314b8d74a964bac2cf27af5e2d",
+      "explanationHash": "0x65b4e6a31ccb3cf67179136497f5f87ef91028d9b7128f866f76588a37dfcc6d",
+      "nonce": "1",
+      "deadline": 1790003600
+    },
+    "structHash": "0x2ff8c832c78191a05b76e351cae783df78fc23432cf03643436670713cab116a",
+    "digest": "0xcfb94a2aa07fd17e1a990245edc45d89b3b8a62b3343952d148f2eb0373aa916"
+  }
+}
