@@ -50,7 +50,7 @@ SEBI-registered investment adviser.
 - [x] **1. Risk profile.** Questionnaire, capacity and tolerance scores,
       five profiles (Conservative to Aggressive). `risk_profiles`
       collection, `GET/PUT /api/v1/risk-profile`, tests.
-- [ ] **2. Asset allocation.** Profile × horizon → equity / debt / gold %,
+- [x] **2. Asset allocation.** Profile × horizon → equity / debt / gold %,
       as tested pure functions with documented sources.
 - [ ] **3. Market statistics job.** From stored prices: daily returns,
       volatility, shrunk covariance, correlations. Stored nightly in
