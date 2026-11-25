@@ -6,6 +6,7 @@ import { toMonths, validateMoney } from '../../lib/budget'
 import { formatINR } from '../../lib/format'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
+import { NumberInput } from '../ui/NumberInput'
 
 const label = 'block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider'
 
@@ -195,29 +196,30 @@ export function GoalsPanel({ meta, refreshKey }: { meta: BudgetMeta; refreshKey:
           </div>
           <div>
             <label htmlFor="g-target" className={label}>Target amount (₹)</label>
-            <Input id="g-target" inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="e.g. 800000" className="font-mono" />
+            <NumberInput id="g-target" value={target} onValueChange={setTarget} placeholder="e.g. 800000" className="font-mono" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="g-years" className={label}>Years</label>
-              <Input id="g-years" inputMode="numeric" value={years} onChange={(e) => setYears(e.target.value)} className="font-mono" />
+              <NumberInput id="g-years" decimals={0} value={years} onValueChange={setYears} className="font-mono" />
             </div>
             <div>
               <label htmlFor="g-months" className={label}>+ Months</label>
-              <Input id="g-months" inputMode="numeric" value={months} onChange={(e) => setMonths(e.target.value)} placeholder="0" className="font-mono" />
+              <NumberInput id="g-months" decimals={0} value={months} onValueChange={setMonths} placeholder="0" className="font-mono" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="g-ret" className={label}>Return % / yr</label>
-              <Input id="g-ret" inputMode="decimal" value={ret} onChange={(e) => setRet(e.target.value)} placeholder={defaultFor ? String(defaultFor.annual_return_pct) : ''} className="font-mono" />
+              <NumberInput id="g-ret" value={ret} onValueChange={setRet} placeholder={defaultFor ? String(defaultFor.annual_return_pct) : ''} className="font-mono" />
             </div>
             <div>
               <label htmlFor="g-step" className={label}>Step-up % / yr</label>
-              <Input id="g-step" inputMode="decimal" value={step} onChange={(e) => setStep(e.target.value)} className="font-mono" />
+              <NumberInput id="g-step" value={step} onValueChange={setStep} className="font-mono" />
             </div>
           </div>
           {defaultFor && ret.trim() === '' && <p className="text-xs text-[var(--color-text-muted)]">Default return for this horizon: {defaultFor.label}.</p>}
+          {target && !error && !name.trim() && <p className="text-xs text-[var(--color-text-muted)]">Give the goal a name to save it.</p>}
           {target && error && <p className="text-xs text-[var(--color-losses)]" role="alert">{error}</p>}
           <Button className="w-full" onClick={save} disabled={!input || !name.trim() || saving}>{saving ? 'Saving…' : editingId ? 'Save changes' : 'Save goal'}</Button>
           {editingId && <Button variant="ghost" className="w-full" onClick={resetForm}>Cancel editing</Button>}
@@ -260,10 +262,6 @@ export function GoalsPanel({ meta, refreshKey }: { meta: BudgetMeta; refreshKey:
           ))}
         </div>
       )}
-
-      <p className="text-xs text-[var(--color-text-muted)] flex items-start gap-2">
-        <Info className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" aria-hidden /> {meta.disclaimer}
-      </p>
     </div>
   )
 }

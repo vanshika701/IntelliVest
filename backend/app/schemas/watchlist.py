@@ -13,7 +13,7 @@ class Priority(str, Enum):
 
 
 class WatchlistItemCreate(BaseModel):
-    ticker: str = Field(min_length=1, max_length=20)
+    ticker: str = Field(pattern=r"^[A-Za-z0-9^][A-Za-z0-9&^.\-]{0,19}$")
     notes: str = Field(default="", max_length=500)
     rationale: str = Field(default="", max_length=1000)
     priority: Priority = Priority.medium

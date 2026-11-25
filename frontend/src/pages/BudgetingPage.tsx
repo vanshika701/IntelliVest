@@ -92,6 +92,11 @@ export function BudgetingPage() {
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.csv') || file.size === 0) {
+      alert('Choose a CSV file that has data in it.');
+      e.target.value = '';
+      return;
+    }
 
     setUploading(true);
     const formData = new FormData();
@@ -106,7 +111,7 @@ export function BudgetingPage() {
         body: formData
       });
 
-      if (!res.ok) throw new Error('Upload failed');
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? 'Upload failed');
       const result = await res.json();
       alert(`Imported ${result.imported} rows. Skipped ${result.skipped}. Errors: ${result.errors.length}\nRows without a recognised category were filed under "Other / Miscellaneous".`);
       await loadData();

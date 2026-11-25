@@ -36,7 +36,7 @@ function InvestmentRow({ investment }: { investment: Investment }) {
           {investment.instrument_name}
         </Link>
         <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
-          {investment.account_label} · {formatDate(investment.created_at)}
+          {investment.account_label.replace(' (Demo)', '')} · {formatDate(investment.created_at)}
           {isSip && investment.status === 'active' && investment.next_installment_date && (
             <> · next on {formatDate(investment.next_installment_date)}</>
           )}
@@ -76,12 +76,7 @@ export function InvestmentsPage() {
         <HoldingsTable portfolio={portfolio.data} />
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-[var(--color-text-secondary)]">Every one-time order and SIP you've placed. A SIP counts as invested once an instalment is due.</p>
-        <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-400">
-          Demo data — no real money moved
-        </span>
-      </div>
+      <p className="text-sm text-[var(--color-text-secondary)]">Every one-time order and SIP you've placed. A SIP counts as invested once an instalment is due.</p>
 
       <div className="glass-card rounded-2xl">
         {investments.loading ? (

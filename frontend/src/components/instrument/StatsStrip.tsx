@@ -1,20 +1,10 @@
 import type { InstrumentDetail } from '../../api/instruments'
 import { DASH, formatINR } from '../../lib/format'
 
-function Stat({ label, value, placeholder, hint }: { label: string; value: string; placeholder?: boolean; hint?: string }) {
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="min-w-0 px-4 py-3">
-      <dt className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
-        {label}
-        {placeholder && (
-          <span
-            title="Placeholder value — not real data for this instrument"
-            className="rounded bg-amber-500/10 px-1 py-px text-[9px] font-bold uppercase tracking-wide text-amber-400"
-          >
-            Placeholder
-          </span>
-        )}
-      </dt>
+      <dt className="text-xs text-[var(--color-text-muted)]">{label}</dt>
       <dd className="mt-1 truncate text-base font-semibold text-[var(--color-text-primary)]" title={hint}>
         {value}
       </dd>
@@ -24,7 +14,6 @@ function Stat({ label, value, placeholder, hint }: { label: string; value: strin
 
 export function StatsStrip({ instrument }: { instrument: InstrumentDetail }) {
   const { stats, type } = instrument
-  const isPlaceholder = (field: string) => stats.placeholder_fields.includes(field)
   const isStock = type === 'STOCK'
   const crore = (value: number | null) => (value === null ? DASH : `₹${Math.round(value).toLocaleString('en-IN')} Cr`)
   const unavailable = 'Not available from our free data sources'
@@ -49,7 +38,6 @@ export function StatsStrip({ instrument }: { instrument: InstrumentDetail }) {
         <Stat
           label={type === 'STOCK' ? 'Min. SIP (1 share)' : 'Min. SIP'}
           value={formatINR(stats.min_sip, 0)}
-          placeholder={isPlaceholder('min_sip')}
         />
         <Stat
           label={isStock ? 'Market cap' : 'Fund size (AUM)'}

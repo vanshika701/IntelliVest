@@ -197,7 +197,6 @@ export function ImproveBudget({ meta, analysis }: Props) {
           </div>
           {analysis.warnings.map((w) => <p key={w} className="text-xs text-[#fab219] pt-1">{w}</p>)}
         </div>
-        <p className="text-xs text-[var(--color-text-muted)]">{meta.disclaimer} Benchmarks are general rules of thumb.</p>
       </div>
     </div>
   )

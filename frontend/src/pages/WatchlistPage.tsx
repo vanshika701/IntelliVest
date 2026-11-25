@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { apiGet, apiPost, apiDelete, apiPatch } from '../api/client';
 import { Button } from '../components/ui/Button';
+import { FieldError } from '../components/ui/FieldError';
 import { Input } from '../components/ui/Input';
 import { Plus, Trash2, Edit2, TrendingUp, TrendingDown, Search, X } from 'lucide-react';
+import { validateTicker } from '../lib/validation';
 import { cn } from '../lib/utils';
 
 // Starter universe defined in backend constants
@@ -43,6 +45,7 @@ export function WatchlistPage() {
   const [useCustomTicker, setUseCustomTicker] = useState(false);
   const [selectedTicker, setSelectedTicker] = useState(STOCK_UNIVERSE[0]);
   const [customTicker, setCustomTicker] = useState('');
+  const [tickerError, setTickerError] = useState<string | null>(null);
   const [newPriority, setNewPriority] = useState<Priority>('medium');
   const [newRationale, setNewRationale] = useState('');
   const [isAdding, setIsAdding] = useState(false);
@@ -76,7 +79,9 @@ export function WatchlistPage() {
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     const ticker = (useCustomTicker ? customTicker : selectedTicker).trim().toUpperCase();
-    if (!ticker) return;
+    const problem = validateTicker(ticker);
+    setTickerError(problem);
+    if (problem) return;
 
     setIsAdding(true);
     try {
@@ -243,7 +248,7 @@ export function WatchlistPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 animate-in fade-in duration-200">
           <div className="bg-[var(--color-background-secondary)] border border-[var(--color-border-subtle)] p-6 rounded-xl w-full max-w-sm shadow-2xl">
             <h3 className="text-xl font-bold text-[var(--color-text-primary)] mb-4">Add to Watchlist</h3>
-            <form onSubmit={handleAdd} className="space-y-4">
+            <form noValidate onSubmit={handleAdd} className="space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-sm font-medium text-[var(--color-text-secondary)]">
@@ -251,7 +256,7 @@ export function WatchlistPage() {
                   </label>
                   <button
                     type="button"
-                    onClick={() => setUseCustomTicker(!useCustomTicker)}
+                    onClick={() => { setUseCustomTicker(!useCustomTicker); setTickerError(null); }}
                     className="text-xs font-medium text-[var(--color-brand)] hover:text-[var(--color-brand-hover)]"
                   >
                     {useCustomTicker ? 'Choose from list' : 'Enter custom ticker'}
@@ -261,7 +266,9 @@ export function WatchlistPage() {
                   <Input
                     required
                     value={customTicker}
-                    onChange={(e) => setCustomTicker(e.target.value)}
+                    onChange={(e) => { setCustomTicker(e.target.value); setTickerError(null); }}
+                    maxLength={20}
+                    aria-invalid={Boolean(tickerError)}
                     placeholder="e.g. ZOMATO.NS"
                     className="uppercase"
                   />
@@ -274,6 +281,7 @@ export function WatchlistPage() {
                     {STOCK_UNIVERSE.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 )}
+                <FieldError message={tickerError} />
               </div>
 
               <div>
@@ -300,6 +308,7 @@ export function WatchlistPage() {
                   Investment Rationale <span className="text-[var(--color-text-muted)] font-normal">(optional)</span>
                 </label>
                 <textarea
+                  maxLength={1000}
                   value={newRationale}
                   onChange={(e) => setNewRationale(e.target.value)}
                   placeholder="Why are you tracking this stock?"
@@ -350,11 +359,12 @@ export function WatchlistPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Notes</label>
-                <Input autoFocus value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="Quick note..." />
+                <Input autoFocus maxLength={500} value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="Quick note..." />
               </div>
               <div>
                 <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Investment Rationale</label>
                 <textarea
+                  maxLength={1000}
                   value={editRationale}
                   onChange={(e) => setEditRationale(e.target.value)}
                   rows={3}

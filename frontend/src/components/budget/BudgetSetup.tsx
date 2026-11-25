@@ -4,7 +4,7 @@ import { budgetApi, type BudgetMeta, type BudgetProfile, type Bucket } from '../
 import { checkSetup } from '../../lib/budget'
 import { formatINR } from '../../lib/format'
 import { Button } from '../ui/Button'
-import { Input } from '../ui/Input'
+import { NumberInput } from '../ui/NumberInput'
 
 const BUCKET_LABEL: Record<Bucket, string> = { needs: 'Needs', wants: 'Wants', savings: 'Savings' }
 
@@ -73,14 +73,14 @@ export function BudgetSetup({ meta, initial, onSaved, onClose }: Props) {
             <>
               <div>
                 <label htmlFor="income" className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider">Monthly take-home income (₹)</label>
-                <Input id="income" inputMode="decimal" value={income} onChange={(e) => setIncome(e.target.value)} placeholder="e.g. 80000" autoFocus className="font-mono" />
+                <NumberInput id="income" value={income} onValueChange={setIncome} placeholder="e.g. 80000" autoFocus className="font-mono" />
                 {fieldError('income')}
               </div>
               <div>
                 <label htmlFor="emergency" className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider">
                   Emergency savings you already have (₹) <span className="normal-case font-normal text-[var(--color-text-muted)]">optional</span>
                 </label>
-                <Input id="emergency" inputMode="decimal" value={emergency} onChange={(e) => setEmergency(e.target.value)} placeholder="e.g. 150000" className="font-mono" />
+                <NumberInput id="emergency" value={emergency} onValueChange={setEmergency} placeholder="e.g. 150000" className="font-mono" />
                 <p className="text-xs text-[var(--color-text-muted)] mt-1">
                   Used to check the {meta.emergency_fund_months[0]}–{meta.emergency_fund_months[1]} month emergency-fund guideline.
                 </p>
@@ -98,11 +98,10 @@ export function BudgetSetup({ meta, initial, onSaved, onClose }: Props) {
                         {c.name}
                         <span className="ml-2 text-[10px] uppercase tracking-wider text-[var(--color-text-muted)]">{BUCKET_LABEL[c.bucket]}</span>
                       </label>
-                      <Input
+                      <NumberInput
                         id={`est-${c.id}`}
-                        inputMode="decimal"
                         value={estimates[c.id]}
-                        onChange={(e) => setEstimates((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                        onValueChange={(v) => setEstimates((prev) => ({ ...prev, [c.id]: v }))}
                         placeholder="0"
                         className="w-32 font-mono text-right"
                       />

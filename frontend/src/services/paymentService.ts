@@ -64,7 +64,7 @@ export class MockPaymentService implements PaymentService {
           resolve({
             status: 'failed',
             reference: null,
-            failureReason: `Declined by bank (demo limit: amounts above ₹${this.declineAbove.toLocaleString('en-IN')} are declined)`,
+            failureReason: `Declined by bank: amounts above ₹${this.declineAbove.toLocaleString('en-IN')} aren't allowed`,
           })
           return
         }

@@ -142,3 +142,9 @@ def test_old_account_can_add_its_date_of_birth_once(client: TestClient) -> None:
     me = client.get("/api/v1/auth/me", headers=headers).json()
     assert me["has_date_of_birth"] is True and "date_of_birth" not in me
     assert _reset(client).status_code == 204
+
+
+@pytest.mark.parametrize("name, code", [("   ", 422), ("123", 422), ("Asha1", 422), ("<b>", 422), ("मुस्कान O'Neil-Rao Jr.", 201)])
+def test_register_checks_the_name(client, name, code):
+    body = {"email": "n@example.com", "password": "password123", "full_name": name, "date_of_birth": "2000-05-17"}
+    assert client.post("/api/v1/auth/register", json=body).status_code == code

@@ -103,6 +103,14 @@ describe('BudgetSetup', () => {
     await user.click(screen.getByRole('button', { name: 'Next' }))
     expect(screen.getByRole('alert')).toHaveTextContent('Required')
   })
+
+  it('only takes numbers for income', async () => {
+    const user = userEvent.setup()
+    render(<BudgetSetup meta={META} initial={null} onClose={() => {}} onSaved={() => {}} />)
+    const income = screen.getByLabelText(/income/i)
+    await user.type(income, 'abc8-0e0.505x')
+    expect(income).toHaveValue('800.50')
+  })
 })
 
 describe('GoalsPanel', () => {

@@ -15,7 +15,6 @@ export function InvestmentsCard() {
       <div className="flex items-center gap-2 border-b border-[var(--color-border-subtle)] p-5">
         <PiggyBank className="h-5 w-5 text-[var(--color-text-secondary)]" aria-hidden="true" />
         <h3 id="investments-heading" className="text-base font-semibold text-[var(--color-text-primary)]">Investments</h3>
-        <span className="ml-auto rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-400">Demo money</span>
       </div>
       <div className="p-5">
         {loading ? (

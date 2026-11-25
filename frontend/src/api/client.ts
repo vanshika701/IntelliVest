@@ -16,7 +16,7 @@ export class ApiError extends Error {
 
 /** FastAPI errors: `detail` is a string, or a list of {msg} for 422s. */
 function errorDetail(errData: any, fallback: string): string {
-  if (Array.isArray(errData?.detail)) return errData.detail.map((d: { msg: string }) => d.msg).join('; ')
+  if (Array.isArray(errData?.detail)) return errData.detail.map((d: { msg: string }) => d.msg.replace(/^Value error, /, '')).join('; ')
   return errData?.detail || fallback
 }
 

@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { CalendarCheck, KeyRound, LogIn, UserPlus } from 'lucide-react';
 import { Button } from '../components/ui/Button';
+import { FieldError } from '../components/ui/FieldError';
 import { Input } from '../components/ui/Input';
 import { useAuth, type User } from '../AuthContext';
 import { apiGet, apiPost, apiPut } from '../api/client';
+import { validateBirthDate, validateEmail, validateName, validateNewPassword } from '../lib/validation';
 
 // apiGet reads its Bearer token from localStorage — the token has to be
 // written there before the /me call below, since AuthContext's login()
@@ -29,12 +31,16 @@ function todayIso() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function Field({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
+function Field({ label, error, ...props }: { label: string; error?: string | null } & React.InputHTMLAttributes<HTMLInputElement>) {
+  const errorId = useId();
   return (
-    <label className="block">
-      <span className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{label}</span>
-      <Input required {...props} />
-    </label>
+    <div>
+      <label className="block">
+        <span className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{label}</span>
+        <Input required aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} {...props} />
+      </label>
+      <FieldError id={errorId} message={error} />
+    </div>
   );
 }
 
@@ -48,6 +54,8 @@ export function AuthPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [submitted, setSubmitted] = useState(false);
 
   const { user, token, login, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -60,6 +68,22 @@ export function AuthPage() {
   const mode: Mode = user ? 'birthdate' : formMode;
   const { title, submit, Icon } = COPY[mode];
 
+  const choosesPassword = mode === 'register' || mode === 'reset';
+  const errors: Record<string, string | null> = {
+    name: mode === 'register' ? validateName(fullName) : null,
+    email: mode !== 'birthdate' ? validateEmail(email) : null,
+    birthDate: mode !== 'login' ? validateBirthDate(birthDate, todayIso()) : null,
+    password: choosesPassword ? validateNewPassword(password) : mode === 'login' && !password ? 'Enter your password' : null,
+    confirm: mode === 'reset' && password !== confirm ? "The passwords don't match." : null,
+  };
+  /** Errors show once the user has filled in and left the field, or tried to submit. */
+  const check = (field: string) => ({
+    error: submitted || touched[field] ? errors[field] : null,
+    onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
+      if (e.target.value) setTouched((prev) => ({ ...prev, [field]: true }));
+    },
+  });
+
   const switchTo = (next: typeof formMode) => {
     setFormMode(next);
     setError('');
@@ -67,16 +91,17 @@ export function AuthPage() {
     setPassword('');
     setConfirm('');
     setBirthDate('');
+    setTouched({});
+    setSubmitted(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setNotice('');
-    if (mode === 'reset' && password !== confirm) {
-      setError("The passwords don't match.");
-      return;
-    }
+    setSubmitted(true);
+    if (Object.values(errors).some(Boolean)) return;
+    const cleanEmail = email.trim();
     setIsLoading(true);
 
     try {
@@ -87,21 +112,22 @@ export function AuthPage() {
         return;
       }
       if (mode === 'reset') {
-        await apiPost<void>('/api/v1/auth/reset-password', { email, date_of_birth: birthDate, new_password: password });
+        await apiPost<void>('/api/v1/auth/reset-password', { email: cleanEmail, date_of_birth: birthDate, new_password: password });
         switchTo('login');
         setNotice('Password changed. Sign in with your new password.');
         return;
       }
       if (mode === 'register') {
-        await apiPost('/api/v1/auth/register', { email, password, full_name: fullName, date_of_birth: birthDate });
+        await apiPost('/api/v1/auth/register', { email: cleanEmail, password, full_name: fullName.trim(), date_of_birth: birthDate });
         // Fall through to log them in immediately after registration.
       }
 
-      const data = await apiPost<{ access_token: string }>('/api/v1/auth/login', { email, password });
+      const data = await apiPost<{ access_token: string }>('/api/v1/auth/login', { email: cleanEmail, password });
       storeTokenForApiClient(data.access_token);
       const userProfile = await apiGet<User>('/api/v1/auth/me');
       login(data.access_token, userProfile);
       setBirthDate('');
+      setSubmitted(false);
       if (userProfile.has_date_of_birth) navigate('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Authentication failed');
@@ -140,7 +166,7 @@ export function AuthPage() {
           </p>
         </div>
 
-        <form className="mt-8 space-y-6 relative" onSubmit={handleSubmit}>
+        <form className="mt-8 space-y-6 relative" noValidate onSubmit={handleSubmit}>
           {error && (
             <div role="alert" className="rounded-md bg-[var(--color-losses-light)] border border-[rgba(244,63,94,0.2)] p-4 text-sm text-[var(--color-losses)]">
               {error}
@@ -154,24 +180,24 @@ export function AuthPage() {
 
           <div className="space-y-4">
             {mode === 'register' && (
-              <Field label="Full Name" type="text" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="John Doe" />
+              <Field {...check('name')} label="Full Name" maxLength={120} type="text" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="John Doe" />
             )}
             {mode !== 'birthdate' && (
-              <Field label="Email address" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
+              <Field {...check('email')} label="Email address" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
             )}
             {mode !== 'login' && (
-              <Field label="Date of birth" type="date" autoComplete="bday" min="1900-01-01" max={todayIso()} value={birthDate} onChange={(e) => setBirthDate(e.target.value)} className="[color-scheme:dark]" />
+              <Field {...check('birthDate')} label="Date of birth" type="date" autoComplete="bday" min="1900-01-01" max={todayIso()} value={birthDate} onChange={(e) => setBirthDate(e.target.value)} className="[color-scheme:dark]" />
             )}
             {mode !== 'birthdate' && (
               <div>
                 <Field
+                  {...check('password')}
                   label={mode === 'reset' ? 'New password' : 'Password'}
                   type="password"
                   autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  minLength={8}
                 />
                 {mode === 'login' && (
                   <div className="mt-2 text-right text-sm">
@@ -183,7 +209,7 @@ export function AuthPage() {
               </div>
             )}
             {mode === 'reset' && (
-              <Field label="Confirm new password" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="••••••••" minLength={8} />
+              <Field {...check('confirm')} label="Confirm new password" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="••••••••" />
             )}
           </div>
 

@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { CalendarDays, CheckCircle2, ChevronDown, Loader2, ShieldAlert, XCircle } from 'lucide-react'
+import { CalendarDays, CheckCircle2, ChevronDown, Loader2, XCircle } from 'lucide-react'
 import type { InstrumentDetail } from '../../api/instruments'
 import { investmentsApi, type Investment } from '../../api/investments'
 import { ApiError } from '../../api/client'
@@ -11,7 +11,7 @@ import { ordinal } from '../../lib/ordinal'
 import { cn } from '../../lib/utils'
 import { paymentService, type PaymentResult } from '../../services/paymentService'
 import { Button } from '../ui/Button'
-import { Input } from '../ui/Input'
+import { NumberInput } from '../ui/NumberInput'
 import { Skeleton } from '../ui/Skeleton'
 
 type Tab = 'one_time' | 'sip'
@@ -112,7 +112,6 @@ function Confirmation({ outcome, onReset }: { outcome: Outcome; onReset: () => v
       <div>
         <h4 className="text-lg font-semibold text-[var(--color-text-primary)]">
           {success ? (isSip ? 'SIP started' : 'Order placed') : 'Payment failed'}
-          <span className="ml-2 align-middle text-[10px] font-bold uppercase tracking-wide text-amber-400">Demo</span>
         </h4>
         <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
           {success
@@ -173,7 +172,6 @@ export function InvestPanel({ instrument }: { instrument: InstrumentDetail }) {
 
   const { stats } = instrument
   const minimum = tab === 'sip' ? stats.min_sip : stats.min_investment
-  const minimumIsPlaceholder = stats.placeholder_fields.includes(tab === 'sip' ? 'min_sip' : 'min_investment')
   const amount = amounts[tab]
   const amountError = validateAmount(amount, minimum, tab === 'sip' ? 'SIP' : 'investment')
   const canSubmit = !amountError && Boolean(selectedAccount) && !processing
@@ -231,9 +229,6 @@ export function InvestPanel({ instrument }: { instrument: InstrumentDetail }) {
         <h3 id={`${idPrefix}-heading`} className="text-base font-semibold text-[var(--color-text-primary)]">
           Invest
         </h3>
-        <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-400">
-          <ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" /> Demo — no real money moves
-        </span>
       </div>
 
       {outcome ? (
@@ -277,15 +272,11 @@ export function InvestPanel({ instrument }: { instrument: InstrumentDetail }) {
               <label htmlFor={`${idPrefix}-amount`} className="mb-1.5 block text-xs font-medium text-[var(--color-text-secondary)]">
                 {tab === 'sip' ? 'Monthly SIP amount (₹)' : 'Amount (₹)'}
               </label>
-              <Input
+              <NumberInput
                 id={`${idPrefix}-amount`}
-                type="number"
-                inputMode="decimal"
-                min={minimum ?? 1}
-                step="1"
                 placeholder={minimum ? `Min. ${formatINR(minimum, 0)}` : 'Enter amount'}
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onValueChange={setAmount}
                 onBlur={() => setTouched(true)}
                 aria-invalid={touched && Boolean(amountError)}
                 aria-describedby={`${idPrefix}-amount-hint`}
@@ -295,8 +286,8 @@ export function InvestPanel({ instrument }: { instrument: InstrumentDetail }) {
                 {touched && amountError
                   ? amountError
                   : minimum !== null
-                    ? `Minimum ${formatINR(minimum, 0)}${minimumIsPlaceholder ? ' (placeholder value)' : instrument.type === 'STOCK' ? ' (one share)' : ''}`
-                    : 'No minimum available'}
+                    ? `Minimum ${formatINR(minimum, 0)}${instrument.type === 'STOCK' ? ' (one share)' : ''}`
+                    : null}
               </p>
               {tab === 'one_time' && (
                 <div className="mt-2 flex flex-wrap gap-2" aria-label="Quick amounts">

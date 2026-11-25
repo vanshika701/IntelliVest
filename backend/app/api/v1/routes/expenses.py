@@ -61,7 +61,10 @@ async def upload_csv(file: UploadFile, user_id: str = Depends(get_current_user_i
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only CSV files are accepted")
     contents = await file.read()
-    return await import_csv(user_id, contents)
+    try:
+        return await import_csv(user_id, contents)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from None
 
 
 @router.get("/summary", response_model=ExpenseSummary)

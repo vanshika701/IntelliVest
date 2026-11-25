@@ -58,7 +58,7 @@ _SYSTEM_PROMPT = (
     "Rules: use ONLY the facts given. Copy every number and ₹ amount exactly as written; "
     "never calculate, round, convert or add new numbers, percentages or dates. Write numbers as "
     "digits, never words, and keep them in the order they appear in the facts. Don't "
-    "recommend specific funds or stocks. Don't add a disclaimer; the app shows one."
+    "recommend specific funds or stocks. Don't add a disclaimer."
 )
 
 

@@ -282,3 +282,17 @@ def test_update_expense(client: TestClient, auth_headers: dict[str, str]) -> Non
     updated = client.patch(income_url, headers=auth_headers, json={"income_source": "bonus"}).json()
     assert updated["income_source"] == "bonus"
     assert client.patch(income_url, headers=auth_headers, json={"category": "groceries"}).status_code == 422
+
+
+def test_csv_upload_rejects_bad_amounts_and_unreadable_files(client: TestClient, auth_headers: dict[str, str]) -> None:
+    def upload(content: bytes):
+        return client.post("/api/v1/expenses/upload-csv", headers=auth_headers, files={"file": ("s.csv", content, "text/csv")})
+
+    result = upload(b"Date,Description,Amount\n2026-01-05,A,nan\n2026-01-05,B,inf\n2026-01-05,C,10\n").json()
+    assert (result["imported"], len(result["errors"])) == (1, 2)
+    assert upload(b"\xff\xfe\x00bad").status_code == 400
+
+
+def test_blank_descriptions_are_rejected(client: TestClient, auth_headers: dict[str, str]) -> None:
+    body = {"amount": 5, "description": "   ", "category": "groceries"}
+    assert client.post("/api/v1/expenses", headers=auth_headers, json=body).status_code == 422

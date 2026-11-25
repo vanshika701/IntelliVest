@@ -89,7 +89,7 @@ export function SentimentSection({ name, sentiment, loading, error, onRetry, chi
           <p className="mt-4 text-[11px] text-[var(--color-text-muted)]">
             Sentiment scored by {sentiment.engine === 'lexicon' ? 'a keyword lexicon (fallback)' : sentiment.engine}{' '}
             from {sentiment.article_count} headline{sentiment.article_count === 1 ? '' : 's'} in the last{' '}
-            {sentiment.window_days} days. Not investment advice.
+            {sentiment.window_days} days.
           </p>
         )}
       </div>

@@ -18,7 +18,7 @@ from app.data.expense_repository import (
     insert_many_expenses,
     update_expense,
 )
-from app.schemas.expense import check_income_source, resolve_category
+from app.schemas.expense import MAX_AMOUNT, check_income_source, resolve_category
 from app.services.category_migration import map_income_source, map_legacy_category
 
 logger = logging.getLogger(__name__)
@@ -151,7 +151,10 @@ async def import_csv(user_id: str, file_bytes: bytes) -> dict:
 
     Returns a summary dict with imported/skipped counts and per-row errors.
     """
-    text = file_bytes.decode("utf-8-sig")  # BOM-safe
+    try:
+        text = file_bytes.decode("utf-8-sig")  # BOM-safe
+    except UnicodeDecodeError:
+        raise ValueError("This file isn't a readable CSV. Save it as CSV (UTF-8) and try again.") from None
     reader = csv.reader(io.StringIO(text))
 
     try:
@@ -215,7 +218,7 @@ async def import_csv(user_id: str, file_bytes: bytes) -> dict:
             skipped += 1
             continue
 
-        if amount is None or amount <= 0:
+        if amount is None or not 0 < amount <= MAX_AMOUNT:  # also rejects nan and inf
             errors.append(f"Row {row_num}: invalid amount")
             skipped += 1
             continue

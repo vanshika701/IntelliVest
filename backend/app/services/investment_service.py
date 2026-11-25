@@ -23,9 +23,9 @@ IST = ZoneInfo("Asia/Kolkata")
 # TODO(mock): the app has no real brokerage/folio accounts; this demo list
 # stands in for them.
 DEMO_ACCOUNTS = [
-    {"id": "demo-folio-1", "label": "MF folio 1029384756 (Demo)", "kind": "folio", "supports": ["MF"]},
-    {"id": "demo-folio-new", "label": "New folio (Demo)", "kind": "folio", "supports": ["MF"]},
-    {"id": "demo-demat-1", "label": "Demat ••••4821 (Demo)", "kind": "demat", "supports": ["STOCK", "ETF"]},
+    {"id": "demo-folio-1", "label": "MF folio 1029384756", "kind": "folio", "supports": ["MF"]},
+    {"id": "demo-folio-new", "label": "New folio", "kind": "folio", "supports": ["MF"]},
+    {"id": "demo-demat-1", "label": "Demat ••••4821", "kind": "demat", "supports": ["STOCK", "ETF"]},
 ]
 
 _PENDING_STATUS = {"one_time": "pending_payment", "sip": "pending_mandate"}

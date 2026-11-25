@@ -1,9 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { apiPatch, apiPost } from '../../api/client'
 import type { BudgetMeta, IncomeGroupId, Transaction } from '../../api/budget'
+import { validateMoney } from '../../lib/budget'
 import { cn } from '../../lib/utils'
 import { Button } from '../ui/Button'
+import { FieldError } from '../ui/FieldError'
 import { Input } from '../ui/Input'
+import { NumberInput } from '../ui/NumberInput'
 
 const label = 'block text-xs font-medium text-[var(--color-text-secondary)] mb-1 uppercase tracking-wider'
 const select =
@@ -33,13 +36,23 @@ export function TransactionModal({ meta, initial, onClose, onSaved }: Props) {
 
   const sources = meta.income_groups.find((g) => g.id === group)?.sources ?? []
 
+  const [submitted, setSubmitted] = useState(false)
+  const errors = {
+    amount: validateMoney(amount, { required: true }) ?? (Number(amount) > 0 ? null : 'Must be more than ₹0'),
+    description: description.trim() ? null : 'Enter a description',
+    category: type === 'expense' && !category ? 'Pick a category' : null,
+    source: type === 'income' && !source ? 'Pick a type of income' : null,
+  }
+
   async function save(e: FormEvent) {
     e.preventDefault()
+    setSubmitted(true)
+    if (Object.values(errors).some(Boolean)) return
     setSaving(true)
     setError(null)
     const body = {
       amount: parseFloat(amount),
-      description,
+      description: description.trim(),
       ...(type === 'expense' ? { category } : { income_source: source }),
     }
     try {
@@ -56,7 +69,7 @@ export function TransactionModal({ meta, initial, onClose, onSaved }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4" role="dialog" aria-modal="true" aria-labelledby="tx-title">
       <div className="bg-[var(--color-background-secondary)] border border-[var(--color-border-subtle)] p-6 rounded-xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto">
         <h3 id="tx-title" className="text-xl font-bold text-[var(--color-text-primary)] mb-5">{initial ? 'Edit transaction' : 'Add transaction'}</h3>
-        <form onSubmit={save} className="space-y-4">
+        <form noValidate onSubmit={save} className="space-y-4">
           {!initial && (
             <div className="flex bg-[var(--color-background-tertiary)] rounded-md p-1 border border-[var(--color-border-strong)]">
               <button type="button" aria-pressed={type === 'expense'} onClick={() => setType('expense')} className={cn('flex-1 py-1.5 text-sm font-medium rounded-sm transition-colors', type === 'expense' ? 'bg-[var(--color-losses)] text-white' : 'text-[var(--color-text-secondary)] hover:text-white')}>Expense</button>
@@ -66,11 +79,13 @@ export function TransactionModal({ meta, initial, onClose, onSaved }: Props) {
 
           <div>
             <label htmlFor="tx-amount" className={label}>Amount (₹)</label>
-            <Input id="tx-amount" required type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" autoFocus className="font-mono text-lg" />
+            <NumberInput id="tx-amount" required aria-invalid={submitted && Boolean(errors.amount)} value={amount} onValueChange={setAmount} placeholder="0.00" autoFocus className="font-mono text-lg" />
+            <FieldError message={submitted ? errors.amount : null} />
           </div>
           <div>
             <label htmlFor="tx-description" className={label}>Description</label>
             <Input id="tx-description" required maxLength={300} value={description} onChange={(e) => setDescription(e.target.value)} placeholder={type === 'income' ? 'e.g. November salary' : 'e.g. Weekly groceries'} />
+            <FieldError message={submitted ? errors.description : null} />
           </div>
 
           {type === 'expense' ? (
@@ -80,6 +95,7 @@ export function TransactionModal({ meta, initial, onClose, onSaved }: Props) {
                 <option value="" disabled>Pick a category…</option>
                 {meta.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              <FieldError message={submitted ? errors.category : null} />
             </div>
           ) : (
             <>
@@ -105,6 +121,7 @@ export function TransactionModal({ meta, initial, onClose, onSaved }: Props) {
                   <option value="" disabled>Pick a type…</option>
                   {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
+                <FieldError message={submitted ? errors.source : null} />
               </div>
             </>
           )}

@@ -42,6 +42,18 @@ describe('AuthPage', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('does not send a malformed email', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    show()
+    const user = userEvent.setup()
+    await user.type(await screen.findByLabelText('Email address'), 'not-an-email')
+    await user.type(screen.getByLabelText('Password'), 'password123')
+    await user.click(screen.getByRole('button', { name: 'Sign In' }))
+    expect(screen.getByRole('alert')).toHaveTextContent('valid email')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('asks for a date of birth when creating an account', async () => {
     show()
     await userEvent.setup().click(await screen.findByRole('button', { name: 'create a new account' }))

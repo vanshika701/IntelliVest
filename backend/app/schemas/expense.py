@@ -2,8 +2,9 @@
 
 from datetime import datetime
 from enum import Enum
+from typing import Annotated
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from app.core.budget_config import (
     CATEGORIES,
@@ -11,6 +12,9 @@ from app.core.budget_config import (
     INCOME_CATEGORY_ID,
     INCOME_SOURCE_BY_ID,
 )
+
+MAX_AMOUNT = 1e10  # ₹1,000 crore: catches typos, not a real-world limit
+Description = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)]
 
 _NAME_TO_ID = {c.name.lower(): c.id for c in CATEGORIES}
 
@@ -40,8 +44,8 @@ def check_income_source(source: str | None) -> str:
 
 
 class ExpenseCreate(BaseModel):
-    amount: float = Field(gt=0)
-    description: str = Field(min_length=1, max_length=300)
+    amount: float = Field(gt=0, le=MAX_AMOUNT)
+    description: Description
     # Phase 8: picked by the user from the fixed list in core/budget_config.py
     # (id like "groceries", or its display name). Required for expenses;
     # income records always get "income". No auto-categorization.
@@ -66,8 +70,8 @@ class ExpenseCreate(BaseModel):
 class ExpenseUpdate(BaseModel):
     """Partial update. Whether a record is income or an expense can't change."""
 
-    amount: float | None = Field(default=None, gt=0)
-    description: str | None = Field(default=None, min_length=1, max_length=300)
+    amount: float | None = Field(default=None, gt=0, le=MAX_AMOUNT)
+    description: Description | None = None
     category: str | None = Field(default=None, max_length=60)
     income_source: str | None = Field(default=None, max_length=60)
     date: datetime | None = None

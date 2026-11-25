@@ -1,6 +1,5 @@
 import { useId, useMemo, useState } from 'react'
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Info } from 'lucide-react'
 import {
   DEFAULT_ANNUAL_RETURN,
   estimateReturns,
@@ -9,7 +8,7 @@ import {
 } from '../../lib/returns'
 import { formatINR, formatINRAxis, formatINRCompact } from '../../lib/format'
 import { cn } from '../../lib/utils'
-import { Input } from '../ui/Input'
+import { NumberInput } from '../ui/NumberInput'
 
 interface ReturnCalculatorProps {
   /** Historical CAGR (%) when computable; null falls back to 12%. */
@@ -57,9 +56,8 @@ function Field({
   label,
   value,
   onChange,
-  min,
-  max,
-  step,
+  decimals,
+  negative,
   suffix,
   error,
   help,
@@ -68,9 +66,8 @@ function Field({
   label: string
   value: string
   onChange: (v: string) => void
-  min: number
-  max: number
-  step?: number
+  decimals?: number
+  negative?: boolean
   suffix?: string
   error?: string
   help?: string
@@ -81,15 +78,12 @@ function Field({
         {label}
       </label>
       <div className="relative">
-        <Input
+        <NumberInput
           id={id}
-          type="number"
-          inputMode="decimal"
-          min={min}
-          max={max}
-          step={step}
+          decimals={decimals}
+          negative={negative}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onValueChange={onChange}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? `${id}-error` : help ? `${id}-help` : undefined}
           className={cn(suffix && 'pr-12', error && 'border-[var(--color-losses)]')}
@@ -156,9 +150,6 @@ export function ReturnCalculator({ historicalCagr }: ReturnCalculatorProps) {
             label={mode === 'sip' ? 'Monthly amount (₹)' : 'One-time amount (₹)'}
             value={amount}
             onChange={setAmount}
-            min={LIMITS.amount[0]}
-            max={LIMITS.amount[1]}
-            step={100}
             error={errors.amount}
           />
           <Field
@@ -166,8 +157,7 @@ export function ReturnCalculator({ historicalCagr }: ReturnCalculatorProps) {
             label="Duration"
             value={years}
             onChange={setYears}
-            min={LIMITS.years[0]}
-            max={LIMITS.years[1]}
+            decimals={0}
             suffix="years"
             error={errors.years}
           />
@@ -176,9 +166,7 @@ export function ReturnCalculator({ historicalCagr }: ReturnCalculatorProps) {
             label="Expected annual return"
             value={rate}
             onChange={setRate}
-            min={LIMITS.rate[0]}
-            max={LIMITS.rate[1]}
-            step={0.1}
+            negative
             suffix="% p.a."
             error={errors.rate}
             help={
@@ -236,11 +224,6 @@ export function ReturnCalculator({ historicalCagr }: ReturnCalculatorProps) {
           </div>
         </div>
       </div>
-
-      <p className="mt-4 flex items-start gap-1.5 text-xs text-[var(--color-text-muted)]">
-        <Info className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        Estimates are based on assumed returns and are not guaranteed.
-      </p>
     </section>
   )
 }

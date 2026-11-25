@@ -5,6 +5,8 @@ clients and what it sends back.  The data layer stores whatever it needs;
 these schemas are the contract between the frontend and the route layer.
 """
 
+import re
+import unicodedata
 from datetime import date
 from typing import Annotated
 
@@ -23,14 +25,26 @@ def _plausible_birth_date(day: date) -> date:
     return day
 
 
+def _plausible_name(name: str) -> str:
+    """Letters of any script, plus spaces, dots, hyphens and apostrophes."""
+    name = name.strip()
+    if not name:
+        raise ValueError("Enter your full name")
+    letters = re.sub(r"[ .'\u2019-]", "", name)
+    if not name[0].isalpha() or any(unicodedata.category(c)[0] not in "LM" for c in letters):
+        raise ValueError("Name can only contain letters, spaces, dots, hyphens and apostrophes")
+    return name
+
+
 NewPassword = Annotated[str, Field(min_length=8, max_length=72), AfterValidator(_fits_bcrypt)]
+FullName = Annotated[str, Field(min_length=1, max_length=120), AfterValidator(_plausible_name)]
 BirthDate = Annotated[date, AfterValidator(_plausible_birth_date)]
 
 
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: NewPassword
-    full_name: str = Field(min_length=1, max_length=120)
+    full_name: FullName
     date_of_birth: BirthDate
 
 
