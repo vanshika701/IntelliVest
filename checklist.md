@@ -91,7 +91,7 @@ As of 2026-11-24.
 
 # Phase 10 Checklist: Blockchain (Mode 2 AI + user-owned vault)
 
-Written 2026-11-25. **B1-B8 (setup and contracts) are built and tested; next is B9.** This is the detailed spec;
+Written 2026-11-25. **B1-B9 (setup, contracts, settings) are built and tested; next is B10.** This is the detailed spec;
 `PROJECT_PLAN.md` Phase 10 is the summary. If they disagree, fix both.
 
 ## What we are building and why
@@ -231,8 +231,8 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
 - [x] **B8.** Tests for every rule above, plus a local deploy script. Done when all pass.
 
 ### C. Backend
-- [ ] **B9.** Settings in `backend/app/core/config.py` and `.env.example`; keys only in `.env`.
-      Use a different key per role (sentiment, stock, advisor, SIP runner).
+- [x] **B9.** Settings in `backend/app/core/config.py` and `.env.example`; keys only in `.env`.
+      Use a different key per role (sentiment, stock, advisor, relayer, SIP runner).
 - [ ] **B10.** `backend/app/services/blockchain/`: client, hashing, signing, advisor interface,
       mock advisor, mock stock predictor. `web3.py` imported only here.
 - [ ] **B11.** Wallet linking (one-time nonce), repositories, indexes and `/api/v1/blockchain/...`.

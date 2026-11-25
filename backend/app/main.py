@@ -26,6 +26,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     This runs once per process (not per request), which is why both the
     DB connection and the scheduler live here instead of inside a route.
     """
+    if settings.blockchain_enabled:
+        # Imported here so web3's dependencies aren't needed while the feature is off.
+        from app.services.blockchain.config import load_blockchain_config
+
+        load_blockchain_config(settings)  # stop now rather than run misconfigured
     await connect_to_mongo()
     await ensure_indexes()
     # Phase 8: map old free-text / ML categories onto the fixed list (idempotent).

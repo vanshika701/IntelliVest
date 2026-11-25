@@ -1,6 +1,6 @@
 # Phase 10: Blockchain
 
-Status 2026-11-25: contracts and signing formats are built (checklist B1-B8). Nothing is connected
+Status 2026-11-25: contracts, signing formats and backend settings are built (checklist B1-B9). Nothing is connected
 to the app yet. Design and tasks: `checklist.md`. **Test tokens only. Not audited.**
 
 ## Run it
@@ -15,6 +15,15 @@ npm run deploy:local   # second terminal; writes deployments/local.json
 
 If C: is full on Windows, point `npm_config_cache`, `TEMP`, `TMP` and `LOCALAPPDATA` at a folder on
 another drive for these commands.
+
+## Settings
+
+Listed in `backend/.env.example`; keys go only in `backend/.env`. With `BLOCKCHAIN_ENABLED=false`
+(the default) nothing here is loaded. When it is on, the app won't start if a key is missing,
+invalid or shared between roles, the network isn't an allowed test network, the deployment file
+doesn't match it, or Hardhat's public keys are used outside the local chain.
+
+The relayer is a fifth role: it pays gas to submit signed messages, so the signers need no ETH.
 
 ## Contracts
 

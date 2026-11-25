@@ -1,3 +1,4 @@
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -53,6 +54,21 @@ class Settings(BaseSettings):
     # anthropic` and ANTHROPIC_API_KEY). Numbers always come from the engine.
     budget_explainer_provider: str = "template"
     budget_explainer_model: str = "claude-opus-5-5"
+
+    # Phase 10 blockchain. Off by default; nothing below is used until it is
+    # on. Checked at startup by app/services/blockchain/config.py. Test
+    # networks only.
+    blockchain_enabled: bool = False
+    blockchain_rpc_url: str = "http://127.0.0.1:8545"
+    blockchain_chain_id: int = 31337
+    # Relative paths resolve against the repo root.
+    blockchain_deployment_path: str = "blockchain/deployments/local.json"
+    # One key per role, so one leaked key can't act for the others.
+    blockchain_sentiment_private_key: SecretStr | None = None
+    blockchain_stock_private_key: SecretStr | None = None
+    blockchain_advisor_private_key: SecretStr | None = None
+    blockchain_relayer_private_key: SecretStr | None = None
+    blockchain_sip_runner_private_key: SecretStr | None = None
 
     # External API keys — needed from Phase 1 onward, optional for now so
     # the app still boots without them during Phase 0.
