@@ -55,7 +55,7 @@ SEBI-registered investment adviser.
 - [x] **3. Market statistics job.** From stored prices: daily returns,
       volatility, shrunk covariance, correlations. Stored nightly in
       `market_stats`; recomputed after the price job.
-- [ ] **4. Equity optimizer.** Minimum-variance weights with stock and
+- [x] **4. Equity optimizer.** Minimum-variance weights with stock and
       sector caps (scipy), compared with equal weight. Bounded sentiment
       tilt. Prediction slot left empty.
 - [ ] **5. Debt and gold funds.** A short, configured list of index,
