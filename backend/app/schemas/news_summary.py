@@ -1,6 +1,6 @@
 """Pydantic schemas for the combined news summary (news digest)."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel
@@ -22,8 +22,23 @@ class DigestArticle(BaseModel):
     score: float
 
 
+class PriceMove(BaseModel):
+    """The instrument's own price change, from our data rather than the news."""
+
+    as_of: date
+    day_pct: float | None = None
+    week_pct: float | None = None
+    month_pct: float | None = None
+    text: str
+
+
 class NewsDigest(BaseModel):
     instrument_id: str
+    # "sector": too little news about the instrument, so its sector's or
+    # theme's news is used; scope_name says which.
+    scope: Literal["instrument", "sector"] = "instrument"
+    scope_name: str
+    price_move: PriceMove | None = None
     provider: str
     method: str
     max_words: int

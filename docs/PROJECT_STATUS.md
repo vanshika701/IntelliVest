@@ -269,7 +269,7 @@ multi-document input; an implementation may ignore it and read `text`. The app s
 - [x] S6. Lint, type-check, all tests, manual check in the browser; update this section with results
 - [x] S7. Revision: combined multi-article summary + top-5 list (backend digest endpoint, multi-document extractive mode, frontend `NewsDigest`), tests, browser check
 
-### Extractive algorithm (baseline, `tfidf-extractive@1.2.0`)
+### Extractive algorithm (baseline, `tfidf-extractive@1.5.0`)
 Code: `backend/app/services/summarization/extractive.py` — one function per step.
 
 | Step | Function | What it does |
@@ -295,7 +295,7 @@ bump `ALGORITHM_VERSION`, which is part of the cache key and recorded in every l
   text to summarize. Near-duplicate headlines (Jaccard ≥ 0.6) keep only the best. Top 5.
 - Text per article: publisher full text (robots.txt-checked, 6 s timeout, 2 MB cap, JSON-LD
   `articleBody` first, else the densest paragraph block) → RSS snippet → headline. Each article
-  contributes its first 300 words to the combined input. The response reports `sources`
+  contributes its first 300 words (`first_words`: keeps line breaks, ends on a whole sentence). The response reports `sources`
   (how many articles gave full text / snippet / headline) and each article's `input_kind`.
 - Per-article sentiment tags come from `sentiment_service.score_texts` (FinBERT, lexicon fallback).
 - Caches (`SUMMARIZER_CACHE_TTL_MIN`): article text per URL; the combined result per
@@ -316,12 +316,32 @@ bump `ALGORITHM_VERSION`, which is part of the cache key and recorded in every l
 | `LOG_SUMMARIES` | `false` | Append JSONL training/eval data to `data/summarization_log.jsonl` (gitignored) |
 
 ### Results (baseline, measured 2026-11-21)
-**Combined summary (current, `1.2.0`)** — checked in the browser on Reliance and SBI Gold Fund: the
-summary sits under the sentiment line, then the top-5 list with tags; loads after the chart and
-stats (~3–6 s cold, instant when cached). Eval over 8 logged combined summaries (8 instruments):
-100% word-limit compliance, 78 words on average, compression 0.34, ~13 ms per summary. Example
-(Reliance): promoters buying 4.26 lakh shares; JPMorgan's 23% upside call; ₹15,000 crore biogas plan
-— three distinct stories in 83 words.
+**Combined summary (current, `1.5.0`), 2026-11-26** over 20 instruments (10 funds, 10 stocks), in the per-article form the app uses (`data/digests_2026-11-26_v1.5.0.jsonl`, gitignored):
+
+| Metric | 20 summaries |
+|---|---|
+| Word-limit compliance | 100% |
+| Avg summary length | 65 words |
+| Compression (summary ÷ input words) | 0.22 |
+| Latency avg / p95 | 25 ms / 49 ms |
+
+These measure length and speed, not quality.
+
+**Whole sentences only (`1.5.0`).** Sentences cut off by the search engine ("…") are dropped, and "Ltd.",
+"Inc." and "Co." no longer end a sentence. All 61 sentences in the 20 summaries end properly.
+**Price move.** `services/price_move.py` adds a line from our own prices ("down 1.2% on the day, ... (as of
+25 Nov 2026)") above the summary; moves over 50% are treated as splits and left out.
+
+**Sector/theme fallback.** Funds are rarely in the news by name, so name searches returned product pages
+("SCHEMES MANAGED BY Abhishek Jain…"). With fewer than 2 real articles about the instrument, the digest
+uses its sector (stocks) or what it holds (funds: gold, Nifty IT, small caps…), from
+`services/news_topics.py`; the response's `scope`/`scope_name` say so and the UI shows it.
+**Choosing articles.** Headlines reporting an event or price move rank higher; listicles, advice, and round-ups
+naming 3+ companies rank lower. Sentences stating a movement score higher.
+
+**Method check.** A pretrained abstractive model (`sshleifer/distilbart-cnn-12-6`, CPU) was run on 8 of the same
+inputs: 8-16 s each against ~25 ms, with garbled text ("The Technology Pack Leads the Technology Pack",
+"Infoys") and no better choice of stories. Input selection mattered more than the summarizer.
 
 **Earlier per-article version (`1.1.0`, superseded)** — `python -m scripts.eval_summarizer` over 40
 logged real articles (8 instruments):

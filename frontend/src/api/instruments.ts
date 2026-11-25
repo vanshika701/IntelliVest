@@ -96,9 +96,22 @@ export interface DigestArticle {
   score: number
 }
 
+/** The instrument's own price change, from our data rather than the news. */
+export interface PriceMove {
+  as_of: string
+  day_pct: number | null
+  week_pct: number | null
+  month_pct: number | null
+  text: string
+}
+
 /** One combined summary of the top recent articles, plus those articles. */
 export interface NewsDigest {
   instrument_id: string
+  /** 'sector' = too little news about the instrument, so scope_name's news is shown. */
+  scope: 'instrument' | 'sector'
+  scope_name: string
+  price_move: PriceMove | null
   provider: string
   method: string
   max_words: number

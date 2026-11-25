@@ -3,7 +3,7 @@ candidate selection, the service's fallbacks/caching/logging/isolation,
 and the endpoint. No real network calls."""
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 import pytest
@@ -14,7 +14,15 @@ from app.core.config import settings
 from app.services import article_fetcher, news_summary_service
 from app.services.article_fetcher import extract_article_text, fetch_article_text
 from app.services.news_service import resolve_bing_link
-from app.services.news_summary_service import get_news_digest, is_listing_page, pick_top_articles
+from app.services.news_summary_service import (
+    get_news_digest,
+    is_listing_page,
+    mentions_instrument,
+    pick_top_articles,
+    text_matches_headline,
+)
+from app.services.news_topics import topic_for_fund, topic_for_stock
+from app.services.price_move import build_price_move
 from app.services.summarization import Summarizer, SummaryInput, SummaryResult
 
 NOW = datetime(2026, 11, 21, 12, 0, tzinfo=UTC)
@@ -160,6 +168,7 @@ def test_listing_pages_are_not_news() -> None:
     assert is_listing_page(_article("SBI Gold ETF - Growth", 1), "SBI Gold ETF")
     assert is_listing_page(_article("Titan share price today", 1), "Titan")
     assert not is_listing_page(_article("SBI Gold ETF sees record inflows as prices climb", 1), "SBI Gold ETF")
+    assert is_listing_page(_article("ICICI Prudential Silver ETF FOF Growth", 1), "ICICI PRUDENTIAL SILVER ETF")
     # Short real headlines are still news.
     assert not is_listing_page(_article("Infosys wins deal", 1), "Infosys")
 
@@ -193,7 +202,7 @@ def pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path):
     state = {"summarizer": FakeSummarizer(), "input_calls": [], "log": tmp_path / "log.jsonl"}
 
     async def fake_candidates(instrument_id: str):
-        return "Infosys", articles
+        return "Infosys", articles, None
 
     async def fake_inputs(batch: list[dict]):
         state["input_calls"].append([a["url"] for a in batch])
@@ -205,6 +214,10 @@ def pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path):
     def fake_scores(texts: list[str]):
         return [{"positive": 0.8, "negative": 0.1, "neutral": 0.1} for _ in texts], "fake-finbert"
 
+    async def fake_move(instrument_id: str):
+        return None
+
+    monkeypatch.setattr(news_summary_service, "get_price_move", fake_move)
     monkeypatch.setattr(news_summary_service, "_gather_candidates", fake_candidates)
     monkeypatch.setattr(news_summary_service, "_article_inputs", fake_inputs)
     monkeypatch.setattr(news_summary_service, "score_texts", fake_scores)
@@ -275,8 +288,12 @@ async def test_digest_logs_one_jsonl_line_when_enabled(pipeline, monkeypatch: py
 
 async def test_digest_without_news(monkeypatch: pytest.MonkeyPatch) -> None:
     async def no_candidates(instrument_id: str):
-        return "Infosys", []
+        return "Infosys", [], None
 
+    async def no_move(instrument_id: str):
+        return None
+
+    monkeypatch.setattr(news_summary_service, "get_price_move", no_move)
     monkeypatch.setattr(news_summary_service, "_gather_candidates", no_candidates)
     result = await get_news_digest("stock-INFY.NS")
     assert result["summary"] is None and result["articles"] == [] and result["summary_failed"] is False
@@ -303,3 +320,167 @@ def test_endpoint_returns_digest_and_is_rate_limited(
     limited = client.get("/api/v1/instruments/stock-INFY.NS/news-summary", headers=auth_headers)
     assert limited.status_code == 429
     assert int(limited.headers["Retry-After"]) >= 1
+
+
+# --- Regression: the SBI Gold summary quoted the journalist's bio ----------------------------
+
+def _mint_like_page() -> str:
+    story = "".join(
+        f"<div class='row'><div class='storyParagraph'><p>Fund managers raise gold and silver exposure, part {i}, as the price correction "
+        "revives interest among multi-asset funds this month.</p></div></div>" for i in range(25)
+    )
+    bio = "Srushti is a markets reporter. Her work aims to drive impact. " * 18
+    return f"<html><body><div id='story'>{story}</div><div class='CARD'><p>{bio}</p></div></body></html>"
+
+
+def test_extract_prefers_wrapped_story_paragraphs_over_a_dense_bio() -> None:
+    page = _mint_like_page()
+    for html in (page, page.replace("CARD", "abtAuthorSlideItem")):
+        text = extract_article_text(html)
+        assert text.startswith("Fund managers raise gold")
+        assert "reporter" not in text
+
+
+def test_fetched_text_must_match_its_headline() -> None:
+    title = "Fund managers look to raise gold, silver exposure as price correction revives interest"
+    assert text_matches_headline("Fund managers are raising gold and silver exposure after a price correction.", title)
+    assert not text_matches_headline("Srushti is a reporter. Her story on gold imports drove impact.", title)
+
+
+def test_articles_must_mention_the_instrument() -> None:
+    assert mentions_instrument(_article("Gold rallies as SBI Mutual Fund turns positive", 1), "SBI GOLD FUND", None)
+    assert not mentions_instrument(_article("Invesco India Silver ETF Fund of Fund", 1), "SBI GOLD FUND", None)
+    assert mentions_instrument(_article("SBI raises loan rates", 1), "State Bank of India", "SBIN.NS")
+    assert not mentions_instrument(_article("Bank holiday today: are banks open?", 1), "State Bank of India", "SBIN.NS")
+
+
+def test_tag_and_quote_pages_are_not_news() -> None:
+    assert is_listing_page(_article("tcs coverage archive", 1, url="https://x.com/tag/tcs"), "TCS")
+    assert is_listing_page(_article("TCS.NS stock price, news, quote and history", 1), "TCS")
+
+
+# --- Sector / theme fallback ---------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("name", "category", "expected"),
+    [
+        ("SBI GOLD FUND - Direct Plan - Growth", "Other Scheme - FoF Domestic", "Gold"),
+        ("ICICI PRUDENTIAL SILVER ETF", "Other Scheme - Other  ETFs", "Silver"),
+        ("Edelweiss Gold and Silver ETF FOF - Direct Plan", None, "Precious Metals"),
+        ("Bandhan Nifty IT Index Fund - Regular Plan - Growth", "Other Scheme - Index Funds", "IT"),
+        ("BANDHAN NIFTY BANK INDEX FUND - Regular Plan - Growth", "Other Scheme - Index Funds", "Banking"),
+        ("Axis Banking & PSU Debt Fund - Direct Plan", "Debt Scheme", "Bonds & Interest Rates"),
+        ("Nippon India Pharma Fund - Growth", "Equity Schemes - Sectoral Fund", "Pharma"),
+        ("Axis Small Cap Fund - Regular Plan - Growth", "Equity Schemes - Small Cap Fund", "Small Caps"),
+        ("Bandhan Nifty 50 Index Fund - Growth", "Other Scheme - Index Funds", "Indian Stock Market"),
+        ("HDFC Flexi Cap Fund - Growth", "Equity Scheme - Flexi Cap Fund", "Indian Stock Market"),
+        ("SBI Liquid Fund - Direct Plan", "Debt Scheme - Liquid Fund", "Bonds & Interest Rates"),
+    ],
+)
+def test_topic_for_fund(name: str, category: str | None, expected: str) -> None:
+    assert topic_for_fund(name, category).name == expected
+
+
+def test_it_topic_ignores_the_word_it() -> None:
+    topic = topic_for_stock("TCS.NS")
+    assert topic.name == "IT"
+    assert topic.matches("IT stocks rally") and not topic.matches("Is it time to sell gold?")
+
+
+def _stub_sources(monkeypatch: pytest.MonkeyPatch, own: list[dict], related: list[dict]) -> None:
+    async def fake_bing(phrase: str, days: int = 30, limit: int = 15):
+        return own if "BANDHAN" in phrase.upper() else related
+
+    async def fake_google(phrase: str, days: int = 30, limit: int = 15):
+        return []
+
+    async def fake_instrument(instrument_id: str):
+        return {"name": "Bandhan Gold ETF - Growth", "category": None}
+
+    monkeypatch.setattr(news_summary_service, "search_bing_news", fake_bing)
+    monkeypatch.setattr(news_summary_service, "search_news", fake_google)
+    monkeypatch.setattr(news_summary_service, "get_instrument", fake_instrument)
+
+
+async def test_product_pages_trigger_the_theme_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    pages = [
+        _article("Bandhan Gold ETF Regular-Growth", 1, description="SCHEMES MANAGED BY Abhishek Jain Bandhan Nifty 100"),
+        _article("Bandhan Gold ETF Direct Plan Growth", 1, description="This scheme has consistently delivered"),
+    ]
+    related = [_article("Gold falls 3% as dollar firms", 1), _article("Cricket news roundup", 1)]
+    _stub_sources(monkeypatch, pages, related)
+    _, candidates, topic = await news_summary_service._gather_candidates("mf-1")
+    assert topic.name == "Gold"
+    assert {c["title"] for c in candidates} == {"Gold falls 3% as dollar firms"}
+
+
+async def test_own_news_is_kept_when_there_is_enough(monkeypatch: pytest.MonkeyPatch) -> None:
+    own = [_article("Bandhan Gold ETF sees record inflows", 1), _article("Bandhan launches offer, Gold ETF assets jump", 2)]
+    _stub_sources(monkeypatch, own, [_article("Gold falls 3%", 1)])
+    _, candidates, topic = await news_summary_service._gather_candidates("mf-1")
+    assert topic is None and len(candidates) == 2
+
+
+def test_events_outrank_listicles_and_roundups() -> None:
+    event = _article("Titan shares fall 5% after weak Q2 results", 10, description="x")
+    listicle = _article("Top 5 stocks to buy including Titan", 1, description="x")
+    roundup = _article("Infosys, TCS, Wipro and Titan among movers", 1, description="x")
+    picked = pick_top_articles([listicle, roundup, event], "Titan", NOW, n=1)
+    assert picked == [event]
+
+
+async def test_digest_reports_sector_scope(pipeline, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def related(instrument_id: str):
+        _, articles, _ = await original(instrument_id)
+        return "Bandhan Gold ETF", articles, topic_for_fund("Bandhan Gold ETF", None)
+
+    original = news_summary_service._gather_candidates
+    monkeypatch.setattr(news_summary_service, "_gather_candidates", related)
+    result = await get_news_digest("mf-1")
+    assert (result["scope"], result["scope_name"]) == ("sector", "Gold")
+    assert pipeline["summarizer"].requests[0].instrument_name == "Gold"
+
+
+def test_topic_news_is_indian_unless_the_fund_invests_abroad() -> None:
+    pharma = topic_for_fund("Nippon India Pharma Fund", None)
+    assert pharma.matches("Pharma stocks rally, Nifty Pharma up 11%")
+    assert not pharma.matches("Pharma stocks: why the surge?", "The Nikkei 225 fell 2.78%")
+    assert topic_for_fund("Motilal Nasdaq 100 FOF", None).matches("Nasdaq falls as tech sells off")
+
+
+def test_exam_results_are_not_news() -> None:
+    assert is_listing_page(_article("SBI Clerk Mains Result 2026 Out", 1), "State Bank of India")
+
+
+# --- Price move -----------------------------------------------------------------------------
+
+def _series(values: dict[int, float]) -> list[tuple[date, float]]:
+    return [(date(2026, 11, 25) - timedelta(days=d), v) for d, v in sorted(values.items(), reverse=True)]
+
+
+def test_price_move_states_direction_and_date() -> None:
+    move = build_price_move(
+        "SBI GOLD FUND - Direct Plan - Growth", _series({40: 125, 31: 125, 8: 110, 1: 101, 0: 100}), 100, date(2026, 11, 25), -0.99
+    )
+    assert move["text"] == (
+        "SBI GOLD FUND: down 1.0% on the day, down 9.1% over a week and down 20.0% over a month (as of 25 Nov 2026)."
+    )
+
+
+def test_price_move_handles_flat_missing_and_split_data() -> None:
+    flat = build_price_move("X", _series({8: 100, 0: 100.01}), 100.01, date(2026, 11, 25), 0.01)
+    assert flat["text"] == "X: flat on the day and flat over a week (as of 25 Nov 2026)."
+    split = build_price_move("X", _series({31: 1500, 8: 1500, 0: 100}), 100, date(2026, 11, 25), -0.5)
+    assert split["week_pct"] is None and split["month_pct"] is None
+    assert split["text"] == "X: down 0.5% on the day (as of 25 Nov 2026)."
+    assert build_price_move("X", [], None, None, None) is None
+    # A year-old price must not be passed off as "a week ago".
+    assert build_price_move("X", _series({300: 90, 0: 100}), 100, date(2026, 11, 25), None) is None
+
+
+async def test_digest_carries_the_price_move(pipeline, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def move(instrument_id: str):
+        return {"text": "Infosys: up 3.8% on the day."}
+
+    monkeypatch.setattr(news_summary_service, "get_price_move", move)
+    assert (await get_news_digest("stock-INFY.NS"))["price_move"]["text"].startswith("Infosys: up")

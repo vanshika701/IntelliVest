@@ -78,6 +78,7 @@ def evaluate(
             url=r.get("url"),
             instrument_name=r.get("title") if r.get("documents") else None,
             documents=tuple(r.get("documents") or ()),
+            document_titles=tuple(r.get("document_titles") or ()),
         )
         for r in records
     ]

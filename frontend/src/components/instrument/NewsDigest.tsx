@@ -1,5 +1,5 @@
-import { AlertCircle, RefreshCw } from 'lucide-react'
-import type { NewsDigest as NewsDigestData } from '../../api/instruments'
+import { AlertCircle, Minus, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react'
+import type { NewsDigest as NewsDigestData, PriceMove } from '../../api/instruments'
 import { formatDate } from '../../lib/format'
 import { Skeleton } from '../ui/Skeleton'
 import { SentimentBadge } from './SentimentSection'
@@ -9,6 +9,18 @@ interface NewsDigestProps {
   loading: boolean
   error: string | null
   onRetry: () => void
+}
+
+function PriceMoveLine({ move }: { move: PriceMove }) {
+  const pct = move.day_pct ?? move.week_pct ?? move.month_pct ?? 0
+  const Icon = pct > 0.05 ? TrendingUp : pct < -0.05 ? TrendingDown : Minus
+  const color = pct > 0.05 ? 'text-[var(--color-gains)]' : pct < -0.05 ? 'text-[var(--color-losses)]' : 'text-[var(--color-text-secondary)]'
+  return (
+    <p className={`mt-4 flex items-start gap-2 text-sm font-medium ${color}`}>
+      <Icon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      {move.text}
+    </p>
+  )
 }
 
 /** One combined summary of the top stories, then the stories themselves.
@@ -51,14 +63,25 @@ export function NewsDigest({ data, loading, error, onRetry }: NewsDigestProps) {
   }
 
   if (!data || data.articles.length === 0) {
-    return <p className="mt-4 text-sm text-[var(--color-text-muted)]">No recent news found.</p>
+    return (
+      <>
+        {data?.price_move && <PriceMoveLine move={data.price_move} />}
+        <p className="mt-4 text-sm text-[var(--color-text-muted)]">No recent news found.</p>
+      </>
+    )
   }
 
   const noFullText = data.sources.full_text === 0
 
   return (
     <div className="mt-4">
-      <div className="rounded-xl bg-[var(--color-background-tertiary)]/40 p-4">
+      {data.price_move && <PriceMoveLine move={data.price_move} />}
+      <div className="mt-3 rounded-xl bg-[var(--color-background-tertiary)]/40 p-4">
+        {data.scope === 'sector' && (
+          <p className="mb-2 text-xs font-medium text-amber-400">
+            Not enough recent news about this instrument, so this covers {data.scope_name} instead.
+          </p>
+        )}
         <span className="mb-2 inline-block rounded-full bg-[var(--color-brand-light)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-brand)]">
           Auto-summary
         </span>
@@ -76,7 +99,9 @@ export function NewsDigest({ data, loading, error, onRetry }: NewsDigestProps) {
         </p>
       </div>
 
-      <h4 className="mb-1 mt-5 text-sm font-semibold text-[var(--color-text-primary)]">Top stories</h4>
+      <h4 className="mb-1 mt-5 text-sm font-semibold text-[var(--color-text-primary)]">
+        {data.scope === 'sector' ? `Top stories: ${data.scope_name}` : 'Top stories'}
+      </h4>
       <ul className="divide-y divide-[var(--color-border-subtle)]">
         {data.articles.map((article) => (
           <li key={article.url} className="py-3">

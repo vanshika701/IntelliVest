@@ -12,6 +12,7 @@
 import asyncio
 import json
 import logging
+import re
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
@@ -19,6 +20,7 @@ import httpx
 from bs4 import BeautifulSoup
 
 from app.core.cache import MISSING, TTLCache
+from app.services.summarization.textutils import first_words
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +33,16 @@ MAX_BYTES = 2_000_000
 MIN_ARTICLE_WORDS = 60
 MAX_ARTICLE_WORDS = 1200
 MIN_PARAGRAPH_WORDS = 8
+ANCESTOR_SHARES = (1.0, 0.75, 0.6)
 
 _robots_cache = TTLCache(ttl_seconds=6 * 60 * 60, max_items=256)
 _NOISE_TAGS = ["script", "style", "noscript", "nav", "header", "footer", "aside", "form", "figure", "iframe", "svg", "button"]
+
+
+_FURNITURE = re.compile(
+    r"author|byline|bio\b|related|recommend|disclaimer|newsletter|comment|seo-?t|promo|also-?read|trending",
+    re.IGNORECASE,
+)
 
 
 def _host(url: str) -> str:
@@ -79,25 +88,44 @@ def _from_json_ld(soup: BeautifulSoup) -> str | None:
     return None
 
 
-def _from_paragraphs(soup: BeautifulSoup) -> str | None:
-    """Pick the single element whose direct <p> children hold the most
-    text — the article body — rather than every <p> on the page (which
-    sweeps in related-story teasers)."""
+def _drop_furniture(soup: BeautifulSoup) -> None:
+    """Remove author bios, related stories, disclaimers and similar blocks,
+    unless one holds most of the page's text (then its name is misleading)."""
     for tag in soup(_NOISE_TAGS):
         tag.decompose()
-    words_by_parent: dict[int, int] = {}
-    paragraphs_by_parent: dict[int, list[str]] = {}
-    for p in soup.find_all("p"):
-        text = p.get_text(" ", strip=True)
-        if _words(text) < MIN_PARAGRAPH_WORDS:
+    total = sum(_words(p.get_text(" ")) for p in soup.find_all("p"))
+    for tag in soup.find_all(True):
+        if tag.decomposed or tag.name in ("html", "body"):
             continue
-        key = id(p.parent)
-        words_by_parent[key] = words_by_parent.get(key, 0) + _words(text)
-        paragraphs_by_parent.setdefault(key, []).append(text)
-    if not words_by_parent:
+        label = " ".join([*(tag.get("class") or []), tag.get("id") or ""])
+        if _FURNITURE.search(label) and sum(_words(p.get_text(" ")) for p in tag.find_all("p")) <= total / 2:
+            tag.decompose()
+
+
+def _from_paragraphs(soup: BeautifulSoup) -> str | None:
+    """Pick the element holding the article body. A paragraph counts fully
+    for its parent and less for the next ancestors, so a body whose paragraphs
+    each sit in their own <div> still beats a single dense side block."""
+    _drop_furniture(soup)
+    paragraphs = [p for p in soup.find_all("p") if _words(p.get_text(" ", strip=True)) >= MIN_PARAGRAPH_WORDS]
+    scores: dict[int, float] = {}
+    elements = {}
+    for p in paragraphs:
+        words = _words(p.get_text(" ", strip=True))
+        for element, share in zip(p.parents, ANCESTOR_SHARES, strict=False):
+            # <body> is only a candidate as a paragraph's direct parent.
+            if element.name in ("body", "html", "[document]") and share < 1.0:
+                break
+            elements[id(element)] = element
+            scores[id(element)] = scores.get(id(element), 0.0) + words * share
+    if not scores:
         return None
-    best = max(words_by_parent, key=words_by_parent.get)
-    text = "\n".join(paragraphs_by_parent[best])
+    best = elements[max(scores, key=scores.get)]
+    text = "\n".join(
+        p.get_text(" ", strip=True)
+        for p in paragraphs
+        if any(a is best for a, _ in zip(p.parents, ANCESTOR_SHARES, strict=False))
+    )
     return text if _words(text) >= MIN_ARTICLE_WORDS else None
 
 
@@ -106,9 +134,8 @@ def extract_article_text(html: str) -> str | None:
     text = _from_json_ld(soup) or _from_paragraphs(soup)
     if not text:
         return None
-    words = text.split()
     # Leads carry the key facts; capping keeps summarization fast.
-    return text if len(words) <= MAX_ARTICLE_WORDS else " ".join(words[:MAX_ARTICLE_WORDS])
+    return first_words(text, MAX_ARTICLE_WORDS)
 
 
 async def fetch_article_text(url: str, client: httpx.AsyncClient | None = None) -> str | None:

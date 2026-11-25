@@ -25,6 +25,8 @@ class SummaryInput:
     # use `text`; the extractive baseline uses it to treat each article's
     # opening sentences as a lead.
     documents: tuple[str, ...] = ()
+    # Headline of each entry in `documents` (same order), when known.
+    document_titles: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
