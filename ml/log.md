@@ -457,6 +457,60 @@ total, up from 484), and the expanded 150-example stress test.
 
 ---
 
+## Phase 4 — Stock Price Prediction
+
+**Data:** Yahoo Finance daily adjusted closes, 20 stocks + Nifty 50 + India
+VIX, 2008-03-03 to 2026-11-25. 90,591 stock-days; 1,503,364 labelled rows
+(17 horizons, 1 to 504 trading days); every 4th trading day kept for
+training (375,996 rows in the final fit).
+
+**Model:** `HistGradientBoostingClassifier` (max_iter 250, learning_rate
+0.05, max_leaf_nodes 31, min_samples_leaf 400, l2 1.0) over 15 buckets of
+volatility-scaled return. One model for all stocks and horizons; horizon
+is an input. 27 inputs, price and market only. Details:
+`docs/PHASE_4_PREDICTION.md`.
+
+### Run 1 — quick smoke run (2026-11-27)
+
+60 trees, test years 2024–2025, 5 minutes. Range hit 78–83%; direction
+at or below "always up". Used only to test the pipeline end to end.
+
+- **Problem:** `log(0)` in the volatility trend when a price sat flat for
+  weeks. Infinite inputs now become missing values, which the model
+  handles natively.
+- **Problem:** two data breaks over 35% in a day: TMPV (demerger) and
+  NESTLEIND (2024 1:10 split, unadjusted on Yahoo). Inputs and labels are
+  split at breaks.
+- **Problem:** Mongo dates and parquet dates had different precisions, so
+  the market merge failed in the backend. Dates are normalised inside
+  `compute_features`, so training and serving match.
+- **Bug found by a test:** with an empty bucket, the percentile inversion
+  dropped the wrong edge (gave −1.0 instead of −0.5). Rewritten; the
+  smoke run's metrics were computed before the fix and are superseded.
+
+### Run 2 — full run, shipped model 1.0.0 (2026-11-27)
+
+Walk-forward 2020–2025, about 2.5 minutes per fold, 22 minutes in all.
+Baseline: the same range from recent volatility alone.
+
+| Horizon | Range hit | Baseline | Up/down right | Always up | Rank corr (baseline) |
+|---|---|---|---|---|---|
+| Up to 1 week | 81.4% | 80.5% | 51.9% | 52.7% | 0.024 (−0.011) |
+| 1 week to 1 month | 80.6% | 79.9% | 54.8% | 56.2% | 0.025 (−0.008) |
+| 1 to 6 months | 79.8% | 79.7% | 61.6% | 63.0% | 0.039 (0.023) |
+| 6 months to 2 years | 81.8% | 82.1% | 76.6% | 76.9% | 0.020 (0.131) |
+
+- Ranges are calibrated, but mostly thanks to volatility; the baseline is
+  too. Pinball loss is within 1% of the baseline; the model is better only
+  at 6 months to 2 years (ranges 87% wide vs 99%, same hit rate).
+- Direction never beats "always up". Short-horizon ranking is slightly
+  better than the baseline (positive in 5 of 6 years up to 1 week);
+  long-horizon ranking is worse.
+- Hindsight: the 20 stocks are today's large caps, so long horizons lean
+  optimistic.
+
+---
+
 ## Phase 5 — Financial Sentiment Analysis
 
 **Base model:** [`ProsusAI/finbert`](https://huggingface.co/ProsusAI/finbert)

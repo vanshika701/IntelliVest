@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # Relative paths resolve against the repo root.
     summary_log_path: str = "data/summarization_log.jsonl"
 
+    # Phase 4 stock predictor, made by ml/train_stock_predictor.py; its
+    # metrics.json sits next to it. Relative paths resolve against the repo root.
+    stock_predictor_path: str = "ml/models/stock_predictor/model.joblib"
+
     # Phase 8 budget explanations. "template" (default) = the engine's own
     # sentences; "groq" or "gemini" = a free-tier LLM rephrases them, if its key
     # is set. Numbers always come from the engine.

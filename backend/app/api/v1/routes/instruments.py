@@ -1,11 +1,14 @@
 """Instrument routes — search across stocks/MFs/ETFs, detail, price history."""
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import get_current_user_id
 from app.core.rate_limit import SlidingWindowRateLimiter
 from app.schemas.instrument import InstrumentDetail, InstrumentSearchResponse, PriceHistory
 from app.schemas.news_summary import NewsDigest
+from app.schemas.prediction import StockPrediction
 from app.schemas.sentiment import InstrumentSentiment
 from app.services.instrument_service import (
     DataProviderError,
@@ -16,6 +19,7 @@ from app.services.instrument_service import (
     search_instruments,
 )
 from app.services.news_summary_service import get_news_digest
+from app.services.prediction_service import PredictionUnavailable, get_prediction
 from app.services.sentiment_service import get_instrument_sentiment
 
 router = APIRouter(prefix="/instruments", tags=["instruments"], dependencies=[Depends(get_current_user_id)])
@@ -100,3 +104,20 @@ async def intraday(instrument_id: str):
         raise _not_found() from None
     except DataProviderError as exc:
         raise _provider_down(exc) from None
+
+
+@router.get("/{instrument_id}/prediction", response_model=StockPrediction)
+async def prediction(
+    instrument_id: str,
+    amount: int = Query(ge=1, le=730),
+    unit: Literal["days", "months", "years"] = "days",
+):
+    """Phase 4: the stored prediction for a horizon of `amount` `unit`."""
+    try:
+        return await get_prediction(instrument_id, amount, unit)
+    except InstrumentNotFound:
+        raise _not_found() from None
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
+    except PredictionUnavailable:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No prediction available yet") from None

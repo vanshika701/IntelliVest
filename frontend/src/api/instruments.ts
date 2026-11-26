@@ -124,6 +124,41 @@ export interface NewsDigest {
   generated_at: string
 }
 
+export type HorizonUnit = 'days' | 'months' | 'years'
+
+/** How the model did on past years it never trained on (Phase 4). */
+export interface PredictionTestResult {
+  horizon_group: string
+  test_years: number[]
+  range_hit_rate: number
+  direction_accuracy: number
+  always_up_accuracy: number
+}
+
+/** Stored stock prediction for a horizon; percentages are returns. */
+export interface StockPrediction {
+  instrument_id: string
+  ticker: string
+  amount: number
+  unit: HorizonUnit
+  trading_days: number
+  as_of: string
+  target_date: string
+  last_close: number
+  chance_up: number
+  low_pct: number
+  mid_pct: number
+  high_pct: number
+  low_price: number
+  mid_price: number
+  high_price: number
+  rank: number
+  rank_of: number
+  model_version: string
+  artifact_hash: string
+  test_result: PredictionTestResult | null
+}
+
 const base = (id: string) => `/api/v1/instruments/${encodeURIComponent(id)}`
 
 export const instrumentsApi = {
@@ -134,6 +169,8 @@ export const instrumentsApi = {
   intraday: (id: string) => apiGet<PriceHistory>(`${base(id)}/intraday`),
   sentiment: (id: string) => apiGet<InstrumentSentiment>(`${base(id)}/sentiment`),
   newsDigest: (id: string) => apiGet<NewsDigest>(`${base(id)}/news-summary`),
+  prediction: (id: string, amount: number, unit: HorizonUnit) =>
+    apiGet<StockPrediction>(`${base(id)}/prediction?amount=${amount}&unit=${unit}`),
 }
 
 export const TYPE_LABEL: Record<InstrumentType, string> = { STOCK: 'Stock', MF: 'MF', ETF: 'ETF' }

@@ -26,6 +26,10 @@ def get_sector_snapshots_collection() -> AsyncIOMotorCollection:
     return get_database()["sector_snapshots"]
 
 
+def get_stock_predictions_collection() -> AsyncIOMotorCollection:
+    return get_database()["stock_predictions"]
+
+
 def get_users_collection() -> AsyncIOMotorCollection:
     return get_database()["users"]
 
