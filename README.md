@@ -191,6 +191,17 @@ Phase 2's exit criteria are met. Track remaining polish items in
   the Budgeting page shows the live accuracy metric and marks
   ML-categorized transactions.
 
+- **Phase 7** — built (Portfolio Recommendation Engine). An 8-question
+  risk profile (the lower of capacity and tolerance), an equity / debt /
+  gold split by profile and goal horizon, minimum-variance stock weights
+  (Ledoit-Wolf shrunk covariance, stock and sector caps) with a small,
+  bounded FinBERT sentiment tilt, and real debt and gold funds from
+  mfapi.in. Each recommendation is stored with rupee amounts, reasons and
+  a risk summary. A walk-forward backtest (2013-2026) shows lower
+  volatility than equal weight out of sample (13.9% vs 16.0%) for slightly
+  less return. Educational only, not investment advice. See
+  `docs/PHASE_7_PORTFOLIO.md`.
+
 - **Phase 8** — complete (redefined as Smart Budgeting & Goal Planner).
   Users pick expense categories from a fixed list of 13 (Needs / Wants /
   Savings), which replaced the Phase 3 auto-categorizer in the app. Old

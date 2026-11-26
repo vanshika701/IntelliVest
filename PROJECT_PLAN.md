@@ -217,6 +217,8 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 **Owner:** _unassigned_
 
+**Status: built (2026-11-26)** on risk profile, asset split, minimum-variance stock weights with a bounded sentiment tilt, and debt/gold funds. Walk-forward backtest 2013-2026: 13.9% volatility vs 16.0% for equal weight, for 0.8 points less return a year. Phase 4 predictions join once they exist. See `docs/PHASE_7_PORTFOLIO.md`.
+
 **Goal:** Turn per-stock predictions and sentiment into a personalized recommendation, incorporating the user's goals and risk profile.
 
 **What gets built:**

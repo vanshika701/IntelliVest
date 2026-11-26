@@ -69,7 +69,7 @@ SEBI-registered investment adviser.
 - [x] **8. Evaluation.** Walk-forward backtest against equal weight and
       the Nifty 50, with trading costs: return, volatility, maximum
       drawdown, Sharpe ratio. Results in `ml/log.md`.
-- [ ] **9. Documentation.** Methodology, limits, what is real and what is
+- [x] **9. Documentation.** Methodology, limits, what is real and what is
       assumed.
 
 **Done when:** a user who answers the questionnaire gets a stored,
