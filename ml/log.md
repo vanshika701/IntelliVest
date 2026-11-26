@@ -827,3 +827,54 @@ No training was done; this re-evaluates existing models.
 - **Label mismatch:** the current fine-tuned weights output
   Bullish/Bearish, which the backend would score as 0. They must not be
   set as `SENTIMENT_MODEL`.
+
+## Phase 7 — Portfolio Recommendation Engine
+
+### Walk-forward backtest of the minimum-variance equity optimizer (2026-11-26)
+
+No model is trained in Phase 7; this evaluates the optimizer the app ships.
+Script: `ml/backtest_portfolio.py`; results: `ml/models/portfolio_backtest/metrics.json`.
+
+- **Model:** minimum variance on a Ledoit-Wolf shrunk covariance, long only,
+  at most 15% per stock and 35% per sector, holdings under 1% dropped
+  (`backend/app/services/equity_optimizer.py`, version `minvar-v1`).
+  Sentiment tilt off: there are no historical FinBERT scores to test it on.
+- **Data:** Yahoo Finance daily dividend-adjusted closes for the 20 tracked
+  stocks and the Nifty 50 price index (^NSEI), 2012-01-03 to 2026-11-23,
+  3,656 trading days.
+- **Method:** walk-forward. Every 21 trading days, rebuild the portfolio
+  from the previous ≤504 daily returns only, hold it (weights drift) until
+  the next rebalance. 163 rebalances over 13.6 years. 0.2% cost per rupee
+  traded; 6% risk-free rate for Sharpe. Both are our assumptions.
+- **Results (out of sample):**
+
+  | Strategy | CAGR | Volatility | Max drawdown | Sharpe | ₹100 became |
+  |---|---|---|---|---|---|
+  | Minimum variance | 16.9% | 13.9% | -29.6% | 0.78 | ₹828 |
+  | Equal weight, same 20 stocks | 17.7% | 16.0% | -36.7% | 0.73 | ₹909 |
+  | Nifty 50 (price index) | 11.2% | 16.1% | -38.4% | 0.33 | ₹425 |
+
+- **Risk model check:** the optimizer predicted 12.6% average volatility
+  and the following months delivered 12.4%; for equal weight, 15.2%
+  predicted vs 14.2% realised. Minimum variance was calmer than equal
+  weight in 80% of months.
+- **Reading:** the optimizer does what it claims out of sample: about 13%
+  less volatility and a 7-point smaller worst fall than equal weight, for
+  0.8 points less return a year, so a slightly better Sharpe ratio. It
+  does not beat equal weight on return, and wasn't designed to. Average
+  turnover is 10% per rebalance (about 2 stocks' worth) vs 5% for equal
+  weight. It lagged badly in 2025 (5.5% vs 11.5%), when calmer stocks fell
+  behind.
+- **Problems found and fixed:**
+  - The 25% "data break" threshold in `market_stats.py` would have dropped
+    two genuine days: Axis Bank -27.9% (2020-03-23, COVID) and SBI +27.7%
+    (2017-10-25, recapitalisation news). Raised to 35%, which still catches
+    the TMPV demerger break (-40%, 2025-10-14) — the only one in 15 years.
+  - First version dropped every day the index had no price; on Diwali
+    Muhurat sessions that merged two days of stock moves and flagged a
+    real TMPV +36% two-day rise as a data break. Now index gaps are
+    carried forward instead.
+- **Biases, not fixed:** the 20 stocks are today's large caps (hindsight),
+  which flatters all stock strategies against the index; ^NSEI excludes
+  dividends (~1-1.5% a year). Both affect the index comparison more than
+  min-variance vs equal weight, which share the universe.

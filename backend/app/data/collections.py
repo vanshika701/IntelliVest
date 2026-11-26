@@ -56,3 +56,15 @@ def get_budget_profiles_collection() -> AsyncIOMotorCollection:
 
 def get_savings_goals_collection() -> AsyncIOMotorCollection:
     return get_database()["savings_goals"]
+
+
+def get_risk_profiles_collection() -> AsyncIOMotorCollection:
+    return get_database()["risk_profiles"]
+
+
+def get_market_stats_collection() -> AsyncIOMotorCollection:
+    return get_database()["market_stats"]
+
+
+def get_recommendations_collection() -> AsyncIOMotorCollection:
+    return get_database()["recommendations"]

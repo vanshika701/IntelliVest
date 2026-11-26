@@ -13,9 +13,12 @@ from app.data.collections import (
     get_budget_profiles_collection,
     get_expenses_collection,
     get_investments_collection,
+    get_market_stats_collection,
     get_news_collection,
     get_prices_collection,
+    get_recommendations_collection,
     get_reddit_collection,
+    get_risk_profiles_collection,
     get_savings_goals_collection,
     get_sector_snapshots_collection,
     get_stock_predictions_collection,
@@ -124,9 +127,21 @@ async def ensure_indexes() -> None:
         [("ticker", 1), ("as_of", -1), ("horizon_days", 1)], name="uniq_ticker_asof_horizon", unique=True
     )
 
+    # --- Phase 7 ---
+    # One risk profile per user.
+    await get_risk_profiles_collection().create_index(
+        "user_id", name="uniq_risk_profile_user", unique=True
+    )
+    # One statistics document per price date; "latest" sorts on it.
+    await get_market_stats_collection().create_index("as_of", name="uniq_as_of", unique=True)
+    # "My latest recommendation", newest first.
+    await get_recommendations_collection().create_index(
+        [("user_id", 1), ("created_at", -1)], name="user_recommendations_by_created"
+    )
+
     logger.info(
         "MongoDB indexes ensured (prices, news_articles, reddit_posts, "
         "users, expenses, watchlist, alerts, investments, budget_profiles, savings_goals, "
-        "sector_snapshots, stock_predictions)"
+        "sector_snapshots, stock_predictions, risk_profiles, market_stats, recommendations)"
     )
 

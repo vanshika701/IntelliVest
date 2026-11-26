@@ -1,0 +1,120 @@
+{
+  "period": {
+    "start": "2013-01-11",
+    "end": "2026-11-23",
+    "years": 13.57,
+    "rebalances": 163
+  },
+  "assumptions": {
+    "rebalance_every_trading_days": 21,
+    "trading_cost_per_rupee_traded": 0.002,
+    "risk_free_rate": 0.06,
+    "lookback_returns": 504,
+    "sentiment_used": false,
+    "data_break_threshold": 0.35
+  },
+  "strategies": {
+    "minimum_variance": {
+      "cagr": 0.1685,
+      "annual_volatility": 0.1386,
+      "max_drawdown": -0.2957,
+      "sharpe": 0.783,
+      "calmar": 0.57,
+      "final_value_of_100": 827.7,
+      "avg_turnover_per_rebalance": 0.1025,
+      "avg_holdings": 13.1
+    },
+    "equal_weight": {
+      "cagr": 0.1766,
+      "annual_volatility": 0.1599,
+      "max_drawdown": -0.3667,
+      "sharpe": 0.729,
+      "calmar": 0.482,
+      "final_value_of_100": 909.3,
+      "avg_turnover_per_rebalance": 0.0487
+    },
+    "nifty_50_price_index": {
+      "cagr": 0.1125,
+      "annual_volatility": 0.1609,
+      "max_drawdown": -0.3844,
+      "sharpe": 0.326,
+      "calmar": 0.293,
+      "final_value_of_100": 424.7
+    }
+  },
+  "yearly_returns": {
+    "minimum_variance": {
+      "2013": 0.2311,
+      "2014": 0.3719,
+      "2015": 0.0801,
+      "2016": 0.0396,
+      "2017": 0.4063,
+      "2018": 0.2131,
+      "2019": 0.1413,
+      "2020": 0.2663,
+      "2021": 0.292,
+      "2022": 0.0308,
+      "2023": 0.2447,
+      "2024": 0.0717,
+      "2025": 0.0551,
+      "2026": -0.0557
+    },
+    "equal_weight": {
+      "2013": 0.1482,
+      "2014": 0.4879,
+      "2015": 0.0423,
+      "2016": 0.063,
+      "2017": 0.417,
+      "2018": 0.1009,
+      "2019": 0.1926,
+      "2020": 0.2496,
+      "2021": 0.3655,
+      "2022": 0.0543,
+      "2023": 0.2604,
+      "2024": 0.0546,
+      "2025": 0.1147,
+      "2026": -0.0312
+    },
+    "nifty_50_price_index": {
+      "2013": 0.0562,
+      "2014": 0.3139,
+      "2015": -0.0406,
+      "2016": 0.0301,
+      "2017": 0.2865,
+      "2018": 0.0315,
+      "2019": 0.1202,
+      "2020": 0.149,
+      "2021": 0.2412,
+      "2022": 0.0433,
+      "2023": 0.2003,
+      "2024": 0.088,
+      "2025": 0.1051,
+      "2026": -0.0298
+    }
+  },
+  "risk_model_check": {
+    "note": "Volatility each portfolio was predicted to have at rebalance vs what it had over the next month.",
+    "minimum_variance": {
+      "avg_predicted": 0.1257,
+      "avg_realised": 0.1245
+    },
+    "equal_weight": {
+      "avg_predicted": 0.1519,
+      "avg_realised": 0.1418
+    },
+    "months_min_variance_calmer_than_equal": 0.804
+  },
+  "data_breaks_zeroed": [
+    {
+      "ticker": "TMPV.NS",
+      "date": "2025-10-14",
+      "daily_return": -0.4015
+    }
+  ],
+  "known_biases": [
+    "Survivorship/hindsight: today's 20 large caps were chosen knowing they stayed large; flatters stock strategies vs the index.",
+    "Nifty 50 (^NSEI) excludes dividends; stock prices include them, so the index is understated by ~1-1.5% a year.",
+    "Sentiment tilt not tested: no historical FinBERT scores exist."
+  ],
+  "computed_at": "2026-11-26T00:19:37.797047+00:00"
+}
