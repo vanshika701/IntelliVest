@@ -78,7 +78,7 @@ year") and says why it doesn't use direction.
 - [x] **3. Advice service, storage and API.** Gather modules concurrently,
       run the rules, store in `advice`.
       `POST /api/v1/advisor/advice`, `GET /api/v1/advisor/advice/latest`.
-- [ ] **4. Optional LLM summary.** A short plain-language summary of the
+- [x] **4. Optional LLM summary.** A short plain-language summary of the
       actions, reusing the Phase 8 explainer's providers and number check.
 - [ ] **5. Phase 10 bridge.** Turn an "invest" action into a
       `Proposal`-shaped draft (fund, side, amount, confidence 0-10000,

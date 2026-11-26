@@ -95,3 +95,75 @@ def test_rate_limited(client: TestClient, auth_headers: dict[str, str]) -> None:
     assert int(limited.headers["Retry-After"]) >= 1
     # Reading saved advice isn't limited.
     assert client.get("/api/v1/advisor/advice/latest", headers=auth_headers).status_code == 200
+
+
+# --- Optional LLM summary (step 4) --------------------------------------------------
+
+def _result(partial: bool = False) -> dict:
+    actions = [
+        {"title": "Build your emergency fund: ₹65,000 to go",
+         "detail": "Aim for at least ₹1,05,000 before investing in stocks."},
+        {"title": "Invest ₹10,000 a month", "detail": "Your plan: 45% stocks, 45% debt, 10% gold."},
+    ]
+    return {"actions": actions, "setup": [], "partial": partial}
+
+
+def _llm_on(monkeypatch: pytest.MonkeyPatch, reply) -> list:
+    from pydantic import SecretStr
+
+    from app.core.config import settings
+    from app.services import budget_explainer
+
+    monkeypatch.setattr(settings, "budget_explainer_provider", "groq")
+    monkeypatch.setattr(settings, "groq_api_key", SecretStr("k"))
+    calls = []
+
+    async def fake(facts, system_prompt):
+        calls.append((facts, system_prompt))
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(budget_explainer, "_ask_llm", fake)
+    return calls
+
+
+async def test_summary_is_the_template_when_the_llm_is_off() -> None:
+    from app.services.advisor.summary import summarize
+
+    out = await summarize(_result())
+    assert out == {"text": template_summary(_result()), "source": "template"}
+
+
+async def test_llm_summary_keeps_numbers_and_uses_the_advisor_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services.advisor.summary import ADVISOR_SYSTEM_PROMPT, llm_input, summarize
+
+    good = "First build up your emergency fund, ₹65,000 to go, then invest ₹10,000 a month in your 45/45/10 plan."
+    calls = _llm_on(monkeypatch, good.replace("45/45/10", "45% / 45% / 10%"))
+    out = await summarize(_result())
+    assert out["source"] == "llm"
+    facts, prompt = calls[0]
+    assert prompt == ADVISOR_SYSTEM_PROMPT
+    assert facts.startswith("1. Build your emergency fund: ₹65,000 to go.")
+    assert llm_input(_result(partial=True))[-1].startswith("Some information couldn't be loaded")
+
+
+@pytest.mark.parametrize(
+    "reply",
+    ["Save ₹70,000 first, then invest ₹10,000.",       # changed a number
+     "Invest ₹10,000 a month, after ₹65,000 of savings.",  # swapped order
+     RuntimeError("no network")],
+)
+async def test_bad_or_failed_llm_falls_back_to_the_short_template(monkeypatch: pytest.MonkeyPatch, reply) -> None:
+    from app.services.advisor.summary import summarize
+
+    _llm_on(monkeypatch, reply)
+    assert await summarize(_result()) == {"text": template_summary(_result()), "source": "template"}
+
+
+async def test_no_llm_call_without_actions(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services.advisor.summary import summarize
+
+    calls = _llm_on(monkeypatch, "anything")
+    out = await summarize({"actions": [], "setup": [{"title": "Set up your budget"}], "partial": False})
+    assert out["source"] == "template" and calls == []

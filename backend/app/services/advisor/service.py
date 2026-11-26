@@ -11,7 +11,7 @@ from app.core.advisor_config import ADVISOR_VERSION, DISCLAIMER
 from app.data import advice_repository
 from app.services.advisor.adapters import gather_modules
 from app.services.advisor.rules import build_actions
-from app.services.advisor.summary import template_summary
+from app.services.advisor.summary import summarize
 
 
 async def create_advice(user_id: str, now: datetime | None = None) -> dict:
@@ -20,7 +20,7 @@ async def create_advice(user_id: str, now: datetime | None = None) -> dict:
     result = build_actions(modules)
     doc = {
         **result,
-        "summary": {"text": template_summary(result), "source": "template"},
+        "summary": await summarize(result),
         "modules": modules,
         "version": ADVISOR_VERSION,
         "disclaimer": DISCLAIMER,

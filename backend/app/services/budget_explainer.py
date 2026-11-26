@@ -87,13 +87,16 @@ def _api_key() -> str | None:
     return (key.get_secret_value().strip() or None) if key else None
 
 
-async def explain(facts: list[str]) -> dict:
-    """Return {"text", "source"}; source is "template" or "llm"."""
+async def explain(facts: list[str], system_prompt: str | None = None) -> dict:
+    """Return {"text", "source"}; source is "template" or "llm".
+
+    `system_prompt` replaces the budgeting instructions for other callers
+    (the Phase 9 advisor); the number check is the same either way."""
     template = " ".join(f for f in facts if f)
     if not llm_enabled() or not template:
         return {"text": template, "source": "template"}
     try:
-        text = await _ask_llm(template)
+        text = await _ask_llm(template, system_prompt=system_prompt or _SYSTEM_PROMPT)
     except Exception:  # any network/config/format failure -> template
         logger.warning("Budget explainer LLM call failed; using template text", exc_info=True)
         return {"text": template, "source": "template"}
@@ -103,7 +106,7 @@ async def explain(facts: list[str]) -> dict:
     return {"text": text, "source": "llm"}
 
 
-async def _ask_llm(facts: str) -> str | None:
+async def _ask_llm(facts: str, system_prompt: str = _SYSTEM_PROMPT) -> str | None:
     provider = PROVIDERS[settings.budget_explainer_provider]
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(
@@ -114,7 +117,7 @@ async def _ask_llm(facts: str) -> str | None:
                 "max_tokens": 2000,
                 "reasoning_effort": "low",
                 "messages": [
-                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Facts:\n{facts}"},
                 ],
             },

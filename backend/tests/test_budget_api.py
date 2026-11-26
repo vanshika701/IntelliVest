@@ -122,20 +122,20 @@ async def test_explainer_falls_back_when_llm_alters_numbers(monkeypatch: pytest.
     monkeypatch.setattr(settings, "budget_explainer_provider", "groq")
     monkeypatch.setattr(settings, "groq_api_key", SecretStr("k"))
 
-    async def fake_bad(_facts):
+    async def fake_bad(_facts, **_kw):
         return "Save ₹9,999 now!"
 
     monkeypatch.setattr(budget_explainer, "_ask_llm", fake_bad)
     out = await budget_explainer.explain(["Spend ₹6,000."])
     assert out == {"text": "Spend ₹6,000.", "source": "template"}
 
-    async def fake_good(_facts):
+    async def fake_good(_facts, **_kw):
         return "Aim to keep it around ₹6,000."
 
     monkeypatch.setattr(budget_explainer, "_ask_llm", fake_good)
     assert (await budget_explainer.explain(["Spend ₹6,000."]))["source"] == "llm"
 
-    async def fake_error(_facts):
+    async def fake_error(_facts, **_kw):
         raise RuntimeError("no network")
 
     monkeypatch.setattr(budget_explainer, "_ask_llm", fake_error)
