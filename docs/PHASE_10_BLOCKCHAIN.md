@@ -1,7 +1,7 @@
 # Phase 10: Blockchain
 
-Status 2026-11-25: contracts, signing formats and backend settings are built (checklist B1-B9). Nothing is connected
-to the app yet. Design and tasks: `checklist.md`. **Test tokens only. Not audited.**
+Status 2026-11-27: contracts, signing formats, backend settings, signing, chain client, advisor interface, mock
+advisor and stock evidence are built (checklist B1-B10). Nothing is connected to the app's routes yet. Design and tasks: `checklist.md`. **Test tokens only. Not audited.**
 
 ## Run it
 
@@ -24,6 +24,36 @@ invalid or shared between roles, the network isn't an allowed test network, the 
 doesn't match it, or Hardhat's public keys are used outside the local chain.
 
 The relayer is a fifth role: it pays gas to submit signed messages, so the signers need no ETH.
+
+## Backend (`backend/app/services/blockchain/`)
+
+| File | Job |
+|---|---|
+| `config.py` | Checks settings and keys at startup (B9) |
+| `formats.py` | Enums and `Evidence` / `Proposal` shapes, same order as `Types.sol` |
+| `hashing.py` | Canonical JSON, EIP-712, model IDs, the running evidence hash |
+| `signing.py` | Signs evidence or a proposal with one role's key |
+| `client.py` | The only `web3` user: contracts, relayer transactions, task and vault reads |
+| `advisor.py` | `Advisor` interface: an advisor returns an `AdvisorDecision`; this builds the `Proposal` |
+| `mock_advisor.py` | Fixed rules on the evidence. Results made with it are labelled mock |
+| `stock_evidence.py` | Stock evidence from **stored** Phase 4 predictions; never imports the model |
+
+- **Advisor (Phase 9, B20):** implement `Advisor` (`model_name`, `model_version`, `async decide(request)`).
+  Return the side, amount, confidence 0..10000, explanation and contributions per module, or `None`
+  for no trade. Hashes, salt, minimum received, nonce and deadline are added here.
+- **Stock predictor (Phase 4):** only these stored fields are read: `ticker`, `as_of`,
+  `horizon_days`, `chance_up`, `model_version`, `artifact_hash` (and `low`/`mid`/`high` if present).
+  Renaming them breaks this adapter. A retrained model gives `NO_DATA` until its version is
+  registered and each owner accepts it.
+- The proposal nonce is the task ID, so a task can only ever get one proposal.
+
+End-to-end test on a local chain (skipped otherwise):
+
+```bash
+cd blockchain && npm run node          # keep open
+cd blockchain && npm run deploy:local  # second terminal
+cd backend && BLOCKCHAIN_TEST_RPC=http://127.0.0.1:8545 pytest tests/test_blockchain_chain.py
+```
 
 ## Contracts
 
