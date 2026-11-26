@@ -66,7 +66,7 @@ year") and says why it doesn't use direction.
 
 ## Build steps
 
-- [ ] **1. Module interface.** One `ModuleResult` shape (module, status,
+- [x] **1. Module interface.** One `ModuleResult` shape (module, status,
       as_of, version, facts, data) and an adapter per module above, each
       reading through that module's existing service. Timeouts per module.
 - [ ] **2. Rules engine.** Pure functions that turn module results into
