@@ -119,5 +119,7 @@ async def prediction(
         raise _not_found() from None
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
+    except DataProviderError as exc:
+        raise _provider_down(exc) from None
     except PredictionUnavailable:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No prediction available yet") from None

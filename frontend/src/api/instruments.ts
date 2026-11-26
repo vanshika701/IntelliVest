@@ -40,6 +40,8 @@ export interface InstrumentDetail {
   subtitle: string | null
   category: string | null
   sector: { id: string; name: string } | null
+  /** One of the 20 tracked stocks: stored prices, news and daily predictions. */
+  tracked: boolean
   currency: string
   price: number | null
   price_date: string | null
@@ -154,6 +156,8 @@ export interface StockPrediction {
   high_price: number
   rank: number
   rank_of: number
+  /** False: not one of the 20 stocks the model was tested on. */
+  tracked: boolean
   model_version: string
   artifact_hash: string
   test_result: PredictionTestResult | null

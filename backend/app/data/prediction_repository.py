@@ -32,9 +32,10 @@ async def get_latest_for_ticker(ticker: str) -> list[dict]:
 
 
 async def get_latest_run() -> dict | None:
-    """as_of and artifact hash of the newest stored prediction."""
+    """as_of and artifact hash of the newest scheduled (tracked-stock) run.
+    On-demand predictions for untracked stocks are left out."""
     return await get_stock_predictions_collection().find_one(
-        {},
+        {"tracked": {"$ne": False}},
         {"_id": 0, "as_of": 1, "artifact_hash": 1},
         sort=[("as_of", DESCENDING), ("created_at", DESCENDING)],
     )

@@ -222,3 +222,43 @@ async def test_refresh_without_a_model_does_nothing(mongo_test_db, monkeypatch) 
     assert await prediction_service.refresh_predictions() == 0
     assert await prediction_service.refresh_predictions_if_stale() is False
     assert await prediction_repository.latest_as_of() is None
+
+
+# --- untracked NSE stocks ---------------------------------------------------
+
+
+def test_untracked_prediction_is_made_on_demand_and_then_read(
+    client, auth_headers, monkeypatch
+) -> None:
+    prices, market = synthetic(tickers=("TCS.NS", "COALINDIA.NS"))
+    rows = prices.to_dict("records")
+    coal = [
+        {**r, "date": datetime(*r["date"].timetuple()[:3], tzinfo=UTC)}
+        for r in rows
+        if r["ticker"] == "COALINDIA.NS"
+    ]
+    tracked = [r for r in rows if r["ticker"] == "TCS.NS"]
+    calls = []
+
+    async def bars(ticker):
+        calls.append(ticker)
+        return coal
+
+    async def stored_bars(_tickers):
+        return tracked
+
+    async def fake_market():
+        return market
+
+    monkeypatch.setattr(prediction_service, "load_predictor", fake_predictor)
+    monkeypatch.setattr(prediction_service, "get_untracked_bars", bars)
+    monkeypatch.setattr(prediction_service, "get_daily_bars", stored_bars)
+    monkeypatch.setattr(prediction_service, "_market", fake_market)
+
+    url = "/api/v1/instruments/stock-COALINDIA.NS/prediction?amount=7"
+    first = client.get(url, headers=auth_headers).json()
+    assert first["tracked"] is False and first["rank_of"] == 2
+    assert first["as_of"] == coal[-1]["date"].date().isoformat()
+    assert client.get(url, headers=auth_headers).json() == first  # second read: stored, not rebuilt
+    run = client.portal.call(prediction_repository.get_latest_run)
+    assert run is None  # untracked rows never count as the scheduled run

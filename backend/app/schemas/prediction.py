@@ -36,6 +36,8 @@ class StockPrediction(BaseModel):
     high_price: float
     rank: int  # 1 = highest middle case among tracked stocks
     rank_of: int
+    # False: not one of the 20 tracked stocks the model was tested on.
+    tracked: bool
     model_version: str
     artifact_hash: str
     test_result: PredictionTestResult | None

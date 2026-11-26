@@ -25,8 +25,8 @@ import httpx
 
 from app.core.cache import MISSING, TTLCache
 from app.core.config import settings
-from app.core.constants import TICKER_TO_COMPANY_NAME
 from app.data.news_repository import get_recent_articles_for_ticker, get_sector_headlines
+from app.services import stock_listing
 from app.services.article_fetcher import USER_AGENT, fetch_article_text
 from app.services.instrument_service import get_instrument, parse_instrument_id
 from app.services.news_service import match_tickers, search_bing_news, search_news
@@ -242,7 +242,7 @@ async def _gather_candidates(instrument_id: str) -> tuple[str, list[dict], Topic
     now = datetime.now(UTC)
     since = now - timedelta(days=CANDIDATE_DAYS)
     if kind == "stock":
-        ticker, name = ref, TICKER_TO_COMPANY_NAME.get(ref, ref)
+        ticker, name = ref, stock_listing.company_name(ref)
         sources = [get_recent_articles_for_ticker(ref, since), search_bing_news(name, days=CANDIDATE_DAYS)]
         topic = topic_for_stock(ref)
     else:

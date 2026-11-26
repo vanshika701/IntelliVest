@@ -88,9 +88,8 @@ def _raw_series_features(group: pd.DataFrame) -> pd.DataFrame:
 
 def _with_dates(frame: pd.DataFrame) -> pd.DataFrame:
     """Same date type everywhere: Mongo, Yahoo and parquet differ in precision."""
-    dates = pd.to_datetime(frame["date"])
-    if dates.dt.tz is not None:
-        dates = dates.dt.tz_localize(None)
+    # Every source labels the trading day as midnight UTC (naive or aware).
+    dates = pd.to_datetime(frame["date"], utc=True).dt.tz_localize(None)
     return frame.assign(date=dates.dt.normalize().astype("datetime64[ns]"))
 
 
