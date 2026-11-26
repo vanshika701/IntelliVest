@@ -58,7 +58,7 @@ SEBI-registered investment adviser.
 - [x] **4. Equity optimizer.** Minimum-variance weights with stock and
       sector caps (scipy), compared with equal weight. Bounded sentiment
       tilt. Prediction slot left empty.
-- [ ] **5. Debt and gold funds.** A short, configured list of index,
+- [x] **5. Debt and gold funds.** A short, configured list of index,
       debt and gold funds from mfapi.in.
 - [ ] **6. Recommendation service and API.** Weights, rupee amounts,
       expected range of outcomes, reasons per holding, differences from
