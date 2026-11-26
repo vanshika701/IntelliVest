@@ -68,3 +68,7 @@ def get_market_stats_collection() -> AsyncIOMotorCollection:
 
 def get_recommendations_collection() -> AsyncIOMotorCollection:
     return get_database()["recommendations"]
+
+
+def get_advice_collection() -> AsyncIOMotorCollection:
+    return get_database()["advice"]

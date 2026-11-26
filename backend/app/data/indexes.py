@@ -9,6 +9,7 @@ is safe and cheap once the indexes already exist.
 import logging
 
 from app.data.collections import (
+    get_advice_collection,
     get_alerts_collection,
     get_budget_profiles_collection,
     get_expenses_collection,
@@ -139,9 +140,15 @@ async def ensure_indexes() -> None:
         [("user_id", 1), ("created_at", -1)], name="user_recommendations_by_created"
     )
 
+    # --- Phase 9 ---
+    # "My latest advice", newest first.
+    await get_advice_collection().create_index(
+        [("user_id", 1), ("created_at", -1)], name="user_advice_by_created"
+    )
+
     logger.info(
         "MongoDB indexes ensured (prices, news_articles, reddit_posts, "
         "users, expenses, watchlist, alerts, investments, budget_profiles, savings_goals, "
-        "sector_snapshots, stock_predictions, risk_profiles, market_stats, recommendations)"
+        "sector_snapshots, stock_predictions, risk_profiles, market_stats, recommendations, advice)"
     )
 

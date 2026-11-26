@@ -75,7 +75,7 @@ year") and says why it doesn't use direction.
       review a holding with negative news and a falling sector. Each
       action lists its facts and contributors. Thresholds in one config
       file, sourced or marked as ours.
-- [ ] **3. Advice service, storage and API.** Gather modules concurrently,
+- [x] **3. Advice service, storage and API.** Gather modules concurrently,
       run the rules, store in `advice`.
       `POST /api/v1/advisor/advice`, `GET /api/v1/advisor/advice/latest`.
 - [ ] **4. Optional LLM summary.** A short plain-language summary of the
