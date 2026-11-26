@@ -102,9 +102,9 @@ chosen horizon, from `metrics.json`.
 .venv/Scripts/python ml/train_stock_predictor.py --quick    # 2 test years, 5 minutes
 ```
 
-The model file (`ml/models/stock_predictor/model.joblib`) is gitignored like the other model
-binaries, so run the script once after cloning. On its next 30-minute check the backend sees the new
-file and stores fresh predictions. Without it the app still runs and the Predict tab says no
+The model file (`ml/models/stock_predictor/model.joblib`, 6 MB) is committed, unlike the other
+model binaries, so a fresh clone works without training. After retraining, the backend sees the new
+file on its next 30-minute check and stores fresh predictions. Without it the app still runs and the Predict tab says no
 prediction exists yet. `metrics.json` is tracked.
 
 Code: `ml/train_stock_predictor.py`, `backend/app/services/prediction/`,

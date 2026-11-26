@@ -24,6 +24,9 @@ ml/models/**/*.joblib
 ml/models/**/*.pkl
 ml/models/**/*.h5
 ml/models/**/*.pt
+# Except the Phase 4 stock predictor (6 MB): committed so teammates don't
+# need a 22-minute training run before the Predict tab works.
+!ml/models/stock_predictor/model.joblib
 # Downloaded Hugging Face models (FinBERT, ~420 MB) — re-downloaded
 # automatically on first use.
 ml/models/hf_cache/
