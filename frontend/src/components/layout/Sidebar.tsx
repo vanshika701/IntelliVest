@@ -7,7 +7,8 @@ import {
   Bot,
   LogOut,
   Layers,
-  PieChart
+  PieChart,
+  type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../AuthContext';
 import { cn } from '../../lib/utils';
@@ -17,14 +18,14 @@ export function Sidebar() {
   const { logout } = useAuth();
   const { sidebarOpen } = useLayout();
 
-  const navItems = [
+  const navItems: { icon: LucideIcon; label: string; path: string; disabled?: boolean }[] = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: LineChart, label: 'Watchlist', path: '/watchlist' },
     { icon: Layers, label: 'Sectors', path: '/sectors' },
     { icon: PieChart, label: 'Portfolio plan', path: '/portfolio-plan' },
     { icon: Wallet, label: 'Budgeting', path: '/budget' },
     { icon: BellRing, label: 'Alerts', path: '/alerts' },
-    { icon: Bot, label: 'AI Advisor', path: '/ai', disabled: true },
+    { icon: Bot, label: 'AI Advisor', path: '/ai' },
   ];
 
   if (!sidebarOpen) return null;

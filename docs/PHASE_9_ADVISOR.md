@@ -84,7 +84,7 @@ year") and says why it doesn't use direction.
       `Proposal`-shaped draft (fund, side, amount, confidence 0-10000,
       model id and version, input / evidence / explanation hashes) using
       `blockchain/hashing.py`. Not sent on chain until B10-B12 exist.
-- [ ] **6. Frontend.** Enable the disabled "AI Advisor" sidebar item
+- [x] **6. Frontend.** Enable the disabled "AI Advisor" sidebar item
       (`/ai`): action cards with "why" and module chips, a module status
       panel, links to the pages each action came from.
 - [ ] **7. Evaluation.** 15-20 hand-written user situations (no emergency
