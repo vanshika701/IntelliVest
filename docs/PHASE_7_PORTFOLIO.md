@@ -64,7 +64,7 @@ SEBI-registered investment adviser.
       expected range of outcomes, reasons per holding, differences from
       current holdings. Stored in `recommendations`.
       `POST /api/v1/recommendations`, `GET /api/v1/recommendations/latest`.
-- [ ] **7. Frontend.** Questionnaire page and recommendation page
+- [x] **7. Frontend.** Questionnaire page and recommendation page
       (allocation chart, holdings table, reasons, assumptions).
 - [ ] **8. Evaluation.** Walk-forward backtest against equal weight and
       the Nifty 50, with trading costs: return, volatility, maximum
