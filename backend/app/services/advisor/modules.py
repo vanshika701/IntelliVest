@@ -152,6 +152,8 @@ def summarize_goals(goals: dict | None) -> dict:
             "id": g["id"], "name": g["name"], "target_amount": g["target_amount"],
             "horizon_months": g["horizon_months"], "flat_monthly": plan["flat"]["monthly"],
             "affordability": afford["status"],
+            "gap": afford.get("gap"),
+            "first_option": (afford.get("options") or [{}])[0].get("message"),
         })
     combined = goals.get("combined")
     if combined:

@@ -69,7 +69,7 @@ year") and says why it doesn't use direction.
 - [x] **1. Module interface.** One `ModuleResult` shape (module, status,
       as_of, version, facts, data) and an adapter per module above, each
       reading through that module's existing service. Timeouts per module.
-- [ ] **2. Rules engine.** Pure functions that turn module results into
+- [x] **2. Rules engine.** Pure functions that turn module results into
       prioritised actions: emergency fund, high EMIs, unaffordable goals,
       invest per plan, rebalance when a class drifts more than 5 points,
       review a holding with negative news and a falling sector. Each

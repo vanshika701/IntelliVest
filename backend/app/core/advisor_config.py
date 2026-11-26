@@ -44,3 +44,40 @@ MODULES: dict[str, tuple[str, int | None]] = {
     "sentiment": ("News sentiment", 5),
     "predictions": ("Stock return ranges", 4),
 }
+
+
+# --- Rules (step 2) -------------------------------------------------------------
+
+# Lower number = shown first. The order follows the usual financial-planning
+# sequence: stop losing money each month, build a safety net, deal with
+# heavy debt, fund goals, invest, then fine-tune. Our ordering of standard
+# advice; not taken from one source.
+PRIORITY: dict[str, int] = {
+    "spending_exceeds_income": 10,
+    "emergency_fund": 20,
+    "debt_critical": 30,
+    "debt_high": 35,
+    "goal_unaffordable": 40,
+    "invest_per_plan": 50,
+    "rebalance": 60,
+    "concentration": 65,
+    "review_holding": 70,
+    "not_in_plan": 80,
+}
+
+# Rebalance when an asset class is this many percentage points away from
+# the plan. A common convention: Vanguard's rebalancing research
+# (Jaconetti, Kinniry & Zilbering, "Best practices for portfolio
+# rebalancing", 2010) compares bands and finds about 5 points a reasonable
+# trade-off between risk control and trading costs.
+REBALANCE_THRESHOLD_PP = 5.0
+# Don't judge drift when we can't classify much of the portfolio.
+MAX_UNCLASSIFIED_PCT_FOR_DRIFT = 25.0
+
+# One stock above this share of everything invested is flagged. Same 15%
+# as the Phase 7 per-stock cap (core/portfolio_config.py).
+CONCENTRATION_PCT = 15.0
+
+# "Review this holding" needs both: negative news on the stock AND its
+# sector falling at least this much over a month. Either alone is noise.
+REVIEW_SECTOR_FALL_PCT = -5.0
