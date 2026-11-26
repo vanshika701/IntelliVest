@@ -239,6 +239,13 @@ def test_unavailable_module_marks_the_advice_partial() -> None:
     assert invest["data"]["equity_range_1y"] is None and "predictions" not in invest["contributors"]
 
 
+def test_investing_without_a_budget_says_the_safety_checks_were_skipped() -> None:
+    invest = build_actions(modules(budget=module_result("budget", "not_set_up", reason="none")))["actions"][0]
+    assert invest["id"] == "invest_per_plan"
+    assert "couldn't check your emergency fund or debts" in invest["detail"]
+    assert "couldn't check" not in build_actions(modules())["actions"][0]["detail"]
+
+
 def test_stale_plan_is_used_but_flagged() -> None:
     invest = build_actions(modules(portfolio_plan=plan(age_days=40)))["actions"][0]
     assert "over a month old" in invest["detail"]

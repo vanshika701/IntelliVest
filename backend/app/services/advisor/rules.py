@@ -129,7 +129,9 @@ def _equity_range(plan: dict, predictions: dict) -> tuple[float, float] | None:
     return round(low, 1), round(high, 1)
 
 
-def invest_action(risk: dict, plan: dict, predictions: dict, blocked_by_safety: bool) -> list[dict]:
+def invest_action(
+    risk: dict, plan: dict, predictions: dict, blocked_by_safety: bool, safety_checked: bool
+) -> list[dict]:
     if not (is_usable(risk) and is_usable(plan)):
         return []
     inputs, split = plan["data"]["inputs"], plan["data"]["split"]
@@ -152,6 +154,9 @@ def invest_action(risk: dict, plan: dict, predictions: dict, blocked_by_safety: 
         detail += " The plan is over a month old; rebuild it so it uses current prices."
     if blocked_by_safety:
         detail += " Do this once the steps above are in place."
+    elif not safety_checked:
+        detail += (" Your budget isn't set up, so we couldn't check your emergency fund or debts first;"
+                   " set it up before investing.")
     return [action("invest_per_plan", "low" if blocked_by_safety else "medium", title, detail,
                    contributors, "/portfolio-plan", {"split": split, "equity_range_1y": rng})]
 
@@ -273,7 +278,8 @@ def build_actions(modules: list[dict]) -> dict:
     actions = [
         *safety,
         *goal_actions(by_id["goals"]),
-        *invest_action(by_id["risk_profile"], by_id["portfolio_plan"], by_id["predictions"], blocked),
+        *invest_action(by_id["risk_profile"], by_id["portfolio_plan"], by_id["predictions"], blocked,
+                       safety_checked=is_usable(by_id["budget"])),
         *rebalance_action(by_id["holdings"], by_id["portfolio_plan"]),
         *concentration_actions(by_id["holdings"]),
         *review_actions(by_id["holdings"], by_id["sentiment"], by_id["sectors"]),
