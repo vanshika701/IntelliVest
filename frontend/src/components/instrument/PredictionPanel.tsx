@@ -59,7 +59,7 @@ function RangeBar({ p }: { p: StockPrediction }) {
   )
 }
 
-function Result({ p }: { p: StockPrediction }) {
+function Result({ p, name }: { p: StockPrediction; name: string }) {
   const test = p.test_result
   const years = test ? `${test.test_years[0]}–${test.test_years[test.test_years.length - 1]}` : null
   return (
@@ -96,7 +96,7 @@ function Result({ p }: { p: StockPrediction }) {
       <dl className="grid grid-cols-2 gap-x-4 gap-y-2 rounded-xl bg-[var(--color-background-tertiary)]/40 p-4 text-sm">
         <dt className="text-[var(--color-text-muted)]">Rank</dt>
         <dd className="text-[var(--color-text-primary)]">
-          {ordinal(p.rank)} of {p.rank_of} tracked stocks
+          {ordinal(p.rank)} of {p.rank_of} {p.tracked ? 'tracked stocks' : 'with the 20 tracked stocks'}
         </dd>
         {test && (
           <>
@@ -110,6 +110,12 @@ function Result({ p }: { p: StockPrediction }) {
         <dt className="text-[var(--color-text-muted)]">Based on</dt>
         <dd className="text-[var(--color-text-primary)]">Closes to {formatDate(p.as_of)}</dd>
       </dl>
+      {!p.tracked && (
+        <p className="rounded-md bg-[var(--color-background-tertiary)]/40 px-3 py-2 text-xs text-[var(--color-text-secondary)]">
+          The model was trained and tested on 20 large companies. {name} isn't one of them, so its test results may
+          not hold here, especially for smaller companies.
+        </p>
+      )}
       <p className="text-[11px] text-[var(--color-text-muted)]">Model {p.model_version}</p>
     </div>
   )
@@ -205,7 +211,7 @@ export function PredictionPanel({ instrument }: { instrument: InstrumentDetail }
       ) : prediction.data ? (
         <>
           <h4 className="sr-only">Prediction for {describeHorizon(prediction.data.amount, prediction.data.unit)}</h4>
-          <Result p={prediction.data} />
+          <Result p={prediction.data} name={instrument.name} />
         </>
       ) : null}
     </div>

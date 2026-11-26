@@ -51,6 +51,7 @@ class InstrumentDetail(BaseModel):
     subtitle: str | None = None
     category: str | None = None
     sector: InstrumentSector | None = None  # stocks
+    tracked: bool = False
     currency: str
     price: float | None = None
     price_date: date | None = None

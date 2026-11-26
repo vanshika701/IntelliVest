@@ -142,7 +142,10 @@ def test_search_shows_one_best_variant_per_fund_and_tags_types(
     assert response.status_code == 200
     body = response.json()
     assert body["partial"] is False
-    types = {r["name"]: r["type"] for r in body["results"]}
+    # NSE companies with "gold" in their name come first, at most 5.
+    stocks = [r for r in body["results"] if r["type"] == "STOCK"]
+    assert 0 < len(stocks) <= 5 and body["results"][: len(stocks)] == stocks
+    types = {r["name"]: r["type"] for r in body["results"] if r["type"] != "STOCK"}
     # Direct Growth wins over Regular IDCW; closed (no-ISIN) schemes and
     # non-matching funds are excluded.
     assert types == {
@@ -167,7 +170,7 @@ def test_search_falls_back_to_search_endpoint_when_list_fails(
 
     monkeypatch.setattr(mfapi_client, "_get_json", fake_get_json)
     body = client.get("/api/v1/instruments/search?q=gold", headers=auth_headers).json()
-    assert [r["name"] for r in body["results"]] == ["Edelweiss Gold ETF"]
+    assert [r["name"] for r in body["results"] if r["type"] != "STOCK"] == ["Edelweiss Gold ETF"]
     assert body["partial"] is False
 
 
@@ -187,7 +190,9 @@ def test_search_degrades_to_partial_when_fund_provider_fails(
 ) -> None:
     body = client.get("/api/v1/instruments/search?q=tata", headers=auth_headers).json()
     assert body["partial"] is True
-    assert [r["id"] for r in body["results"]] == ["stock-TCS.NS", "stock-TMPV.NS"]
+    # Only stocks; the two tracked Tata companies first.
+    assert {r["type"] for r in body["results"]} == {"STOCK"}
+    assert [r["id"] for r in body["results"][:2]] == ["stock-TCS.NS", "stock-TMPV.NS"]
 
 
 def test_search_validates_query_length(client: TestClient, auth_headers: dict[str, str]) -> None:

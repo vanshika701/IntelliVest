@@ -1,6 +1,6 @@
-"""Service layer for instruments: stocks (the tracked NSE universe, prices
-from the `prices` collection + yfinance intraday) and mutual funds / ETFs
-(mfapi.in), behind one id scheme:
+"""Service layer for instruments: stocks (any NSE listing; the 20 tracked
+stocks read stored prices, others are fetched from Yahoo on demand, plus
+yfinance intraday) and mutual funds / ETFs (mfapi.in), behind one id scheme:
 
     stock-<TICKER>   e.g. stock-TCS.NS
     mf-<SCHEME_CODE> e.g. mf-111954   (MF or ETF, decided from the name)
@@ -14,13 +14,19 @@ from datetime import UTC, date, datetime
 import yfinance as yf
 
 from app.core.cache import MISSING, TTLCache
-from app.core.constants import SECTORS, STOCK_UNIVERSE, TICKER_TO_COMPANY_NAME, TICKER_TO_SECTOR
+from app.core.constants import SECTORS, TICKER_TO_SECTOR
 from app.data.prices_repository import get_close_series
-from app.services import fund_meta_provider, mfapi_client, quote_service
+from app.services import fund_meta_provider, mfapi_client, quote_service, stock_listing
+from app.services.market_data_service import clean_history
 
 logger = logging.getLogger(__name__)
 
 _intraday_cache = TTLCache(ttl_seconds=5 * 60, max_items=64)
+# Untracked stocks' daily bars, fetched from Yahoo on demand.
+_untracked_cache = TTLCache(ttl_seconds=60 * 60, max_items=256)
+UNTRACKED_PERIOD = "2y"
+# Leaves room for funds in the 12 results the search bar shows.
+SEARCH_STOCK_LIMIT = 5
 
 
 class InstrumentNotFound(Exception):
@@ -33,7 +39,7 @@ class DataProviderError(Exception):
 
 def parse_instrument_id(instrument_id: str) -> tuple[str, str]:
     kind, _, ref = instrument_id.partition("-")
-    if kind == "stock" and ref in STOCK_UNIVERSE:
+    if kind == "stock" and stock_listing.is_listed(ref):
         return "stock", ref
     if kind == "mf" and ref.isdigit():
         return "mf", ref
@@ -58,15 +64,32 @@ def _variant_rank(name: str) -> int:
 
 
 def _search_stocks(query: str) -> list[dict]:
-    q = query.strip().lower()
-    results = []
-    for ticker in STOCK_UNIVERSE:
-        name = TICKER_TO_COMPANY_NAME.get(ticker, ticker)
-        if q in name.lower() or q in ticker.lower().removesuffix(".ns"):
-            results.append(
-                {"id": f"stock-{ticker}", "name": name, "type": "STOCK", "symbol": ticker, "subtitle": f"NSE · {ticker}"}
-            )
-    return results
+    return [
+        {"id": f"stock-{ticker}", "name": name, "type": "STOCK", "symbol": ticker, "subtitle": f"NSE · {ticker}"}
+        for ticker, name in stock_listing.search(query, SEARCH_STOCK_LIMIT)
+    ]
+
+
+def _fetch_untracked(ticker: str) -> list[dict]:
+    history = yf.Ticker(ticker).history(period=UNTRACKED_PERIOD, interval="1d", timeout=15)
+    return clean_history(ticker, history) if not history.empty else []
+
+
+async def get_untracked_bars(ticker: str) -> list[dict]:
+    """ticker, date, close and volume, oldest first, for an untracked stock.
+    Cached for an hour; raises DataProviderError if Yahoo has nothing."""
+    cached = _untracked_cache.get(ticker)
+    if cached is not MISSING:
+        return cached
+    try:
+        bars = await asyncio.wait_for(asyncio.to_thread(_fetch_untracked, ticker), timeout=25)
+    except Exception as exc:
+        logger.warning("Daily history fetch failed for %s: %s", ticker, exc)
+        raise DataProviderError(f"Couldn't load prices for {ticker}") from exc
+    if not bars:
+        raise DataProviderError(f"No price data for {ticker}")
+    _untracked_cache.set(ticker, bars)
+    return bars
 
 
 async def search_instruments(query: str, limit: int = 15) -> dict:
@@ -106,7 +129,7 @@ async def search_instruments(query: str, limit: int = 15) -> dict:
 
 async def _daily_series(kind: str, ref: str) -> tuple[list[tuple[date, float]], dict]:
     if kind == "stock":
-        rows = await get_close_series(ref)
+        rows = await get_close_series(ref) if stock_listing.is_tracked(ref) else await get_untracked_bars(ref)
         return [(r["date"].date(), float(r["close"])) for r in rows], {}
     try:
         scheme = await mfapi_client.get_scheme(int(ref))
@@ -140,7 +163,7 @@ async def get_instrument(instrument_id: str) -> dict:
     series, meta = await _daily_series(kind, ref)
 
     if kind == "stock":
-        name, instrument_type = TICKER_TO_COMPANY_NAME.get(ref, ref), "STOCK"
+        name, instrument_type = stock_listing.company_name(ref), "STOCK"
         subtitle, category = f"NSE · {ref}", "Equity"
     else:
         name = meta["scheme_name"]
@@ -165,6 +188,8 @@ async def get_instrument(instrument_id: str) -> dict:
         "subtitle": subtitle,
         "category": category,
         "sector": _sector(ref) if kind == "stock" else None,
+        # Tracked: stored prices, news, sentiment and daily predictions.
+        "tracked": kind == "stock" and stock_listing.is_tracked(ref),
         "currency": "INR",
         "price": price,
         "price_date": price_date,

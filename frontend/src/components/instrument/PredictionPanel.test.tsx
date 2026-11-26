@@ -26,6 +26,7 @@ function prediction(overrides: Partial<StockPrediction> = {}): StockPrediction {
     high_price: 4204,
     rank: 4,
     rank_of: 20,
+    tracked: true,
     model_version: '1.0.0',
     artifact_hash: 'abc',
     test_result: {
@@ -64,6 +65,13 @@ describe('PredictionPanel', () => {
     await user.type(input, '2')
     await waitFor(() => expect(spy).toHaveBeenLastCalledWith('stock-TCS.NS', 2, 'years'))
     expect(spy).not.toHaveBeenCalledWith('stock-TCS.NS', 7, 'years')
+  })
+
+  it('flags stocks the model was not tested on', async () => {
+    vi.spyOn(instrumentsApi, 'prediction').mockResolvedValue(prediction({ tracked: false, rank: 21, rank_of: 21 }))
+    render(<PredictionPanel instrument={{ ...instrument, name: 'Coal India' }} />)
+    expect(await screen.findByText(/Coal India isn't one of them/)).toBeInTheDocument()
+    expect(screen.getByText('21st of 21 with the 20 tracked stocks')).toBeInTheDocument()
   })
 
   it('explains when no prediction exists yet', async () => {

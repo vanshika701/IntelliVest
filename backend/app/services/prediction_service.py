@@ -5,6 +5,10 @@ every tracked stock and every horizon in HORIZON_GRID and stores the
 results. Requests (`get_prediction`) only read stored rows and interpolate
 between horizons; they never run the model.
 
+Untracked NSE stocks (outside the 20) are predicted on their first request
+from Yahoo prices, compared with the tracked stocks on the same day, and
+stored the same way, so later requests that day only read.
+
 The model comes from ml/train_stock_predictor.py. Without it the app still
 runs; the prediction route just reports that no prediction exists yet.
 """
@@ -22,11 +26,13 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
+from app.core.cache import MISSING, TTLCache
 from app.core.config import settings
 from app.core.constants import STOCK_UNIVERSE
 from app.data import prediction_repository as repo
 from app.data.prices_repository import get_daily_bars, get_newest_date
-from app.services.instrument_service import parse_instrument_id
+from app.services import stock_listing
+from app.services.instrument_service import get_untracked_bars, parse_instrument_id
 from app.services.prediction.distribution import (
     HIGH_Q,
     LOW_Q,
@@ -52,6 +58,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 MARKET_TICKERS = {"nifty": "^NSEI", "vix": "^INDIAVIX"}
 # Long enough for the 252-day features plus the 200-day market average.
 MARKET_PERIOD = "2y"
+_market_cache = TTLCache(ttl_seconds=60 * 60, max_items=1)
 
 
 class PredictionUnavailable(Exception):
@@ -147,17 +154,29 @@ def _fetch_market() -> pd.DataFrame:
 
 
 def build_predictions(
-    predictor: Predictor, bars: list[dict], market: pd.DataFrame, now: datetime
+    predictor: Predictor,
+    bars: list[dict],
+    market: pd.DataFrame,
+    now: datetime,
+    focus: str | None = None,
 ) -> list[dict]:
-    """Prediction documents for each ticker's newest day, every horizon."""
+    """Prediction documents for each ticker's newest day, every horizon.
+
+    With `focus`, only that ticker's documents are returned; the others in
+    `bars` are there so its rank compares it with them on the same day."""
     prices = pd.DataFrame(bars)
     if prices.empty:
         return []
     features = compute_features(prices, market)
+    if features.empty or (focus and focus not in set(features["ticker"])):
+        return []
     latest = features.loc[features.groupby("ticker")["date"].idxmax()].reset_index(drop=True)
     # Cross-sectional ranks must compare stocks on the same day.
-    newest = latest["date"].max()
-    latest = latest[latest["date"] == newest].reset_index(drop=True)
+    if focus:
+        day = latest.loc[latest["ticker"] == focus, "date"].iloc[0]
+        latest = features[features["date"] == day].reset_index(drop=True)
+    else:
+        latest = latest[latest["date"] == latest["date"].max()].reset_index(drop=True)
     docs = []
     for h in predictor.horizons:
         result = predictor.forecast(latest, h)
@@ -177,12 +196,13 @@ def build_predictions(
                     "high": float(result.at[i, "high"]),
                     "rank": int(order[i]),
                     "rank_of": len(latest),
+                    "tracked": stock_listing.is_tracked(row["ticker"]),
                     "model_version": predictor.version,
                     "artifact_hash": predictor.artifact_hash,
                     "created_at": now,
                 }
             )
-    return docs
+    return [d for d in docs if d["ticker"] == focus] if focus else docs
 
 
 async def refresh_predictions(now: datetime | None = None) -> int:
@@ -223,6 +243,42 @@ async def refresh_predictions_if_stale() -> bool:
     return await refresh_predictions() > 0
 
 
+async def _market() -> pd.DataFrame:
+    cached = _market_cache.get("market")
+    if cached is MISSING:
+        cached = await asyncio.to_thread(_fetch_market)
+        _market_cache.set("market", cached)
+    return cached
+
+
+async def _predict_untracked(ticker: str) -> None:
+    """Store today's prediction for an untracked stock if it isn't stored yet.
+    Raises PredictionUnavailable when there is no model or too little history."""
+    predictor = load_predictor()
+    if predictor is None:
+        raise PredictionUnavailable(ticker)
+    bars = await get_untracked_bars(ticker)
+    stored = await repo.get_latest_for_ticker(ticker)
+    if (
+        stored
+        and stored[0]["artifact_hash"] == predictor.artifact_hash
+        and stored[0]["as_of"].date() >= bars[-1]["date"].date()
+    ):
+        return
+    try:
+        market = await _market()
+    except Exception as exc:
+        logger.warning("Market data unavailable for %s prediction: %s", ticker, exc)
+        raise PredictionUnavailable(ticker) from exc
+    tracked = await get_daily_bars(STOCK_UNIVERSE)
+    docs = await asyncio.to_thread(
+        build_predictions, predictor, tracked + bars, market, datetime.now(UTC), ticker
+    )
+    if not docs:
+        raise PredictionUnavailable(ticker)
+    await repo.replace_predictions(docs)
+
+
 def _pct(log_return: float) -> float:
     return round(math.expm1(log_return) * 100, 2)
 
@@ -234,6 +290,8 @@ async def get_prediction(instrument_id: str, amount: int, unit: Unit) -> dict:
     if kind != "stock":
         raise PredictionUnavailable(instrument_id)
     trading_days = to_trading_days(amount, unit)
+    if not stock_listing.is_tracked(ticker):
+        await _predict_untracked(ticker)
     docs = await repo.get_latest_for_ticker(ticker)
     if not docs:
         raise PredictionUnavailable(instrument_id)
@@ -271,6 +329,7 @@ async def get_prediction(instrument_id: str, amount: int, unit: Unit) -> dict:
         "high_price": round(close * math.exp(forecast.high), 2),
         "rank": nearest["rank"],
         "rank_of": nearest["rank_of"],
+        "tracked": stock_listing.is_tracked(ticker),
         "model_version": first["model_version"],
         "artifact_hash": first["artifact_hash"],
         "test_result": test_result,

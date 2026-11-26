@@ -90,9 +90,25 @@ chosen horizon, from `metrics.json`.
 
 - **Hindsight in the stock list:** the 20 stocks are today's large caps, so their past was good.
   Long horizons lean optimistic (e.g. 80% chance up over 2 years).
+- **It almost never predicts a fall, and expects fallers to bounce.** On 48 random NSE stocks
+  (2026-11-27), chance up was under 50% for 3 at 1 month and none at 1 year. Past 3-month return
+  and 1-month chance up correlated at −0.43: stocks down 25–40% got 55–67% chance up (Sterlite
+  Technologies, −36% in a month, ranked 1st of 21). The 20 large caps recovered from their dips,
+  so the model learned "dips recover". Smaller companies often keep falling.
 - **Daily closes only.** No fundamentals, results dates, news or flows.
 - Test years 2020–2025 include the COVID crash and recovery, so results swing by year (2020 range
   hit at 1–6 months was 68.5%).
+
+## Any NSE stock (added 2026-11-27)
+
+Search covers every NSE equity (about 2,600, from NSE's `EQUITY_L.csv`, stored in
+`backend/app/data/nse_equities.csv`; refresh with `python -m scripts.update_nse_listing`). The 20
+tracked stocks keep stored prices, news, sentiment, sectors and scheduled predictions. Any other
+stock reads 2 years of prices from Yahoo on demand (cached for an hour). Its first prediction
+request runs the model, ranks it against the 20 on the same day (`rank_of` 21) and stores the
+result with `tracked: false`. Later requests read it until a newer close arrives. The Predict tab
+says when a stock isn't one of the 20 the model was tested on. Watchlist and alerts still price
+only the 20 tracked stocks.
 
 ## Running it
 
@@ -102,9 +118,9 @@ chosen horizon, from `metrics.json`.
 .venv/Scripts/python ml/train_stock_predictor.py --quick    # 2 test years, 5 minutes
 ```
 
-The model file (`ml/models/stock_predictor/model.joblib`) is gitignored like the other model
-binaries, so run the script once after cloning. On its next 30-minute check the backend sees the new
-file and stores fresh predictions. Without it the app still runs and the Predict tab says no
+The model file (`ml/models/stock_predictor/model.joblib`, 6 MB) is committed, unlike the other
+model binaries, so a fresh clone works without training. After retraining, the backend sees the new
+file on its next 30-minute check and stores fresh predictions. Without it the app still runs and the Predict tab says no
 prediction exists yet. `metrics.json` is tracked.
 
 Code: `ml/train_stock_predictor.py`, `backend/app/services/prediction/`,
