@@ -16,6 +16,7 @@ from app.data.collections import (
     get_market_stats_collection,
     get_news_collection,
     get_prices_collection,
+    get_recommendations_collection,
     get_reddit_collection,
     get_risk_profiles_collection,
     get_savings_goals_collection,
@@ -125,10 +126,14 @@ async def ensure_indexes() -> None:
     )
     # One statistics document per price date; "latest" sorts on it.
     await get_market_stats_collection().create_index("as_of", name="uniq_as_of", unique=True)
+    # "My latest recommendation", newest first.
+    await get_recommendations_collection().create_index(
+        [("user_id", 1), ("created_at", -1)], name="user_recommendations_by_created"
+    )
 
     logger.info(
         "MongoDB indexes ensured (prices, news_articles, reddit_posts, "
         "users, expenses, watchlist, alerts, investments, budget_profiles, savings_goals, "
-        "sector_snapshots, risk_profiles, market_stats)"
+        "sector_snapshots, risk_profiles, market_stats, recommendations)"
     )
 

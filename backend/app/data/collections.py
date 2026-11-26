@@ -60,3 +60,7 @@ def get_risk_profiles_collection() -> AsyncIOMotorCollection:
 
 def get_market_stats_collection() -> AsyncIOMotorCollection:
     return get_database()["market_stats"]
+
+
+def get_recommendations_collection() -> AsyncIOMotorCollection:
+    return get_database()["recommendations"]

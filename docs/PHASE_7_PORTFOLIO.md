@@ -60,7 +60,7 @@ SEBI-registered investment adviser.
       tilt. Prediction slot left empty.
 - [x] **5. Debt and gold funds.** A short, configured list of index,
       debt and gold funds from mfapi.in.
-- [ ] **6. Recommendation service and API.** Weights, rupee amounts,
+- [x] **6. Recommendation service and API.** Weights, rupee amounts,
       expected range of outcomes, reasons per holding, differences from
       current holdings. Stored in `recommendations`.
       `POST /api/v1/recommendations`, `GET /api/v1/recommendations/latest`.
