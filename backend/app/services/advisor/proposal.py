@@ -17,7 +17,6 @@ salt on anything derived from private data (amounts, holdings, goals).
 from datetime import date, datetime
 
 from app.core.advisor_config import ADVISOR_VERSION
-from app.services.blockchain.hashing import hash_private, hash_text, new_salt
 
 TOKEN_DECIMALS = 6
 SIDE_BUY = 0  # Types.sol: enum Side { BUY, SELL }
@@ -66,6 +65,10 @@ def build_proposal_drafts(actions: list[dict], modules: list[dict], salt: str | 
     Monthly SIPs are left out: Phase 10 runs those as vault SIPs (B16), not
     as advisor trades. Returns {"salt", "drafts"}; the salt stays off-chain
     with the advice so every hash can be checked later."""
+    # Imported here, not at module load: with BLOCKCHAIN_ENABLED off the app
+    # must not load web3 / eth_account (tests/test_blockchain_config.py).
+    from app.services.blockchain.hashing import hash_private, hash_text, new_salt
+
     invest = next((a for a in actions if a["id"] == "invest_per_plan"), None)
     by_id = {m["module"]: m for m in modules}
     plan = by_id.get("portfolio_plan")
