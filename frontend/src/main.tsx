@@ -16,6 +16,7 @@ import { InvestmentsPage } from './pages/InvestmentsPage'
 import { SearchPage } from './pages/SearchPage'
 import { SectorPage } from './pages/SectorPage'
 import { SectorsPage } from './pages/SectorsPage'
+import { PortfolioPlanPage } from './pages/PortfolioPlanPage'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -36,6 +37,7 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="/search" element={<SearchPage />} />
                 <Route path="/sectors" element={<SectorsPage />} />
                 <Route path="/sectors/:id" element={<SectorPage />} />
+                <Route path="/portfolio-plan" element={<PortfolioPlanPage />} />
                 
                 {/* Fallback to dashboard */}
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />

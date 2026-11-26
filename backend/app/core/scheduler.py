@@ -24,6 +24,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.core.constants import FINANCE_SUBREDDITS, STOCK_UNIVERSE
 from app.services.alert_service import evaluate_all_alerts
 from app.services.market_data_service import IST, catch_up, ingest_stock_universe
+from app.services.market_stats_service import refresh_market_stats
 from app.services.news_service import ingest_news_for_universe
 from app.services.prediction_service import refresh_predictions, refresh_predictions_if_stale
 from app.services.reddit_service import ingest_reddit_posts
@@ -41,11 +42,13 @@ async def _run_market_data_ingestion() -> None:
     await refresh_sectors()
     # Phase 4: predict once per day from the new closes.
     await refresh_predictions()
+    await refresh_market_stats()
 
 
 async def _run_market_data_catch_up() -> None:
     if await catch_up(STOCK_UNIVERSE):
         await refresh_sectors()
+        await refresh_market_stats()
     # Also covers a missed daily run, a first start and a retrained model.
     await refresh_predictions_if_stale()
 
