@@ -34,9 +34,12 @@ TRADING_DAYS_PER_YEAR = 252
 LOOKBACK_RETURNS = 504  # about two trading years
 MIN_RETURNS = 250  # about one trading year; fewer is too little to estimate risk
 STALE_AFTER_DAYS = 7  # same rule as Phase 6 sectors
-# Larger daily moves are data breaks. Our large caps essentially never move
-# this much in a day for market reasons.
-MAX_PLAUSIBLE_DAILY_MOVE = 0.25
+# Larger daily moves are data breaks. Checked on 2012-2026 Yahoo prices for
+# the 20 tracked stocks: the biggest genuine one-day moves were Axis Bank
+# -27.9% (2020-03-23, COVID crash) and SBI +27.7% (2017-10-25, bank
+# recapitalisation news); the only larger move was the TMPV demerger break
+# (-40%). 35% keeps every real move and still catches that break.
+MAX_PLAUSIBLE_DAILY_MOVE = 0.35
 
 
 def _day(value: datetime | date) -> date:

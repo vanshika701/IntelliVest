@@ -66,7 +66,7 @@ SEBI-registered investment adviser.
       `POST /api/v1/recommendations`, `GET /api/v1/recommendations/latest`.
 - [x] **7. Frontend.** Questionnaire page and recommendation page
       (allocation chart, holdings table, reasons, assumptions).
-- [ ] **8. Evaluation.** Walk-forward backtest against equal weight and
+- [x] **8. Evaluation.** Walk-forward backtest against equal weight and
       the Nifty 50, with trading costs: return, volatility, maximum
       drawdown, Sharpe ratio. Results in `ml/log.md`.
 - [ ] **9. Documentation.** Methodology, limits, what is real and what is
