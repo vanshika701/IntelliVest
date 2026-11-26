@@ -150,6 +150,11 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 
 **Owner:** _unassigned_
 
+**Status: built (2026-11-27)**, changed from the plan below: one gradient-boosted tree model (not an
+LSTM/GRU) predicts a return range and chance up for any horizon from 1 day to 2 years, chosen by the
+user on the stock page's Predict tab. Walk-forward tested on 2020–2025: ranges are calibrated, but
+direction doesn't beat "always up". See `docs/PHASE_4_PREDICTION.md`.
+
 **Goal:** First deep learning module — sequence models on time series.
 
 **What gets built:**

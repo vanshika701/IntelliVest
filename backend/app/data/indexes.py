@@ -21,6 +21,7 @@ from app.data.collections import (
     get_risk_profiles_collection,
     get_savings_goals_collection,
     get_sector_snapshots_collection,
+    get_stock_predictions_collection,
     get_users_collection,
     get_watchlist_collection,
 )
@@ -119,6 +120,13 @@ async def ensure_indexes() -> None:
     # --- Phase 6 ---
     await get_sector_snapshots_collection().create_index("sector", name="uniq_sector", unique=True)
 
+    # --- Phase 4 ---
+    # One prediction per stock, day and horizon; reruns replace it. Reads
+    # take a ticker's newest as_of.
+    await get_stock_predictions_collection().create_index(
+        [("ticker", 1), ("as_of", -1), ("horizon_days", 1)], name="uniq_ticker_asof_horizon", unique=True
+    )
+
     # --- Phase 7 ---
     # One risk profile per user.
     await get_risk_profiles_collection().create_index(
@@ -134,6 +142,6 @@ async def ensure_indexes() -> None:
     logger.info(
         "MongoDB indexes ensured (prices, news_articles, reddit_posts, "
         "users, expenses, watchlist, alerts, investments, budget_profiles, savings_goals, "
-        "sector_snapshots, risk_profiles, market_stats, recommendations)"
+        "sector_snapshots, stock_predictions, risk_profiles, market_stats, recommendations)"
     )
 

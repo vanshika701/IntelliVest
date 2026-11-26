@@ -46,6 +46,21 @@ async def get_close_series(ticker: str) -> list[dict]:
     return await cursor.to_list(length=None)
 
 
+async def get_daily_bars(tickers: list[str]) -> list[dict]:
+    """ticker, date, close and volume for every stored day of `tickers`."""
+    cursor = get_prices_collection().find(
+        {"ticker": {"$in": tickers}}, {"_id": 0, "ticker": 1, "date": 1, "close": 1, "volume": 1}
+    )
+    return await cursor.to_list(length=None)
+
+
+async def get_newest_date(tickers: list[str]) -> datetime | None:
+    row = await get_prices_collection().find_one(
+        {"ticker": {"$in": tickers}}, {"_id": 0, "date": 1}, sort=[("date", DESCENDING)]
+    )
+    return row["date"] if row else None
+
+
 async def get_rows_without_date_basis() -> list[dict]:
     cursor = get_prices_collection().find(
         {"date_basis": {"$exists": False}}, {"ticker": 1, "date": 1}
