@@ -55,12 +55,14 @@ Educational illustration only, not investment advice.
 | Current holdings | 2 | What the user owns, drift from the plan | Built |
 | Sector intelligence | 6 | Sector trend and news for held stocks | Built |
 | News sentiment | 5 | Negative news on held stocks | Built |
-| Stock predictions | 4 | Expected direction for held stocks | **Not built: slot only** |
+| Stock predictions | 4 | Return ranges (10th/50th/90th percentile) per stock and horizon | Built. Direction doesn't beat "always up", so ranges are used for risk context only, never to buy or sell |
 | Expense categorizer | 3 | — | Retired from the app in Phase 8 |
 
 The exit criterion asks for advice that "draws on every module built so
-far". Phase 4 will show as `not_built` until it exists; nothing else waits
-for it.
+far". Phase 4's own backtest found its up/down calls no better than
+"always up" and its ranking weak, so the advisor uses only its ranges (for
+example, "a 10% chance this goal's stock part is down 18% or more in a
+year") and says why it doesn't use direction.
 
 ## Build steps
 
