@@ -260,18 +260,21 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
       routes 404, web3 not imported; all 563 backend and 111 frontend tests pass.
 
 ### E. Connect later
-- [ ] **B18.** Phase 4: evidence already uses the real model, version and artifact hash (B10).
-      Left: register each retrained version (owners must accept it) and store the evidence
-      record in MongoDB (B11-B12).
+- [x] **B18.** Phase 4: evidence uses the real model, version and artifact hash (B10); the worker
+      stores each evidence record in MongoDB (B12); `scripts/register_models.py` registers a
+      retrained version (owners must still accept it).
 - [x] **B19.** Phase 7: prefill mandate limits from the risk profile. Equity limit from the latest
       portfolio plan, loss limit by risk profile; only suggestions, the owner signs the final terms.
 - [ ] **B20.** Phase 9: replace the mock advisor; include contributions per module.
 
 ### F. Evaluate
-- [ ] **B21.** Attack tests: stolen advisor key, hacked backend, replay, over limit, bad fund, old
+- [x] **B21.** Attack tests: stolen advisor key, hacked backend, replay, over limit, bad fund, old
       or changed model, stale price, price manipulation, missing evidence, backend switched off.
-- [ ] **B22.** Compare no limits, backend-only limits and vault limits. Report blocked attacks,
+      `blockchain/test/attacks.test.ts`, one test each; results in `blockchain/reports/attacks.json`.
+- [x] **B22.** Compare no limits, backend-only limits and vault limits. Report blocked attacks,
       maximum loss, valid trades wrongly blocked, gas and latency. Label mock results as mock.
+      `docs/PHASE_10_EVALUATION.md`: vault blocks or bounds 9 of 10 attacks (backend-only 7, none 0),
+      0 of 40 valid trades blocked, 886,681 gas per automatic trade.
 - [ ] **B23.** Deploy to Sepolia and verify the source.
 
 **Infrastructure done (without Phases 4, 7, 9):** B1-B17 pass, B21 passes locally, and a
