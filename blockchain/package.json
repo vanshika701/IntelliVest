@@ -8,7 +8,8 @@
     "test": "node node_modules/hardhat/dist/src/cli.js test",
     "node": "node node_modules/hardhat/dist/src/cli.js node",
     "deploy:local": "node node_modules/hardhat/dist/src/cli.js run scripts/deploy.ts --network localhost",
-    "compare": "node node_modules/hardhat/dist/src/cli.js run scripts/compare.ts"
+    "compare": "node node_modules/hardhat/dist/src/cli.js run scripts/compare.ts",
+    "deploy:sepolia": "node node_modules/hardhat/dist/src/cli.js run scripts/deploy.ts --network sepolia"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-ethers": "4.2.2",

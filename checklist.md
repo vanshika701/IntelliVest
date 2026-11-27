@@ -275,7 +275,8 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
       maximum loss, valid trades wrongly blocked, gas and latency. Label mock results as mock.
       `docs/PHASE_10_EVALUATION.md`: vault blocks or bounds 9 of 10 attacks (backend-only 7, none 0),
       0 of 40 valid trades blocked, 886,681 gas per automatic trade.
-- [ ] **B23.** Deploy to Sepolia and verify the source.
+- [ ] **B23.** Deploy to Sepolia and verify the source. Prepared: `npm run deploy:sepolia` and the steps
+      in `docs/PHASE_10_BLOCKCHAIN.md`. Blocked on a funded test wallet and an RPC URL.
 
 **Infrastructure done (without Phases 4, 7, 9):** B1-B17 pass, B21 passes locally, and a
 mock-advisor trade with real FinBERT evidence runs end to end.

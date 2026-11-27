@@ -16,6 +16,42 @@ npm run deploy:local   # second terminal; writes deployments/local.json
 If C: is full on Windows, point `npm_config_cache`, `TEMP`, `TMP` and `LOCALAPPDATA` at a folder on
 another drive for these commands.
 
+## Demo on a laptop (local chain)
+
+Needs MongoDB with the usual data, Node, the backend venv and MetaMask in the browser.
+
+1. `cd blockchain && npm run node` (keep it open).
+2. Second terminal: `cd blockchain && npm run deploy:local`.
+3. `cd backend && python -m scripts.local_chain_env` and paste its `BLOCKCHAIN_*` lines into
+   `backend/.env`. They use Hardhat's public test keys, which only work on the local chain.
+4. `python -m scripts.register_models` (safe to run again).
+5. Start the backend and frontend as usual. "AI vault" appears in the sidebar.
+6. In MetaMask, add the network `http://127.0.0.1:8545` (chain 31337) and import the account the
+   script printed. On the vault page: connect, link, create the vault, get test tINR, deposit, sign
+   the mandate, then "Ask the AI" with a stock such as RELIANCE. The result appears within about 15 s.
+
+Restarting `npm run node` wipes the chain: repeat steps 2 and 4, and in MetaMask clear the account's
+activity (Settings > Advanced) so its nonce starts again.
+
+## Sepolia (B23)
+
+Not deployed yet. It needs a test wallet with Sepolia ETH (from a faucet) and an RPC URL (for
+example a free Alchemy or Infura key). Then:
+
+```bash
+cd blockchain
+export SEPOLIA_RPC_URL=...                # https URL
+export SEPOLIA_DEPLOYER_PRIVATE_KEY=...    # deployer only; never commit or share it
+npm run deploy:sepolia                     # writes deployments/sepolia.json
+```
+
+Then set `BLOCKCHAIN_CHAIN_ID=11155111`, `BLOCKCHAIN_RPC_URL`, `BLOCKCHAIN_DEPLOYMENT_PATH=blockchain/deployments/sepolia.json`,
+`BLOCKCHAIN_START_BLOCK` (`deployedAtBlock` from that file), `BLOCKCHAIN_CONFIRMATIONS=3` and five new
+role keys (the relayer and SIP runner need test ETH), and run
+`BLOCKCHAIN_ADMIN_PRIVATE_KEY=<deployer key> python -m scripts.register_models`. Test prices go stale
+after a day, so the deployer must post prices daily. Source verification needs an Etherscan key and the
+`@nomicfoundation/hardhat-verify` plugin, which is not installed.
+
 ## Settings
 
 Listed in `backend/.env.example`; keys go only in `backend/.env`. With `BLOCKCHAIN_ENABLED=false`

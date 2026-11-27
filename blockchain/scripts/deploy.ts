@@ -1,10 +1,14 @@
-// Local demo deployment: npm run node, then (second terminal) npm run deploy:local
+// Deploys every contract and writes deployments/<network>.json.
+//   Local:   npm run node, then (second terminal) npm run deploy:local
+//   Sepolia: set SEPOLIA_RPC_URL and SEPOLIA_DEPLOYER_PRIVATE_KEY, then npm run deploy:sepolia
 import { mkdirSync, writeFileSync } from "node:fs";
 import { network } from "hardhat";
 
+const NAMES: Record<number, string> = { 31337: "local", 11155111: "sepolia" };
 const { ethers } = await network.getOrCreate();
 const chainId = Number((await ethers.provider.getNetwork()).chainId);
-if (chainId !== 31337) throw new Error("This script is for the local chain only");
+const name = NAMES[chainId];
+if (!name) throw new Error(`Chain ${chainId} is not a supported test network`);
 
 const [deployer] = await ethers.getSigners();
 const add: Record<string, string> = {};
@@ -35,5 +39,8 @@ await make("AITaskManager", [add.ModelRegistry, add.MandateManager]);
 await make("VaultFactory", [add.AITaskManager, add.MandateManager, add.MockFundMarket]);
 
 mkdirSync("deployments", { recursive: true });
-writeFileSync("deployments/local.json", JSON.stringify({ chainId, deployer: deployer.address, contracts: add }, null, 2) + "\n");
+// The event reader starts at this block on a testnet (BLOCKCHAIN_START_BLOCK).
+const deployedAtBlock = await ethers.provider.getBlockNumber();
+writeFileSync(`deployments/${name}.json`,
+  JSON.stringify({ chainId, deployer: deployer.address, deployedAtBlock, contracts: add }, null, 2) + "\n");
 console.log(add);
