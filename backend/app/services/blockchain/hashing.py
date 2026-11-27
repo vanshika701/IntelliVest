@@ -81,3 +81,30 @@ def sign(name: str, domain: dict, message: dict, private_key: str) -> bytes:
 
 def recover(name: str, domain: dict, message: dict, signature: bytes) -> str:
     return Account.recover_message(typed_message(name, domain, message), signature=signature)
+
+
+def domain(chain_id: int, task_manager: str) -> dict:
+    """EIP-712 domain of AITaskManager."""
+    return {"name": "IntelliVest", "version": "1", "chainId": chain_id, "verifyingContract": task_manager}
+
+
+def struct_hash(name: str, message: dict) -> bytes:
+    return bytes(typed_message(name, {"name": "x"}, message).body)
+
+
+def model_id(name: str) -> bytes:
+    """bytes32 for a model or version name, like ethers.id()."""
+    return keccak(text=name)
+
+
+def model_key(model: bytes, version: bytes) -> bytes:
+    """ModelRegistry.keyOf: keccak256(abi.encode(modelId, version))."""
+    return keccak(model + version)
+
+
+def chain_evidence(previous: bytes, evidence_struct_hash: bytes) -> bytes:
+    """AITaskManager's running evidence hash: keccak256(abi.encode(previous, structHash))."""
+    return keccak(previous + evidence_struct_hash)
+
+
+ZERO_HASH = bytes(32)

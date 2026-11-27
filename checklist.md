@@ -90,9 +90,9 @@ As of 2026-11-26. Only item 5 is open: it needs a free API key and one real call
 
 # Phase 10 Checklist: Blockchain (Mode 2 AI + user-owned vault)
 
-Written 2026-11-25. B1-B9 (setup, contracts, settings) are built and tested.
-**Paused 2026-11-25** until the other phases are done, starting with Phase 4; resume at B10 with the
-real stock model instead of a mock. This is the detailed spec;
+Written 2026-11-25. B1-B10 (setup, contracts, settings, backend signing and chain client) are
+built and tested. Paused 2026-11-25 for Phase 4; **resumed 2026-11-27** at B10 with the real stock
+model instead of a mock. This is the detailed spec;
 `PROJECT_PLAN.md` Phase 10 is the summary. If they disagree, fix both.
 
 ## What we are building and why
@@ -128,7 +128,7 @@ ran or is right. A trade inside the limits can still lose money. Test prices com
 |---|---|---|
 | AI advisor (Phase 9) | Signed proposal; the contract accepts, waits for the user, or rejects | Interface and mock only |
 | Sentiment (Phase 5) | Evidence step, only for an AI trade task | **Yes**, FinBERT exists |
-| Stock prediction (Phase 4) | Evidence step, only for an AI trade task | Interface and mock only |
+| Stock prediction (Phase 4) | Evidence step, only for an AI trade task | **Yes**, reads stored predictions |
 | Portfolio / risk profile (Phase 7) | Suggests mandate limits; the user signs the final ones | Manual entry only |
 | Goal planner (Phase 8) | Suggests amount and end date for the mandate | Yes |
 | Invest panel / SIP | Optional vault execution. A SIP is rule-based: a separate path with no AI evidence | Yes, test tokens |
@@ -207,7 +207,6 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
 
 | Blocked item | Waiting for |
 |---|---|
-| Real stock prediction evidence | Phase 4 (no model in the repo) |
 | Automatic limits from a risk profile | Phase 7 (not built) |
 | Real advisor proposals | Phase 9; LLM or trained model undecided |
 | Final results with real models | Phases 4, 7 and 9 |
@@ -234,8 +233,10 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
 ### C. Backend
 - [x] **B9.** Settings in `backend/app/core/config.py` and `.env.example`; keys only in `.env`.
       Use a different key per role (sentiment, stock, advisor, relayer, SIP runner).
-- [ ] **B10.** `backend/app/services/blockchain/`: client, hashing, signing, advisor interface,
-      mock advisor, mock stock predictor. `web3.py` imported only here.
+- [x] **B10.** `backend/app/services/blockchain/`: client, hashing, signing, advisor interface,
+      mock advisor, and stock evidence from the **real** Phase 4 predictions (no mock predictor).
+      `web3.py` imported only here. A mock-advisor trade with stock evidence runs end to end on
+      Hardhat (`tests/test_blockchain_chain.py`).
 - [ ] **B11.** Wallet linking (one-time nonce), repositories, indexes and `/api/v1/blockchain/...`.
       Follow routes -> services -> data.
 - [ ] **B12.** Background worker and event reader: retry, timeout, no double submission, resume
@@ -251,7 +252,9 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
 - [ ] **B17.** With the flag off, the existing invest flow and tests are unchanged.
 
 ### E. Connect later
-- [ ] **B18.** Phase 4: replace the mock stock predictor; store model version and artifact hash.
+- [ ] **B18.** Phase 4: evidence already uses the real model, version and artifact hash (B10).
+      Left: register each retrained version (owners must accept it) and store the evidence
+      record in MongoDB (B11-B12).
 - [ ] **B19.** Phase 7: prefill mandate limits from the risk profile.
 - [ ] **B20.** Phase 9: replace the mock advisor; include contributions per module.
 
