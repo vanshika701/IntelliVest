@@ -76,8 +76,8 @@ def main() -> None:
                         "in backend/tests/test_advisor_api.py with changed, reordered and failed replies."),
         "limits": [
             "Scenarios are hand-written by the developers, not reviewed by a certified financial planner.",
-            "They test the rules' decisions on realistic inputs, not whether users find the advice useful; "
-            "that needs a user study.",
+            ("They test the rules' decisions on realistic inputs, not whether users find the advice useful; "
+             "that needs a user study."),
             "18 scenarios cover every rule, but not every combination of situations.",
         ],
         "results": rows,
