@@ -140,7 +140,7 @@ function EvidenceDetails({ task }: { task: ChainTask }) {
         <div key={e.step}>
           <p className="font-medium text-[var(--color-text-primary)]">
             {e.step === 'sentiment' ? 'News sentiment' : 'Stock prediction'}: {e.status}
-            {e.status !== 'NO_DATA' && ` · score ${e.step === 'sentiment' ? e.score / 100 : `${e.score / 100}% chance up`}`}
+            {e.status !== 'NO_DATA' && ` · score ${e.step === 'sentiment' ? e.score / 100 : `${e.score / 100}% chance of beating the Nifty 50`}`}
           </p>
           {e.tx_hash && <p>Transaction: <span className="break-all font-mono">{e.tx_hash}</span></p>}
           <details>

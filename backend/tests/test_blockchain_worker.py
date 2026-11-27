@@ -139,7 +139,8 @@ async def _setup(monkeypatch, *, vault=True, require_stock=True, sentiment=False
             "ticker": "RELIANCE",
             "as_of": today,
             "horizon_days": 5,
-            "chance_up": 0.75,
+            "chance_beat": 0.75,
+            "target": "excess_log_return_vs_nifty",
             "model_version": stock_version,
             "artifact_hash": "cd" * 32,
         }
@@ -212,7 +213,7 @@ async def test_task_runs_end_to_end(events_from_now, monkeypatch):
     doc = await _doc(task)
     assert doc["state"] == "submitted" and doc["active"] is False and doc["pending_tx"] is None
     assert [e["step"] for e in doc["evidence"]] == [Step.STOCK_PREDICTION]
-    assert doc["evidence"][0]["outputs"]["chance_up_bps"] == 7500 and doc["evidence"][0]["tx_hash"]
+    assert doc["evidence"][0]["outputs"]["chance_beat_bps"] == 7500 and doc["evidence"][0]["tx_hash"]
     assert doc["proposal"]["side"] == "BUY" and "salt" in doc["proposal"]
 
     assert await sync_events(chain.client) >= 4  # opened, evidence, proposal, result

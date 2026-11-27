@@ -20,7 +20,7 @@ class MockAdvisor:
         signals: dict[str, int] = {}
         stock = request.step(Step.STOCK_PREDICTION)
         if stock and stock.evidence.status == EvidenceStatus.OK:
-            # chance of "up" 0..10000 -> -10000..10000
+            # chance of beating the Nifty 50, 0..10000 -> -10000..10000
             signals["stock_prediction"] = (stock.evidence.score - BPS // 2) * 2
         sentiment = request.step(Step.SENTIMENT)
         if sentiment and sentiment.evidence.status == EvidenceStatus.OK:
