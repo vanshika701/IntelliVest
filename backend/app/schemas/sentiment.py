@@ -28,6 +28,9 @@ class InstrumentSentiment(BaseModel):
     window_days: int
     # Which engine scored the headlines, e.g. "ProsusAI/finbert" or "lexicon".
     engine: str
+    # The sentiment model asked for (the default unless one was picked).
+    model: str
+    model_label: str
     articles: list[SentimentArticle]
     generated_at: datetime
 

@@ -31,18 +31,23 @@ interface SentimentSectionProps {
   loading: boolean
   error: string | null
   onRetry: () => void
+  /** Model pickers, shown in the section header. */
+  controls?: ReactNode
   /** Rendered right below the sentiment headline (the news summaries). */
   children?: ReactNode
 }
 
-export function SentimentSection({ name, sentiment, loading, error, onRetry, children }: SentimentSectionProps) {
+export function SentimentSection({ name, sentiment, loading, error, onRetry, controls, children }: SentimentSectionProps) {
   return (
     <section aria-labelledby="sentiment-heading" className="glass-card rounded-2xl">
-      <div className="flex items-center gap-2 border-b border-[var(--color-border-subtle)] p-5">
-        <Newspaper className="h-5 w-5 text-[var(--color-text-secondary)]" aria-hidden="true" />
-        <h3 id="sentiment-heading" className="text-base font-semibold text-[var(--color-text-primary)]">
-          News &amp; sentiment
-        </h3>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[var(--color-border-subtle)] p-5">
+        <div className="flex items-center gap-2">
+          <Newspaper className="h-5 w-5 text-[var(--color-text-secondary)]" aria-hidden="true" />
+          <h3 id="sentiment-heading" className="text-base font-semibold text-[var(--color-text-primary)]">
+            News &amp; sentiment
+          </h3>
+        </div>
+        {controls && <div className="ml-auto flex flex-wrap items-center gap-3">{controls}</div>}
       </div>
 
       <div className="p-5">
@@ -87,7 +92,12 @@ export function SentimentSection({ name, sentiment, loading, error, onRetry, chi
 
         {sentiment && (
           <p className="mt-4 text-[11px] text-[var(--color-text-muted)]">
-            Sentiment scored by {sentiment.engine === 'lexicon' ? 'a keyword lexicon (fallback)' : sentiment.engine}{' '}
+            Sentiment scored by{' '}
+            {sentiment.engine === 'lexicon'
+              ? 'a keyword lexicon (fallback)'
+              : sentiment.engine === sentiment.model
+                ? sentiment.model_label
+                : sentiment.engine}{' '}
             from {sentiment.article_count} headline{sentiment.article_count === 1 ? '' : 's'} in the last{' '}
             {sentiment.window_days} days.
           </p>

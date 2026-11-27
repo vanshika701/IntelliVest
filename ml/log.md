@@ -558,6 +558,92 @@ About 3 minutes per fold, 21 minutes in all.
   (800k, then 600k, then 450k), and per-year checkpoints so a crash
   resumes instead of restarting.
 
+### Run 5 — LSTM + LightGBM hybrid; the ensemble ships as default 4.0.0 (2026-11-28)
+
+Script: `ml/train_hybrid_lstm_lightgbm.py`; results:
+`ml/models/stock_predictor_hybrid/metrics.json`. Same data, label, test
+rows and walk-forward years (2020–2025) as Run 4. 65 minutes.
+
+- **Papers:** Tian et al., "Stock price prediction based on LSTM and
+  LightGBM hybrid model", J. Supercomputing 2022
+  (doi:10.1007/s11227-022-04326-5); Huang, "Stock Price Prediction Based
+  on LSTM-LightGBM Fusion Model", AEMSS 2025 (stacking); Yu et al.,
+  "Gradient Boosting Decision Tree with LSTM for Investment Prediction",
+  arXiv:2505.23084 (ensemble). The papers combine the models in two ways;
+  both were tested.
+- **LSTM:** one layer, 48 units, reads the last 64 trading days of 7 daily
+  channels (stock, Nifty and excess return in volatility units, volume vs
+  its 63-day mean, VIX, distance from 252-day high and 50-day average).
+  It outputs 10th/50th/90th percentiles and a beat-the-Nifty chance for all
+  17 horizons at once (pinball + cross-entropy loss). Trained walk-forward:
+  a fresh LSTM for each year 2014–2025 that sees only labels ending
+  before that year, so all its outputs are out of sample. 3–8 epochs
+  (best of a held-out last 15% of dates), 10–40 s each on CPU.
+- **Models compared:** `lgbm_full` (real LightGBM 4.7, Run 4's inputs and
+  history); `lgbm_same` (same, but training rows from 2014 only, like
+  stacked); `lstm` alone; `ensemble` (average of lgbm_full's and the
+  LSTM's percentiles and chance); `stacked` (LightGBM with the LSTM's 4
+  outputs as extra inputs, trained on rows from 2014, where out-of-sample
+  LSTM values exist).
+
+| Horizon | Model | Pinball | Range hit | Brier | Rank corr |
+|---|---|---|---|---|---|
+| Up to 1 week | 3.0.0 (shipped) | 0.00938 | 80.7% | 0.2510 | 0.051 |
+| | lgbm_full | 0.00938 | 80.7% | 0.2509 | 0.052 |
+| | lstm | 0.00939 | 78.9% | 0.2493 | 0.046 |
+| | **ensemble** | **0.00935** | 80.1% | 0.2494 | **0.054** |
+| | stacked | 0.00947 | 80.7% | 0.2528 | 0.050 |
+| | volatility only | 0.00945 | 79.9% | 0.2493 | |
+| 1 week to 1 month | 3.0.0 | 0.02141 | 80.1% | 0.2519 | 0.039 |
+| | lgbm_full | 0.02139 | 80.1% | 0.2518 | 0.039 |
+| | lstm | 0.02144 | 78.9% | 0.2506 | 0.035 |
+| | **ensemble** | **0.02133** | 79.8% | 0.2505 | **0.043** |
+| | stacked | 0.02170 | 80.8% | 0.2549 | 0.030 |
+| | volatility only | 0.02149 | 79.6% | 0.2499 | |
+| 1 to 6 months | 3.0.0 | 0.05001 | 80.1% | 0.2524 | 0.021 |
+| | lgbm_full | 0.05001 | 80.2% | 0.2522 | 0.021 |
+| | lstm | 0.05047 | 78.3% | 0.2518 | 0.027 |
+| | **ensemble** | **0.04992** | 79.6% | 0.2507 | **0.029** |
+| | stacked | 0.05014 | 80.5% | 0.2547 | 0.011 |
+| | volatility only | 0.05030 | 79.5% | 0.2502 | |
+| 6 months to 2 years | 3.0.0 | 0.11417 | 81.6% | 0.2548 | −0.027 |
+| | lgbm_full | 0.11416 | 81.6% | 0.2547 | −0.027 |
+| | lstm | 0.11699 | 79.3% | 0.2591 | −0.038 |
+| | ensemble | 0.11444 | 80.9% | 0.2546 | −0.023 |
+| | **stacked** | **0.11143** | 80.9% | 0.2489 | −0.018 |
+| | volatility only | 0.11246 | 82.0% | 0.2456 | |
+
+- **LightGBM = 3.0.0:** real LightGBM with the same settings reproduces
+  the shipped HistGradientBoosting numbers to the 4th decimal, so the
+  comparison is fair.
+- **Ensemble (average) is the best combination up to 6 months:** lowest
+  pinball loss, better Brier than either tree model, highest rank
+  correlation (0.043 vs 0.039 at 1 week–1 month; better than lgbm_full in
+  4 of 6 years). The gains are small (pinball 0.2–0.3% lower) and the
+  ranges slightly narrower than calibrated (79.6–80.1% hit vs 80% target).
+- **Stacking hurt at short horizons** (LightGBM gave the LSTM inputs about
+  10% of its gain but ranked worse) and **helped only at 6 months to 2
+  years**, where it is the first model to beat the volatility-only
+  pinball loss (0.1114 vs 0.1125). Its Brier there is still worse than
+  volatility alone.
+- **LSTM alone** is about as good as LightGBM at ranking up to 6 months,
+  with a different error pattern (hence the ensemble gain), but its ranges
+  are too narrow (78–79% hit).
+- **No model calls beat/lag well:** 50–53% right everywhere, Brier at or
+  just above the volatility-only baseline. The papers' 10–15% improvements
+  are on next-day price levels, where any model scores high because
+  tomorrow's price is close to today's; on excess return over the Nifty,
+  the gain from adding an LSTM is a few percent of a weak signal.
+- **Shipped as the default (team decision, despite the small gain):**
+  model 4.0.0 = the ensemble, trained on all data with `--final`; 3.0.0
+  (LightGBM) stays selectable. See "Model choice in the app" under
+  Phase 5.
+- **Test rows:** 400 test rows (of 534,637) where a stock had under 64
+  days of history for the LSTM were dropped for every model, so the
+  3.0.0 row's numbers (from Run 4) are on a 0.07% larger set.
+- **Problem:** LightGBM warns about sector code −1 (stocks outside the
+  tracked sectors); it treats them as missing, same as the shipped model.
+
 ---
 
 ## Phase 5 — Financial Sentiment Analysis
@@ -876,6 +962,129 @@ No training was done; this re-evaluates existing models.
 - **Label mismatch:** the current fine-tuned weights output
   Bullish/Bearish, which the backend would score as 0. They must not be
   set as `SENTIMENT_MODEL`.
+
+### Comparison with four other Hugging Face models (2026-11-28)
+
+Script: `ml/compare_sentiment_models.py`; results:
+`ml/models/sentiment_comparison/metrics.json`. No training; CPU,
+4 threads, batch 32.
+
+- **Test sets:** the 30 hand-written headlines (closest to production,
+  seen by no model); 1,000 random tweets from the
+  zeroshot/twitter-financial-news-sentiment validation split (seen by no
+  model); 1,000 random Financial PhraseBank sentences. **PhraseBank is not
+  fair**: FinBERT, the DistilRoBERTa model and FinancialBERT were trained
+  on it, so it is shown only because it is the standard benchmark.
+
+| Model | Params | Headlines acc / macro-F1 | Tweets acc / macro-F1 | PhraseBank acc (trained on it?) | Texts/s (tweets) |
+|---|---|---|---|---|---|
+| ProsusAI/finbert (shipped) | 110M | 83.3% / 0.785 | 72.7% / 0.675 | 88.5% (yes) | 8 |
+| **mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis** | 82M | **86.7% / 0.840** | **75.7% / 0.717** | 83.9% (yes) | **16** |
+| yiyanghkust/finbert-tone | 110M | 76.7% / 0.756 | 73.4% / 0.648 | 78.6% (no) | 8 |
+| ahmedrachid/FinancialBERT-Sentiment-Analysis | 110M | 73.3% / 0.711 | 75.2% / 0.673 | 95.5% (yes) | 8 |
+| cardiffnlp/twitter-roberta-base-sentiment-latest (general, control) | 125M | 70.0% / 0.705 | 71.3% / 0.631 | 67.4% (no) | 8 |
+
+- **Best: DistilRoBERTa** on both fair sets, and twice as fast (a
+  distilled, smaller model). On the headlines the gap is one headline
+  (26 vs 25 of 30), so the tweet set (+3.0 points accuracy, +0.042
+  macro-F1, n=1,000) carries most of the evidence.
+- FinancialBERT shows why PhraseBank can't decide: 95.5% there, worst
+  financial model on the headlines.
+- Every model misses "TCS board approves ₹18,000 crore share buyback"
+  (called neutral) and "Crude oil prices surge past $95" (called
+  positive: "surge" read as good news), so these need context the models
+  lack.
+- The general tweet model is worst on headlines, so financial
+  pretraining matters.
+- DistilRoBERTa outputs the same negative/neutral/positive labels as
+  FinBERT, so the backend needed no label changes.
+- **Problem:** the first run crashed while saving: Windows' default
+  cp1252 encoding can't write "₹". Files are now written as UTF-8.
+- **Re-run (same day)** to also save precision, recall, weighted F1 and
+  confusion matrices; full tables in the README.
+- **Switched:** DistilRoBERTa is now the default (`SENTIMENT_MODEL`);
+  FinBERT stays selectable (`SENTIMENT_EXTRA_MODELS`). See "Model choice"
+  below.
+
+### Summarizer comparison: 4 Hugging Face models vs the extractive baseline (2026-11-28)
+
+Script: `ml/compare_summarizers.py`; results:
+`ml/models/summarizer_comparison/metrics.json`, three example articles in
+`samples.json`, timings in `timing.json` (`ml/time_summarizers.py`).
+
+- **Test set:** 80 random articles (seed 42, at least 120 words) from
+  `kdave/Indian_Financial_News` on Hugging Face (Moneycontrol, Business
+  Today, Financial Express…), average 736 words, each with a reference
+  summary (average 63 words). The references look machine-written
+  (lowercase, copied lead sentences), so ROUGE rewards copying the lead;
+  the reference-free checks matter as much.
+- **Models:** the shipped TF-IDF extractive summarizer, a first-60-words
+  baseline, `sshleifer/distilbart-cnn-12-6`, `facebook/bart-large-cnn`,
+  `human-centered-summarization/financial-summarization-pegasus`,
+  `Falconsai/text_summarization` (T5-small). Beam search, 4 beams, 30–160
+  new tokens; every summary cut to 100 words by the app's `trim_to_words`.
+
+| Model | ROUGE-1 | ROUGE-2 | ROUGE-L | Figures found in the article | Made-up figure | Novel word pairs | Words |
+|---|---|---|---|---|---|---|---|
+| First 60 words | 0.383 | 0.223 | 0.294 | 100% | 0% | 0% | 54 |
+| Extractive (TF-IDF, was the default) | 0.389 | 0.213 | 0.289 | 100% | 0% | 1.6% | 94 |
+| DistilBART | 0.435 | 0.293 | 0.355 | 98.8% | 1.2% | 6.6% | 50 |
+| BART-large | 0.424 | 0.290 | 0.358 | 99.2% | 2.5% | 6.0% | 41 |
+| PEGASUS (financial) | 0.251 | 0.121 | 0.200 | 100% | 0% | 35.9% | 24 |
+| **T5-small (new default)** | **0.448** | **0.303** | **0.376** | 99.9% | 1.2% | 5.6% | 51 |
+
+- **T5-small is best on all three ROUGE scores** and nearly never
+  invents a figure (99.9% of figures appear in the article), with 60M
+  parameters (the others have 306–570M). Part of its lead may be style:
+  like the references, it mostly copies the article's key sentences.
+- BART and DistilBART are close behind and rewrite slightly more.
+- PEGASUS (financial) writes headline-length summaries (24 words) and
+  rewrites the most (36% new word pairs), so it scores low against
+  63-word references. That is length and style, not necessarily worse
+  summaries, but too short for the app's paragraph.
+- All abstractive models made up a figure in 1–2.5% of summaries; the
+  extractive one cannot. That is the main reason to keep extractive as
+  an option.
+- **App detail found while wiring it in:** the digest summarizes the top
+  5 articles at once (up to 1,500 words), but T5 reads only 512 tokens
+  (about 380 words), so it would have seen just the first article or
+  two. The Hugging Face summarizers now give each article an equal share
+  of their input (`huggingface.py`, tested).
+- **Problems:** PEGASUS first failed to load (missing `tiktoken`, then
+  an interrupted 2.3 GB download); `tiktoken` and `sentencepiece` are
+  now installed and the model was re-run alone (`--only`). BART-large's
+  timing in the first run (143 s/article) was inflated by a training run
+  and the test suite sharing the CPU, hence the separate timing script.
+
+### Model choice in the app (2026-11-28)
+
+Users can now pick the model for each of the three features on the
+instrument page; the best model from the comparisons is the default.
+`GET /api/v1/models` lists the options; each endpoint takes `?model=`.
+
+| Feature | Default | Other options |
+|---|---|---|
+| Stock prediction | LSTM + LightGBM average (4.0.0) | LightGBM (3.0.0) |
+| Sentiment | DistilRoBERTa (financial news) | FinBERT |
+| Summary | T5-small | Extractive, DistilBART, BART-large, PEGASUS (financial) |
+
+- **4.0.0:** `ml/train_hybrid_lstm_lightgbm.py --final` trains one LSTM
+  and one LightGBM on all data (6 MB, committed like 3.0.0). The LSTM
+  code lives in `backend/app/services/prediction/sequence.py`, shared by
+  training and serving. Both models are predicted daily and stored
+  separately (`model` field; old rows are labelled `lgbm` and the unique
+  index is rebuilt on startup). Predicting the 20 tracked stocks takes
+  about 15 s with the ensemble and 10 s with LightGBM alone.
+- **Sentiment:** every offered model scores every article; the default
+  model's score stays in `sentiment` (what the advisor, sectors and
+  blockchain evidence read), the others go to `sentiments.<key>`. The
+  default change makes the scoring job re-score all stored articles once.
+- **Summaries:** Hugging Face summarizers run in the API process, one in
+  memory at a time (the largest needs about 2.3 GB).
+- **Blockchain (Phase 10):** evidence only counts predictions and scores
+  from registered model versions, so after this change the new default
+  sentiment model and stock model 4.0.0 must be registered
+  (`python -m scripts.register_models`) before the vault uses them.
 
 ## Phase 7 — Portfolio Recommendation Engine
 

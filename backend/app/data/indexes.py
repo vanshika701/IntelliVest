@@ -127,10 +127,21 @@ async def ensure_indexes() -> None:
     await get_sector_snapshots_collection().create_index("sector", name="uniq_sector", unique=True)
 
     # --- Phase 4 ---
-    # One prediction per stock, day and horizon; reruns replace it. Reads
-    # take a ticker's newest as_of.
-    await get_stock_predictions_collection().create_index(
-        [("ticker", 1), ("as_of", -1), ("horizon_days", 1)], name="uniq_ticker_asof_horizon", unique=True
+    # One prediction per stock, day, horizon and model; reruns replace it.
+    # Reads take a ticker's newest as_of for one model. The index without
+    # `model` (before models could be chosen) would reject a second model's
+    # rows, so it is replaced, after labelling the old rows as LightGBM's.
+    predictions = get_stock_predictions_collection()
+    if "uniq_ticker_asof_horizon" in await predictions.index_information():
+        from app.data.prediction_repository import migrate_legacy_rows
+
+        migrated = await migrate_legacy_rows()
+        await predictions.drop_index("uniq_ticker_asof_horizon")
+        logger.info("stock_predictions: %d rows labelled model=lgbm, old unique index dropped", migrated)
+    await predictions.create_index(
+        [("ticker", 1), ("model", 1), ("as_of", -1), ("horizon_days", 1)],
+        name="uniq_ticker_model_asof_horizon",
+        unique=True,
     )
 
     # --- Phase 7 ---

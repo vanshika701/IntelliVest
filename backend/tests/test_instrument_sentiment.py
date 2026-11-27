@@ -60,7 +60,7 @@ def test_lexicon_classify_scores_obvious_headlines() -> None:
 
 
 def test_score_texts_falls_back_to_lexicon_when_model_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(sentiment_service, "_load_model", lambda: False)
+    monkeypatch.setattr(sentiment_service, "_load_model", lambda *_: False)
     probabilities, engine = score_texts(["Gold surges"])
     assert engine == "lexicon"
     assert max(probabilities[0], key=probabilities[0].get) == "positive"
@@ -74,7 +74,7 @@ async def test_fund_sentiment_scores_fresh_news_and_is_cached(fake_fund, monkeyp
         return _news(6)
 
     monkeypatch.setattr(sentiment_service, "search_news", fake_search_news)
-    monkeypatch.setattr(sentiment_service, "_load_model", lambda: False)
+    monkeypatch.setattr(sentiment_service, "_load_model", lambda *_: False)
 
     first = await get_instrument_sentiment("mf-123")
     assert searches == ["SBI GOLD FUND"]
@@ -93,7 +93,7 @@ async def test_too_few_headlines_gives_no_label(fake_fund, monkeypatch: pytest.M
         return _news(2)
 
     monkeypatch.setattr(sentiment_service, "search_news", fake_search_news)
-    monkeypatch.setattr(sentiment_service, "_load_model", lambda: False)
+    monkeypatch.setattr(sentiment_service, "_load_model", lambda *_: False)
 
     result = await get_instrument_sentiment("mf-123")
     assert result["label"] is None

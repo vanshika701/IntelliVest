@@ -12,6 +12,7 @@ from app.api.v1.routes import (
     instruments,
     investments,
     market_stats,
+    models,
     recommendations,
     risk_profile,
     sectors,
@@ -36,3 +37,4 @@ api_router.include_router(market_stats.router)
 api_router.include_router(recommendations.router)
 api_router.include_router(blockchain.router)
 api_router.include_router(advisor.router)
+api_router.include_router(models.router)

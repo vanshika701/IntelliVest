@@ -1,0 +1,909 @@
+{
+  "evaluated_at": "2026-11-27T23:23:23+00:00",
+  "sample_per_public_set": 1000,
+  "seed": 42,
+  "torch_threads": 4,
+  "note": "phrasebank scores are inflated for models trained on it (trained_on_phrasebank)",
+  "models": {
+    "ProsusAI/finbert": {
+      "description": "FinBERT (Araci 2019), shipped now",
+      "parameters_millions": 109.5,
+      "trained_on_phrasebank": true,
+      "sets": {
+        "realistic_headlines": {
+          "n": 30,
+          "accuracy": 0.8333333333333334,
+          "macro_f1": 0.7854700854700855,
+          "macro_precision": 0.8141025641025642,
+          "macro_recall": 0.7773892773892773,
+          "weighted_f1": 0.8255555555555555,
+          "f1_per_class": {
+            "negative": 0.9230769230769231,
+            "neutral": 0.6,
+            "positive": 0.8333333333333334
+          },
+          "precision_per_class": {
+            "negative": 0.9230769230769231,
+            "neutral": 0.75,
+            "positive": 0.7692307692307693
+          },
+          "recall_per_class": {
+            "negative": 0.9230769230769231,
+            "neutral": 0.5,
+            "positive": 0.9090909090909091
+          },
+          "support_per_class": {
+            "negative": 13,
+            "neutral": 6,
+            "positive": 11
+          },
+          "confusion_matrix": [
+            [
+              12,
+              0,
+              1
+            ],
+            [
+              1,
+              3,
+              2
+            ],
+            [
+              0,
+              1,
+              10
+            ]
+          ],
+          "texts_per_second": 24.2,
+          "misclassified": [
+            {
+              "text": "Nifty ends flat as gains in banking offset losses in auto stocks",
+              "expected": "neutral",
+              "predicted": "positive"
+            },
+            {
+              "text": "TCS board approves ₹18,000 crore share buyback",
+              "expected": "positive",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Crude oil prices surge past $95 a barrel on Middle East tensions",
+              "expected": "negative",
+              "predicted": "positive"
+            },
+            {
+              "text": "Markets to remain shut Monday on account of a public holiday",
+              "expected": "neutral",
+              "predicted": "negative"
+            },
+            {
+              "text": "Gold prices hit all-time high as investors seek safe-haven assets",
+              "expected": "neutral",
+              "predicted": "positive"
+            }
+          ]
+        },
+        "twitter_validation": {
+          "n": 1000,
+          "accuracy": 0.727,
+          "macro_f1": 0.6753867891604851,
+          "macro_precision": 0.6656749218000365,
+          "macro_recall": 0.7131575289254554,
+          "weighted_f1": 0.7346191869269583,
+          "f1_per_class": {
+            "negative": 0.6005089058524173,
+            "neutral": 0.7990196078431373,
+            "positive": 0.6266318537859008
+          },
+          "precision_per_class": {
+            "negative": 0.48360655737704916,
+            "neutral": 0.8504347826086956,
+            "positive": 0.6629834254143646
+          },
+          "recall_per_class": {
+            "negative": 0.7919463087248322,
+            "neutral": 0.7534668721109399,
+            "positive": 0.594059405940594
+          },
+          "support_per_class": {
+            "negative": 149,
+            "neutral": 649,
+            "positive": 202
+          },
+          "confusion_matrix": [
+            [
+              118,
+              30,
+              1
+            ],
+            [
+              100,
+              489,
+              60
+            ],
+            [
+              26,
+              56,
+              120
+            ]
+          ],
+          "texts_per_second": 9.1
+        },
+        "phrasebank": {
+          "n": 1000,
+          "accuracy": 0.885,
+          "macro_f1": 0.8800057857276736,
+          "macro_precision": 0.8567767895515869,
+          "macro_recall": 0.9126790579797252,
+          "weighted_f1": 0.8861573775868985,
+          "f1_per_class": {
+            "negative": 0.8825622775800712,
+            "neutral": 0.9012567324955116,
+            "positive": 0.856198347107438
+          },
+          "precision_per_class": {
+            "negative": 0.8104575163398693,
+            "neutral": 0.9580152671755725,
+            "positive": 0.8018575851393189
+          },
+          "recall_per_class": {
+            "negative": 0.96875,
+            "neutral": 0.8508474576271187,
+            "positive": 0.9184397163120568
+          },
+          "support_per_class": {
+            "negative": 128,
+            "neutral": 590,
+            "positive": 282
+          },
+          "confusion_matrix": [
+            [
+              124,
+              3,
+              1
+            ],
+            [
+              25,
+              502,
+              63
+            ],
+            [
+              4,
+              19,
+              259
+            ]
+          ],
+          "texts_per_second": 7.5
+        }
+      }
+    },
+    "yiyanghkust/finbert-tone": {
+      "description": "FinBERT-tone (Huang, Wang & Yang 2023), analyst-report sentences",
+      "parameters_millions": 109.8,
+      "trained_on_phrasebank": false,
+      "sets": {
+        "realistic_headlines": {
+          "n": 30,
+          "accuracy": 0.7666666666666667,
+          "macro_f1": 0.7558190601668863,
+          "macro_precision": 0.7685185185185185,
+          "macro_recall": 0.7812742812742813,
+          "weighted_f1": 0.7748353096179184,
+          "f1_per_class": {
+            "negative": 0.8181818181818182,
+            "neutral": 0.6666666666666666,
+            "positive": 0.782608695652174
+          },
+          "precision_per_class": {
+            "negative": 1.0,
+            "neutral": 0.5555555555555556,
+            "positive": 0.75
+          },
+          "recall_per_class": {
+            "negative": 0.6923076923076923,
+            "neutral": 0.8333333333333334,
+            "positive": 0.8181818181818182
+          },
+          "support_per_class": {
+            "negative": 13,
+            "neutral": 6,
+            "positive": 11
+          },
+          "confusion_matrix": [
+            [
+              9,
+              2,
+              2
+            ],
+            [
+              0,
+              5,
+              1
+            ],
+            [
+              0,
+              2,
+              9
+            ]
+          ],
+          "texts_per_second": 12.8,
+          "misclassified": [
+            {
+              "text": "TCS board approves ₹18,000 crore share buyback",
+              "expected": "positive",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Crude oil prices surge past $95 a barrel on Middle East tensions",
+              "expected": "negative",
+              "predicted": "positive"
+            },
+            {
+              "text": "Maruti Suzuki recalls 100,000 vehicles over airbag defect",
+              "expected": "negative",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Foreign investors pull out ₹12,000 crore from Indian equities in September",
+              "expected": "negative",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Gold prices hit all-time high as investors seek safe-haven assets",
+              "expected": "neutral",
+              "predicted": "positive"
+            },
+            {
+              "text": "India's GDP growth seen at 7.2% for the fiscal year, says report",
+              "expected": "positive",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Rupee weakens past 84 against the dollar on strong greenback demand",
+              "expected": "negative",
+              "predicted": "positive"
+            }
+          ]
+        },
+        "twitter_validation": {
+          "n": 1000,
+          "accuracy": 0.734,
+          "macro_f1": 0.6484151440327128,
+          "macro_precision": 0.6694060702844885,
+          "macro_recall": 0.6335861489686678,
+          "weighted_f1": 0.7285007630606462,
+          "f1_per_class": {
+            "negative": 0.5310344827586206,
+            "neutral": 0.8136599851521901,
+            "positive": 0.6005509641873278
+          },
+          "precision_per_class": {
+            "negative": 0.5460992907801419,
+            "neutral": 0.7851002865329513,
+            "positive": 0.6770186335403726
+          },
+          "recall_per_class": {
+            "negative": 0.5167785234899329,
+            "neutral": 0.8443759630200308,
+            "positive": 0.5396039603960396
+          },
+          "support_per_class": {
+            "negative": 149,
+            "neutral": 649,
+            "positive": 202
+          },
+          "confusion_matrix": [
+            [
+              77,
+              68,
+              4
+            ],
+            [
+              53,
+              548,
+              48
+            ],
+            [
+              11,
+              82,
+              109
+            ]
+          ],
+          "texts_per_second": 9.0
+        },
+        "phrasebank": {
+          "n": 1000,
+          "accuracy": 0.786,
+          "macro_f1": 0.7470646650986463,
+          "macro_precision": 0.7930722478480566,
+          "macro_recall": 0.718409414192411,
+          "weighted_f1": 0.7789012314181523,
+          "f1_per_class": {
+            "negative": 0.7272727272727273,
+            "neutral": 0.8405341712490181,
+            "positive": 0.6733870967741935
+          },
+          "precision_per_class": {
+            "negative": 0.8155339805825242,
+            "neutral": 0.7833089311859444,
+            "positive": 0.780373831775701
+          },
+          "recall_per_class": {
+            "negative": 0.65625,
+            "neutral": 0.9067796610169492,
+            "positive": 0.5921985815602837
+          },
+          "support_per_class": {
+            "negative": 128,
+            "neutral": 590,
+            "positive": 282
+          },
+          "confusion_matrix": [
+            [
+              84,
+              40,
+              4
+            ],
+            [
+              12,
+              535,
+              43
+            ],
+            [
+              7,
+              108,
+              167
+            ]
+          ],
+          "texts_per_second": 7.5
+        }
+      }
+    },
+    "mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis": {
+      "description": "DistilRoBERTa fine-tuned on Financial PhraseBank",
+      "parameters_millions": 82.1,
+      "trained_on_phrasebank": true,
+      "sets": {
+        "realistic_headlines": {
+          "n": 30,
+          "accuracy": 0.8666666666666667,
+          "macro_f1": 0.8399716225803182,
+          "macro_precision": 0.8521367521367522,
+          "macro_recall": 0.832944832944833,
+          "weighted_f1": 0.8642951251646903,
+          "f1_per_class": {
+            "negative": 0.9230769230769231,
+            "neutral": 0.7272727272727273,
+            "positive": 0.8695652173913043
+          },
+          "precision_per_class": {
+            "negative": 0.9230769230769231,
+            "neutral": 0.8,
+            "positive": 0.8333333333333334
+          },
+          "recall_per_class": {
+            "negative": 0.9230769230769231,
+            "neutral": 0.6666666666666666,
+            "positive": 0.9090909090909091
+          },
+          "support_per_class": {
+            "negative": 13,
+            "neutral": 6,
+            "positive": 11
+          },
+          "confusion_matrix": [
+            [
+              12,
+              0,
+              1
+            ],
+            [
+              1,
+              4,
+              1
+            ],
+            [
+              0,
+              1,
+              10
+            ]
+          ],
+          "texts_per_second": 46.8,
+          "misclassified": [
+            {
+              "text": "Nifty ends flat as gains in banking offset losses in auto stocks",
+              "expected": "neutral",
+              "predicted": "positive"
+            },
+            {
+              "text": "TCS board approves ₹18,000 crore share buyback",
+              "expected": "positive",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Crude oil prices surge past $95 a barrel on Middle East tensions",
+              "expected": "negative",
+              "predicted": "positive"
+            },
+            {
+              "text": "Gold prices hit all-time high as investors seek safe-haven assets",
+              "expected": "neutral",
+              "predicted": "negative"
+            }
+          ]
+        },
+        "twitter_validation": {
+          "n": 1000,
+          "accuracy": 0.757,
+          "macro_f1": 0.7171682969651366,
+          "macro_precision": 0.6918384881466905,
+          "macro_recall": 0.7621128965359283,
+          "weighted_f1": 0.7643206546275395,
+          "f1_per_class": {
+            "negative": 0.6666666666666666,
+            "neutral": 0.8166666666666667,
+            "positive": 0.6681715575620768
+          },
+          "precision_per_class": {
+            "negative": 0.5721153846153846,
+            "neutral": 0.8892921960072595,
+            "positive": 0.6141078838174274
+          },
+          "recall_per_class": {
+            "negative": 0.7986577181208053,
+            "neutral": 0.7550077041602465,
+            "positive": 0.7326732673267327
+          },
+          "support_per_class": {
+            "negative": 149,
+            "neutral": 649,
+            "positive": 202
+          },
+          "confusion_matrix": [
+            [
+              119,
+              24,
+              6
+            ],
+            [
+              72,
+              490,
+              87
+            ],
+            [
+              17,
+              37,
+              148
+            ]
+          ],
+          "texts_per_second": 17.8
+        },
+        "phrasebank": {
+          "n": 1000,
+          "accuracy": 0.839,
+          "macro_f1": 0.8178166474318099,
+          "macro_precision": 0.8322954351223366,
+          "macro_recall": 0.8055275073125777,
+          "weighted_f1": 0.8383302858772227,
+          "f1_per_class": {
+            "negative": 0.7966804979253111,
+            "neutral": 0.8738512949039264,
+            "positive": 0.7829181494661922
+          },
+          "precision_per_class": {
+            "negative": 0.8495575221238938,
+            "neutral": 0.8616144975288303,
+            "positive": 0.7857142857142857
+          },
+          "recall_per_class": {
+            "negative": 0.75,
+            "neutral": 0.8864406779661017,
+            "positive": 0.7801418439716312
+          },
+          "support_per_class": {
+            "negative": 128,
+            "neutral": 590,
+            "positive": 282
+          },
+          "confusion_matrix": [
+            [
+              96,
+              24,
+              8
+            ],
+            [
+              15,
+              523,
+              52
+            ],
+            [
+              2,
+              60,
+              220
+            ]
+          ],
+          "texts_per_second": 15.7
+        }
+      }
+    },
+    "ahmedrachid/FinancialBERT-Sentiment-Analysis": {
+      "description": "FinancialBERT (Hazourli 2022), fine-tuned on Financial PhraseBank",
+      "parameters_millions": 109.8,
+      "trained_on_phrasebank": true,
+      "sets": {
+        "realistic_headlines": {
+          "n": 30,
+          "accuracy": 0.7333333333333333,
+          "macro_f1": 0.7111111111111111,
+          "macro_precision": 0.7380952380952381,
+          "macro_recall": 0.7303807303807304,
+          "weighted_f1": 0.7377777777777778,
+          "f1_per_class": {
+            "negative": 0.7619047619047619,
+            "neutral": 0.5714285714285714,
+            "positive": 0.8
+          },
+          "precision_per_class": {
+            "negative": 1.0,
+            "neutral": 0.5,
+            "positive": 0.7142857142857143
+          },
+          "recall_per_class": {
+            "negative": 0.6153846153846154,
+            "neutral": 0.6666666666666666,
+            "positive": 0.9090909090909091
+          },
+          "support_per_class": {
+            "negative": 13,
+            "neutral": 6,
+            "positive": 11
+          },
+          "confusion_matrix": [
+            [
+              8,
+              3,
+              2
+            ],
+            [
+              0,
+              4,
+              2
+            ],
+            [
+              0,
+              1,
+              10
+            ]
+          ],
+          "texts_per_second": 12.1,
+          "misclassified": [
+            {
+              "text": "Nifty ends flat as gains in banking offset losses in auto stocks",
+              "expected": "neutral",
+              "predicted": "positive"
+            },
+            {
+              "text": "TCS board approves ₹18,000 crore share buyback",
+              "expected": "positive",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Crude oil prices surge past $95 a barrel on Middle East tensions",
+              "expected": "negative",
+              "predicted": "positive"
+            },
+            {
+              "text": "Maruti Suzuki recalls 100,000 vehicles over airbag defect",
+              "expected": "negative",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Paytm faces regulatory scrutiny as RBI restricts new deposits",
+              "expected": "negative",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Foreign investors pull out ₹12,000 crore from Indian equities in September",
+              "expected": "negative",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Gold prices hit all-time high as investors seek safe-haven assets",
+              "expected": "neutral",
+              "predicted": "positive"
+            },
+            {
+              "text": "Rupee weakens past 84 against the dollar on strong greenback demand",
+              "expected": "negative",
+              "predicted": "positive"
+            }
+          ]
+        },
+        "twitter_validation": {
+          "n": 1000,
+          "accuracy": 0.752,
+          "macro_f1": 0.6731042145869495,
+          "macro_precision": 0.7191077383058468,
+          "macro_recall": 0.6440050841621531,
+          "weighted_f1": 0.7437402302776105,
+          "f1_per_class": {
+            "negative": 0.6220472440944882,
+            "neutral": 0.8250728862973761,
+            "positive": 0.5721925133689839
+          },
+          "precision_per_class": {
+            "negative": 0.7523809523809524,
+            "neutral": 0.7828492392807745,
+            "positive": 0.622093023255814
+          },
+          "recall_per_class": {
+            "negative": 0.5302013422818792,
+            "neutral": 0.8721109399075501,
+            "positive": 0.5297029702970297
+          },
+          "support_per_class": {
+            "negative": 149,
+            "neutral": 649,
+            "positive": 202
+          },
+          "confusion_matrix": [
+            [
+              79,
+              64,
+              6
+            ],
+            [
+              24,
+              566,
+              59
+            ],
+            [
+              2,
+              93,
+              107
+            ]
+          ],
+          "texts_per_second": 9.4
+        },
+        "phrasebank": {
+          "n": 1000,
+          "accuracy": 0.955,
+          "macro_f1": 0.9513425844439215,
+          "macro_precision": 0.952137586713822,
+          "macro_recall": 0.9514750370637497,
+          "weighted_f1": 0.9552917712976573,
+          "f1_per_class": {
+            "negative": 0.9561752988047809,
+            "neutral": 0.9665809768637532,
+            "positive": 0.9312714776632303
+          },
+          "precision_per_class": {
+            "negative": 0.975609756097561,
+            "neutral": 0.9774696707105719,
+            "positive": 0.9033333333333333
+          },
+          "recall_per_class": {
+            "negative": 0.9375,
+            "neutral": 0.9559322033898305,
+            "positive": 0.9609929078014184
+          },
+          "support_per_class": {
+            "negative": 128,
+            "neutral": 590,
+            "positive": 282
+          },
+          "confusion_matrix": [
+            [
+              120,
+              3,
+              5
+            ],
+            [
+              2,
+              564,
+              24
+            ],
+            [
+              1,
+              10,
+              271
+            ]
+          ],
+          "texts_per_second": 7.1
+        }
+      }
+    },
+    "cardiffnlp/twitter-roberta-base-sentiment-latest": {
+      "description": "General (non-financial) tweet sentiment RoBERTa, as a control",
+      "parameters_millions": 124.6,
+      "trained_on_phrasebank": false,
+      "sets": {
+        "realistic_headlines": {
+          "n": 30,
+          "accuracy": 0.7,
+          "macro_f1": 0.7045112781954886,
+          "macro_precision": 0.7999999999999999,
+          "macro_recall": 0.7552447552447553,
+          "weighted_f1": 0.726390977443609,
+          "f1_per_class": {
+            "negative": 0.7,
+            "neutral": 0.5714285714285714,
+            "positive": 0.8421052631578947
+          },
+          "precision_per_class": {
+            "negative": 1.0,
+            "neutral": 0.4,
+            "positive": 1.0
+          },
+          "recall_per_class": {
+            "negative": 0.5384615384615384,
+            "neutral": 1.0,
+            "positive": 0.7272727272727273
+          },
+          "support_per_class": {
+            "negative": 13,
+            "neutral": 6,
+            "positive": 11
+          },
+          "confusion_matrix": [
+            [
+              7,
+              6,
+              0
+            ],
+            [
+              0,
+              6,
+              0
+            ],
+            [
+              0,
+              3,
+              8
+            ]
+          ],
+          "texts_per_second": 13.0,
+          "misclassified": [
+            {
+              "text": "TCS board approves ₹18,000 crore share buyback",
+              "expected": "positive",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Crude oil prices surge past $95 a barrel on Middle East tensions",
+              "expected": "negative",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Paytm faces regulatory scrutiny as RBI restricts new deposits",
+              "expected": "negative",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Foreign investors pull out ₹12,000 crore from Indian equities in September",
+              "expected": "negative",
+              "predicted": "neutral"
+            },
+            {
+              "text": "IT sector outlook remains uncertain amid client budget cuts in the US",
+              "expected": "negative",
+              "predicted": "neutral"
+            },
+            {
+              "text": "India's GDP growth seen at 7.2% for the fiscal year, says report",
+              "expected": "positive",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Cement stocks under pressure as demand remains sluggish",
+              "expected": "negative",
+              "predicted": "neutral"
+            },
+            {
+              "text": "L&T wins ₹5,000 crore order for infrastructure project in Middle East",
+              "expected": "positive",
+              "predicted": "neutral"
+            },
+            {
+              "text": "Rupee weakens past 84 against the dollar on strong greenback demand",
+              "expected": "negative",
+              "predicted": "neutral"
+            }
+          ]
+        },
+        "twitter_validation": {
+          "n": 1000,
+          "accuracy": 0.713,
+          "macro_f1": 0.6312754974741009,
+          "macro_precision": 0.6534922519615968,
+          "macro_recall": 0.6190280215599765,
+          "weighted_f1": 0.705153449124773,
+          "f1_per_class": {
+            "negative": 0.5906040268456376,
+            "neutral": 0.7917282127031019,
+            "positive": 0.5114942528735632
+          },
+          "precision_per_class": {
+            "negative": 0.5906040268456376,
+            "neutral": 0.7602836879432624,
+            "positive": 0.6095890410958904
+          },
+          "recall_per_class": {
+            "negative": 0.5906040268456376,
+            "neutral": 0.8258859784283513,
+            "positive": 0.4405940594059406
+          },
+          "support_per_class": {
+            "negative": 149,
+            "neutral": 649,
+            "positive": 202
+          },
+          "confusion_matrix": [
+            [
+              88,
+              61,
+              0
+            ],
+            [
+              56,
+              536,
+              57
+            ],
+            [
+              5,
+              108,
+              89
+            ]
+          ],
+          "texts_per_second": 8.9
+        },
+        "phrasebank": {
+          "n": 1000,
+          "accuracy": 0.674,
+          "macro_f1": 0.5872748257635213,
+          "macro_precision": 0.7115500805585392,
+          "macro_recall": 0.5487232414753376,
+          "weighted_f1": 0.6467365222465941,
+          "f1_per_class": {
+            "negative": 0.5520833333333334,
+            "neutral": 0.7627365356622998,
+            "positive": 0.4470046082949309
+          },
+          "precision_per_class": {
+            "negative": 0.828125,
+            "neutral": 0.6683673469387755,
+            "positive": 0.6381578947368421
+          },
+          "recall_per_class": {
+            "negative": 0.4140625,
+            "neutral": 0.888135593220339,
+            "positive": 0.34397163120567376
+          },
+          "support_per_class": {
+            "negative": 128,
+            "neutral": 590,
+            "positive": 282
+          },
+          "confusion_matrix": [
+            [
+              53,
+              75,
+              0
+            ],
+            [
+              11,
+              524,
+              55
+            ],
+            [
+              0,
+              185,
+              97
+            ]
+          ],
+          "texts_per_second": 7.3
+        }
+      }
+    }
+  }
+}

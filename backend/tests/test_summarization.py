@@ -238,6 +238,7 @@ def test_result_metadata() -> None:
 # --- Factory, ML placeholder, batch isolation --------------------------------------------
 
 def test_factory_selects_implementation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "summarizer_provider", "extractive")
     assert isinstance(get_summarizer(), ExtractiveSummarizer)
     assert isinstance(get_summarizer("ML"), MlSummarizer)
     monkeypatch.setattr(settings, "summarizer_provider", "ml")
@@ -491,3 +492,17 @@ def test_company_suffixes_do_not_cut_a_sentence_short() -> None:
         "Tata Motors Passenger Vehicles Ltd. (TMPV) will raise prices.",
         "Titan Co. Managing Director spoke.",
     ]
+
+
+def test_hugging_face_input_gives_every_article_a_share() -> None:
+    """A 512-token model would otherwise only ever read the first article
+    of a multi-article digest."""
+    from app.services.summarization.huggingface import HuggingFaceSummarizer
+
+    model = HuggingFaceSummarizer("any/model", max_input_tokens=512)
+    articles = tuple(" ".join(f"a{i}w{j}." for j in range(400)) for i in range(5))
+    text = model.input_text(SummaryInput(title="t", text="\n".join(articles), documents=articles))
+    assert all(f"a{i}w0." in text for i in range(5))  # every article's lead is in
+    assert len(text.split()) <= 512 * 0.7
+    single = SummaryInput(title="t", text="only text")
+    assert model.input_text(single) == "only text"

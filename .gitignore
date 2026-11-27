@@ -27,6 +27,8 @@ ml/models/**/*.pt
 # Except the Phase 4 stock predictor (6 MB): committed so teammates don't
 # need a 22-minute training run before the Predict tab works.
 !ml/models/stock_predictor/model.joblib
+# And the LSTM + LightGBM ensemble (4.0.0, the default prediction model, 6 MB).
+!ml/models/stock_predictor_hybrid/model.joblib
 # Per-year results saved during a training run so a crash can resume.
 ml/models/**/checkpoints/
 # Downloaded Hugging Face models (FinBERT, ~420 MB) — re-downloaded

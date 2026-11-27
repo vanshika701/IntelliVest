@@ -35,10 +35,12 @@ from app.services.price_move import get_price_move
 from app.services.sentiment_service import (
     article_text,
     fund_news_phrase,
+    resolve_sentiment_model,
     score_texts,
     sentiment_from_probabilities,
 )
 from app.services.summarization import SummaryFailure, SummaryInput, get_summarizer
+from app.services.summarization.factory import default_summarizer
 from app.services.summarization.textutils import complete_sentences, first_words
 
 logger = logging.getLogger(__name__)
@@ -314,9 +316,9 @@ def log_summary(record: dict) -> None:
             fh.write(line + "\n")
 
 
-def _tag_articles(articles: list[dict]) -> tuple[list[dict], str]:
+def _tag_articles(articles: list[dict], sentiment_model: str | None = None) -> tuple[list[dict], str]:
     """Per-article sentiment tags with the same engine as the sentiment section."""
-    probabilities, engine = score_texts([article_text(a) for a in articles])
+    probabilities, engine = score_texts([article_text(a) for a in articles], sentiment_model)
     tagged = []
     for article, probs in zip(articles, probabilities, strict=True):
         sentiment = sentiment_from_probabilities(probs)
@@ -326,19 +328,28 @@ def _tag_articles(articles: list[dict]) -> tuple[list[dict], str]:
 
 # --- Entry point -------------------------------------------------------------------------
 
-async def get_news_digest(instrument_id: str) -> dict:
-    """The news digest plus the price move. The move isn't part of the cached
-    digest: it changes through the day, and funds can share a sector digest."""
-    digest, move = await asyncio.gather(_news_digest(instrument_id), get_price_move(instrument_id))
+async def get_news_digest(
+    instrument_id: str, summarizer: str | None = None, sentiment_model: str | None = None
+) -> dict:
+    """The news digest plus the price move, summarized by `summarizer` and
+    tagged by `sentiment_model` (defaults: the configured ones). Raises
+    ValueError for an unknown summarizer or sentiment model. The move isn't
+    part of the cached digest: it changes through the day, and funds can
+    share a sector digest."""
+    chosen = get_summarizer(summarizer)
+    sentiment_name = resolve_sentiment_model(sentiment_model)
+    digest, move = await asyncio.gather(
+        _news_digest(instrument_id, chosen, summarizer or default_summarizer(), sentiment_name),
+        get_price_move(instrument_id),
+    )
     return {**digest, "price_move": move}
 
 
-async def _news_digest(instrument_id: str) -> dict:
+async def _news_digest(instrument_id: str, summarizer, summarizer_key: str, sentiment_model: str) -> dict:
     """One combined summary of the top 5 articles, plus those 5 articles
     (headline, source, date, sentiment tag) for the list beneath it."""
-    summarizer = get_summarizer()
     max_words = settings.summarizer_max_words
-    fingerprint = summarizer.cache_fingerprint()
+    fingerprint = f"{summarizer.cache_fingerprint()}|{sentiment_model}"
 
     name, candidates, topic = await _gather_candidates(instrument_id)
     top = pick_top_articles(candidates, name, datetime.now(UTC), topic=topic)
@@ -349,6 +360,7 @@ async def _news_digest(instrument_id: str) -> dict:
         "scope_name": subject,
         "provider": summarizer.provider,
         "method": summarizer.method,
+        "summarizer": summarizer_key,
         "max_words": max_words,
         "summary": None,
         "word_count": 0,
@@ -383,7 +395,7 @@ async def _news_digest(instrument_id: str) -> dict:
     )
     (summary,), (tagged, engine) = await asyncio.gather(
         asyncio.to_thread(summarizer.summarize_batch, [request]),
-        asyncio.to_thread(_tag_articles, top),
+        asyncio.to_thread(_tag_articles, top, sentiment_model),
     )
 
     for _, kind in inputs:
@@ -428,7 +440,7 @@ async def _news_digest(instrument_id: str) -> dict:
                 "summary": summary.summary,
                 "provider": summary.provider,
                 "method": summary.method,
-                "algorithm_version": fingerprint,
+                "algorithm_version": summarizer.cache_fingerprint(),
                 "max_words": max_words,
                 "latency_ms": summary.latency_ms,
             },

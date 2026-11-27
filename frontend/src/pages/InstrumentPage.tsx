@@ -3,6 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { AlertCircle, ArrowLeft, RefreshCw, SearchX } from 'lucide-react'
 import { instrumentsApi } from '../api/instruments'
 import { useApi } from '../hooks/useApi'
+import { useModelChoice } from '../hooks/useModelChoice'
+import { ModelSelect } from '../components/ui/ModelSelect'
 import { getRangeAvailability, pickDefaultRange, pointsForRange, type RangeKey } from '../lib/ranges'
 import { computeCagr } from '../lib/returns'
 import { InstrumentHeader, InstrumentHeaderSkeleton } from '../components/instrument/InstrumentHeader'
@@ -26,11 +28,15 @@ function InstrumentView({ id }: { id: string }) {
   const detail = useApi(id, () => instrumentsApi.detail(id), isStock ? 60_000 : undefined)
   const history = useApi(id, () => instrumentsApi.history(id))
   const intraday = useApi(isStock ? id : null, () => instrumentsApi.intraday(id))
-  const sentiment = useApi(id, () => instrumentsApi.sentiment(id))
+  const [sentimentModel, setSentimentModel] = useModelChoice('sentiment')
+  const [summarizer, setSummarizer] = useModelChoice('summarizer')
+  const sentiment = useApi(`${id}|${sentimentModel}`, () => instrumentsApi.sentiment(id, sentimentModel))
   // The news summary can take a few seconds (article fetching), so it
   // starts only after the header, chart and stats have rendered.
   const digestReady = Boolean(detail.data) && !history.loading
-  const digest = useApi(digestReady ? id : null, () => instrumentsApi.newsDigest(id))
+  const digest = useApi(digestReady ? `${id}|${summarizer}|${sentimentModel}` : null, () =>
+    instrumentsApi.newsDigest(id, summarizer, sentimentModel),
+  )
 
   const [selectedRange, setSelectedRange] = useState<RangeKey | null>(null)
   const now = useMemo(() => new Date(), [])
@@ -113,6 +119,12 @@ function InstrumentView({ id }: { id: string }) {
         loading={sentiment.loading}
         error={sentiment.error}
         onRetry={sentiment.reload}
+        controls={
+          <>
+            <ModelSelect kind="sentiment" label="Sentiment model" value={sentimentModel} onChange={setSentimentModel} />
+            <ModelSelect kind="summarizer" label="Summary model" value={summarizer} onChange={setSummarizer} />
+          </>
+        }
       >
         <NewsDigest
           data={digest.data}

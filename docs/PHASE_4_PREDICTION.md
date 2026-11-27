@@ -13,6 +13,12 @@ Built 2026-11-27.
 - [ ] Phase 7: use the stored rank as a second tilt (see results first: it is weak)
 - [ ] Phase 10 B18: replace the mock stock predictor with these stored rows
 
+**Update 2026-11-28: model 4.0.0 is the default.** It averages LightGBM (the same 27 inputs as
+3.0.0) with an LSTM that reads the last 64 days, after a comparison of LSTM + LightGBM designs from
+the literature. Users can still pick 3.0.0 (LightGBM alone) in the Predict panel (`?model=lgbm`).
+Results and method: the README section "ML models: comparisons and model choice" and `ml/log.md`
+Phase 4 Run 5. The 3.0.0 results below still describe the LightGBM option.
+
 ## What it predicts
 
 **Since model 2.0.0: the stock against the Nifty 50.** For a stock and a horizon, how far ahead of or
@@ -50,7 +56,7 @@ which scores well on error and tells the user nothing.
 
 ## Data
 
-**Model 3.0.0 (live) trains on 173 NSE stocks:** the 20 tracked ones plus 153 picked at random
+**Model 3.0.0 (the LightGBM option) trains on 173 NSE stocks:** the 20 tracked ones plus 153 picked at random
 (fixed seed) from NSE's equity list, among stocks with prices back to 2012 and a median of at least
 ₹2 crore traded a day. They span every size, including many that fell hard. The list is
 `ml/data/broad_universe.csv`, made by `ml/download_broad_universe.py`. They are still survivors:
@@ -75,7 +81,7 @@ whole label window ends before that year starts. Two comparisons:
   model can't beat this, its other inputs add nothing.
 - **Always up:** for the chance of going up.
 
-## Results, model 3.0.0: against the Nifty, 173 stocks (live)
+## Results, model 3.0.0: against the Nifty, 173 stocks (LightGBM option)
 
 Walk-forward 2020–2025 as before. Training and test rows keep every 8th trading day (the same days
 for every stock), and each fit uses a seeded random sample of at most 450,000 rows, to fit in a

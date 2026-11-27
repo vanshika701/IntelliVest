@@ -40,6 +40,8 @@ class StockPrediction(BaseModel):
     rank_of: int
     # False: not one of the 20 tracked stocks the model was tested on.
     tracked: bool
+    model: str  # prediction model key, e.g. "lstm_lgbm"
+    model_label: str
     model_version: str
     artifact_hash: str
     test_result: PredictionTestResult | None

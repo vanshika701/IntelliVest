@@ -50,22 +50,23 @@ async def upsert_news_articles(records: list[dict]) -> int:
     return result.upserted_count + result.modified_count
 
 
-async def find_articles_needing_sentiment(model: str, limit: int) -> list[dict]:
-    """Newest-first articles not yet scored by `model` — covers both
-    never-scored articles and ones scored by an older model."""
+async def find_articles_needing_sentiment(model: str, limit: int, field: str = "sentiment") -> list[dict]:
+    """Newest-first articles whose `field` wasn't scored by `model` — covers
+    both never-scored articles and ones scored by an older model. `field` is
+    "sentiment" for the default model, "sentiments.<key>" for the others."""
     cursor = (
         get_news_collection()
-        .find({"sentiment.model": {"$ne": model}}, {"_id": 1, "title": 1, "description": 1})
+        .find({f"{field}.model": {"$ne": model}}, {"_id": 1, "title": 1, "description": 1})
         .sort("published_at", -1)
         .limit(limit)
     )
     return await cursor.to_list(length=limit)
 
 
-async def set_article_sentiments(updates: list[tuple[ObjectId, dict]]) -> int:
+async def set_article_sentiments(updates: list[tuple[ObjectId, dict]], field: str = "sentiment") -> int:
     if not updates:
         return 0
-    operations = [UpdateOne({"_id": _id}, {"$set": {"sentiment": s}}) for _id, s in updates]
+    operations = [UpdateOne({"_id": _id}, {"$set": {field: s}}) for _id, s in updates]
     result = await get_news_collection().bulk_write(operations, ordered=False)
     return result.modified_count
 
@@ -85,14 +86,20 @@ async def get_recent_articles_for_ticker(ticker: str, since: datetime, limit: in
     return await cursor.to_list(length=limit)
 
 
-async def get_scored_articles_for_ticker(ticker: str, since: datetime) -> list[dict]:
-    """Scored articles for one ticker since `since`, newest first. Served
-    by the (tickers, published_at) index."""
+async def get_scored_articles_for_ticker(ticker: str, since: datetime, field: str = "sentiment") -> list[dict]:
+    """Scored articles for one ticker since `since`, newest first, with the
+    score from `field` returned as "sentiment" (see find_articles_needing_sentiment).
+    Served by the (tickers, published_at) index."""
     cursor = get_news_collection().find(
-        {"tickers": ticker, "published_at": {"$gte": since}, "sentiment": {"$exists": True}},
-        {"_id": 0, "url": 1, "title": 1, "source": 1, "published_at": 1, "sentiment": 1},
+        {"tickers": ticker, "published_at": {"$gte": since}, field: {"$exists": True}},
+        {"_id": 0, "url": 1, "title": 1, "source": 1, "published_at": 1, field: 1},
     ).sort("published_at", -1)
-    return await cursor.to_list(length=None)
+    docs = await cursor.to_list(length=None)
+    if field != "sentiment":
+        parent, key = field.split(".", 1)
+        for doc in docs:
+            doc["sentiment"] = doc.pop(parent)[key]
+    return docs
 
 
 _HEADLINE_FIELDS = {
