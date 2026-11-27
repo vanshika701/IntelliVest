@@ -28,6 +28,8 @@ function prediction(overrides: Partial<StockPrediction> = {}): StockPrediction {
     artifact_hash: 'abc',
     test_result: {
       horizon_group: 'Up to 1 week',
+      tested_on: 'tracked',
+      stock_count: 173,
       test_years: [2020, 2025],
       range_hit_rate: 0.82,
       call_accuracy: 0.5,
@@ -72,7 +74,8 @@ describe('PredictionPanel', () => {
   it('flags stocks the model was not tested on', async () => {
     vi.spyOn(instrumentsApi, 'prediction').mockResolvedValue(prediction({ tracked: false, rank: 21, rank_of: 21 }))
     render(<PredictionPanel instrument={{ ...instrument, name: 'Coal India' }} />)
-    expect(await screen.findByText(/Coal India isn't one of them/)).toBeInTheDocument()
+    expect(await screen.findByText(/Coal India isn't one of the 20 tracked stocks/)).toBeInTheDocument()
+    expect(screen.getByText(/the 173 NSE stocks of every size/)).toBeInTheDocument()
     expect(screen.getByText('21st of 21 with the 20 tracked stocks')).toBeInTheDocument()
   })
 

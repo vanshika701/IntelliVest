@@ -272,3 +272,32 @@ def test_rows_from_an_older_model_are_not_served(client, auth_headers, monkeypat
     client.portal.call(prediction_repository.replace_predictions, old)
     url = "/api/v1/instruments/stock-TCS.NS/prediction?amount=7"
     assert client.get(url, headers=auth_headers).status_code == 404
+
+
+def test_test_results_come_from_the_matching_stock_pool() -> None:
+    scores = {
+        "range_hit_rate": 0.8,
+        "call_accuracy": 0.5,
+        "majority_call_accuracy": 0.52,
+        "beat_share": 0.48,
+    }
+    metrics = {
+        "model_version": "test",
+        "data": {"stocks": ["A"] * 173},
+        "evaluation": {
+            "test_years": [2020, 2025],
+            "overall": {"Up to 1 week": scores},
+            "tracked_stocks_only": {"Up to 1 week": {**scores, "range_hit_rate": 0.86}},
+        },
+    }
+    predictor = fake_predictor()
+    predictor.metrics = metrics
+    tracked = predictor.test_result(5, tracked=True)
+    untracked = predictor.test_result(5, tracked=False)
+    assert (tracked["tested_on"], tracked["range_hit_rate"]) == ("tracked", 0.86)
+    assert (untracked["tested_on"], untracked["range_hit_rate"], untracked["stock_count"]) == (
+        "all",
+        0.8,
+        173,
+    )
+    assert predictor.test_result(504, tracked=True) is None  # no results for that horizon

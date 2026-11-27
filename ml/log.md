@@ -532,6 +532,32 @@ month and none at 1 year) and never beat guessing "up".
 - Problem: the shell mangled a long inline Python edit script; edits now
   go through script files.
 
+### Run 4 — 173 stocks of every size, shipped model 3.0.0 (2026-11-27)
+
+Same label as Run 3 (against the Nifty). Data: the 20 tracked stocks plus
+153 random NSE stocks (seed 42, from 600 candidates) with prices back to
+2012 and median traded value of at least Rs 2 crore a day; 767,911
+stock-days. Rows: every 8th trading day for training and testing
+(1,590,837 labelled), each fit a seeded sample of at most 450,000 rows.
+About 3 minutes per fold, 21 minutes in all.
+
+| Horizon | Range hit (173) | Range hit (20) | Call right | Majority call | Rank corr (173) | Top 5 − bottom 5 |
+|---|---|---|---|---|---|---|
+| Up to 1 week | 80.7% | 86.5% | 51.5% | 52.7% | 0.051 | +0.74% |
+| 1 week to 1 month | 80.1% | 86.4% | 51.2% | 51.3% | 0.039 | +2.06% |
+| 1 to 6 months | 80.1% | 86.9% | 51.4% | 51.9% | 0.021 | +4.73% |
+| 6 months to 2 years | 81.6% | 90.4% | 51.5% | 59.6% | −0.027 | −7.53% |
+
+- Bounce bias gone: correlation of past 3-month return with chance of
+  beating the Nifty on the newest day, −0.77 (2.0.0) to −0.03.
+- Better short-horizon ranking across many stocks; worse calibration on
+  the 20 large caps (ranges too wide) and slightly worse ranking among them.
+- Problem: three runs ran out of memory. Windows had about 35 GB of
+  commit (RAM + page file) and other apps held about 28 GB. Fixes: 32-bit
+  inputs, only needed columns kept, sampling before copying, a row cap
+  (800k, then 600k, then 450k), and per-year checkpoints so a crash
+  resumes instead of restarting.
+
 ---
 
 ## Phase 5 — Financial Sentiment Analysis

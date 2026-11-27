@@ -38,6 +38,8 @@ with this script) and metrics.json (tracked).
 """
 
 import argparse
+import gc
+import hashlib
 import json
 import sys
 import time
@@ -96,6 +98,19 @@ STRIDE = 4
 # same-day comparisons between stocks still work) keeps it within a
 # laptop's memory and a couple of hours.
 BROAD_STRIDE = 8
+# Each fit uses at most this many rows (a seeded random sample). The
+# 20-stock runs never reach it.
+MAX_TRAIN_ROWS = 450_000
+# Columns kept after labelling; everything else is dropped to save memory.
+KEEP_COLUMNS = [
+    "ticker",
+    "date",
+    "horizon",
+    "label_end",
+    "log_return",
+    "target",
+    "train_row",
+]
 MODEL_PARAMS = {
     "max_iter": 250,
     "learning_rate": 0.05,
@@ -210,14 +225,15 @@ def fit(
         categorical_features=[FEATURE_COLUMNS.index(c) for c in CATEGORICAL_FEATURES],
     )
     model.fit(
-        train[FEATURE_COLUMNS].to_numpy(), buckets.label(train["target"].to_numpy())
+        train[FEATURE_COLUMNS].to_numpy(dtype=np.float32),
+        buckets.label(train["target"].to_numpy()),
     )
     return model, buckets
 
 
 def predict(model, buckets: Buckets, rows: pd.DataFrame) -> pd.DataFrame:
     probs = full_probabilities(
-        model.predict_proba(rows[FEATURE_COLUMNS].to_numpy()),
+        model.predict_proba(rows[FEATURE_COLUMNS].to_numpy(dtype=np.float32)),
         model.classes_,
         buckets.count,
     )
@@ -319,16 +335,55 @@ def score_by_group(rows: pd.DataFrame, pred: pd.DataFrame, base: pd.DataFrame) -
     return out
 
 
+def training_rows(data: pd.DataFrame, mask: pd.Series) -> tuple[pd.DataFrame, int]:
+    """Rows where `mask` holds, as a seeded random sample of at most
+    MAX_TRAIN_ROWS (multiclass boosting keeps several arrays per row and
+    class, so more rows run a laptop out of memory). Sampling before
+    slicing means only the sample is ever copied. Returns (rows, how many
+    were eligible)."""
+    idx = np.flatnonzero(mask.to_numpy())
+    eligible = len(idx)
+    if eligible > MAX_TRAIN_ROWS:
+        idx = np.sort(
+            np.random.default_rng(42).choice(idx, MAX_TRAIN_ROWS, replace=False)
+        )
+    return data.iloc[idx], eligible
+
+
+SCORED_COLUMNS = ["ticker", "date", "horizon", "log_return"]
+
+
 def walk_forward(
-    data: pd.DataFrame, test_years: tuple[int, ...], params: dict
+    data: pd.DataFrame,
+    test_years: tuple[int, ...],
+    params: dict,
+    checkpoint_dir: Path | None = None,
 ) -> tuple[dict, dict, dict]:
     """Per-year results, pooled results, and pooled results for the 20
-    tracked stocks alone."""
+    tracked stocks alone.
+
+    With `checkpoint_dir`, each finished year is saved there and skipped on
+    a rerun, so a crash (e.g. out of memory) loses at most one year."""
     folds = {}
     preds, bases, tests = [], [], []
     for year in test_years:
+        saved = checkpoint_dir / f"{year}.parquet" if checkpoint_dir else None
+        if saved and saved.exists():
+            frame = pd.read_parquet(saved)
+            folds[str(year)] = json.loads(saved.with_suffix(".json").read_text())
+            tests.append(frame[SCORED_COLUMNS])
+            preds.append(frame[["low", "mid", "high", "chance_beat"]])
+            bases.append(
+                frame[["base_low", "base_mid", "base_high", "base_chance_beat"]].rename(
+                    columns=lambda c: c.removeprefix("base_")
+                )
+            )
+            print(f"  {year}: loaded from checkpoint")
+            continue
         start, end = pd.Timestamp(year, 1, 1), pd.Timestamp(year + 1, 1, 1)
-        train = data[(data["label_end"] < start) & data["train_row"]]
+        train, eligible = training_rows(
+            data, (data["label_end"] < start) & data["train_row"]
+        )
         test = data[(data["date"] >= start) & (data["date"] < end)]
         if test.empty or train.empty:
             continue
@@ -337,15 +392,23 @@ def walk_forward(
         pred, base = predict(model, buckets, test), baseline(train, test)
         folds[str(year)] = {
             "train_rows": len(train),
+            "eligible_train_rows": eligible,
             "train_seconds": round(time.time() - began, 1),
             "groups": score_by_group(test, pred, base),
         }
         print(
             f"  {year}: trained on {len(train):,} rows in {folds[str(year)]['train_seconds']}s, tested {len(test):,}"
         )
+        test = test[SCORED_COLUMNS]
+        if saved:
+            saved.parent.mkdir(parents=True, exist_ok=True)
+            pd.concat([test, pred, base.add_prefix("base_")], axis=1).to_parquet(saved)
+            saved.with_suffix(".json").write_text(json.dumps(folds[str(year)]))
         preds.append(pred)
         bases.append(base)
         tests.append(test)
+        del model, train
+        gc.collect()
     all_tests, all_preds, all_bases = (
         pd.concat(tests),
         pd.concat(preds),
@@ -409,20 +472,51 @@ def main() -> None:
     features = compute_features(prices, market)
     breaks = features.groupby("ticker")["segment"].max()
     data = labelled_rows(features, stride, thin=args.universe == "broad")
+    data = data[KEEP_COLUMNS + FEATURE_COLUMNS]
+    # 32-bit inputs halve the largest table; the model bins them anyway.
+    floats = [c for c in FEATURE_COLUMNS if data[c].dtype == "float64"]
+    data[floats] = data[floats].astype("float32")
+    # Keep only what's reported later, then free the full feature table.
+    stock_days, first_day, last_day = (
+        len(features),
+        features["date"].min(),
+        features["date"].max(),
+    )
+    stocks = sorted(features["ticker"].unique().tolist())
+    newest = features[features["date"] == last_day].copy()
+    del features
     print(
-        f"  {len(features):,} stock-days, {len(data):,} labelled rows, {int(data['train_row'].sum()):,} kept for training"
+        f"  {stock_days:,} stock-days, {len(data):,} labelled rows, {int(data['train_row'].sum()):,} kept for training"
     )
 
     params = {**MODEL_PARAMS, "max_iter": 60} if args.quick else MODEL_PARAMS
     years = TEST_YEARS[-2:] if args.quick else TEST_YEARS
     print("Walk-forward test...")
-    folds, overall, tracked_overall = walk_forward(data, years, params)
+    # Checkpoints are only reused by an identical run (same settings and data).
+    run_key = hashlib.sha256(
+        json.dumps(
+            [
+                args.universe,
+                params,
+                stride,
+                MAX_TRAIN_ROWS,
+                stock_days,
+                len(data),
+                TARGET,
+            ],
+            sort_keys=True,
+            default=str,
+        ).encode()
+    ).hexdigest()[:12]
+    folds, overall, tracked_overall = walk_forward(
+        data, years, params, model_dir / "checkpoints" / run_key
+    )
 
     print("Training the final model on all data...")
-    final_train = data[data["train_row"]]
+    final_train, final_eligible = training_rows(data, data["train_row"])
     model, buckets = fit(final_train, params)
 
-    check = latest_day_check(model, buckets, features)
+    check = latest_day_check(model, buckets, newest)
     model_dir.mkdir(parents=True, exist_ok=True)
     artifact = {
         "model": model,
@@ -447,14 +541,16 @@ def main() -> None:
         "buckets": len(buckets.edges) + 1,
         "data": {
             "source": "Yahoo Finance via yfinance (adjusted daily closes)",
-            "stocks": sorted(features["ticker"].unique().tolist()),
+            "stocks": stocks,
             "market": [NIFTY, VIX],
-            "start": str(features["date"].min().date()),
-            "end": str(features["date"].max().date()),
-            "stock_days": len(features),
+            "start": str(first_day.date()),
+            "end": str(last_day.date()),
+            "stock_days": stock_days,
             "labelled_rows": len(data),
             "training_rows_final": len(final_train),
+            "eligible_training_rows_final": final_eligible,
             "stride": stride,
+            "max_train_rows_per_fit": MAX_TRAIN_ROWS,
             "test_rows_thinned": args.universe == "broad",
             "data_breaks": {t: int(n) for t, n in breaks.items() if n},
             "break_threshold": BREAK_THRESHOLD,

@@ -154,7 +154,8 @@ These apply across every phase from Phase 0 onward — not a separate late-stage
 LSTM/GRU) predicts a return range and chance up for any horizon from 1 day to 2 years, chosen by the
 user on the stock page's Predict tab. Walk-forward tested on 2020–2025: ranges are calibrated, but
 direction doesn't beat "always up". Model 2.0.0 (same day) predicts beating the Nifty 50 instead,
-so answers go both ways. See `docs/PHASE_4_PREDICTION.md`.
+so answers go both ways; model 3.0.0 trains it on 173 NSE stocks of every size, which removed its
+"falling stocks bounce back" bias. See `docs/PHASE_4_PREDICTION.md`.
 
 **Goal:** First deep learning module — sequence models on time series.
 

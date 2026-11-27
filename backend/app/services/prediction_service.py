@@ -102,15 +102,21 @@ class Predictor:
         out["chance_beat"] = chance_above_zero(probs, self.buckets)
         return out
 
-    def test_result(self, trading_days: int) -> dict | None:
+    def test_result(self, trading_days: int, tracked: bool) -> dict | None:
+        """Test results for horizons like this one: on the 20 tracked stocks
+        for a tracked stock, on every test stock otherwise."""
         if not self.metrics:
             return None
+        evaluation = self.metrics["evaluation"]
         group = horizon_group(trading_days)
-        scores = self.metrics["evaluation"]["overall"].get(group)
+        pool = "tracked_stocks_only" if tracked and "tracked_stocks_only" in evaluation else "overall"
+        scores = evaluation[pool].get(group)
         if not scores:
             return None
         return {
             "horizon_group": group,
+            "tested_on": "tracked" if pool == "tracked_stocks_only" else "all",
+            "stock_count": len(self.metrics["data"]["stocks"]),
             "test_years": self.metrics["evaluation"]["test_years"],
             "range_hit_rate": scores["range_hit_rate"],
             "call_accuracy": scores["call_accuracy"],
@@ -318,7 +324,7 @@ async def get_prediction(instrument_id: str, amount: int, unit: Unit) -> dict:
     as_of = first["as_of"].date()
     predictor = load_predictor()
     test_result = (
-        predictor.test_result(trading_days)
+        predictor.test_result(trading_days, stock_listing.is_tracked(ticker))
         if predictor and predictor.artifact_hash == first["artifact_hash"]
         else None
     )

@@ -131,6 +131,10 @@ export type HorizonUnit = 'days' | 'months' | 'years'
 /** How the model did on past years it never trained on (Phase 4). */
 export interface PredictionTestResult {
   horizon_group: string
+  /** 'tracked': results on the 20 tracked stocks; 'all': on every test stock. */
+  tested_on: 'tracked' | 'all'
+  /** Stocks the model was trained and tested on. */
+  stock_count: number
   test_years: number[]
   range_hit_rate: number
   /** Beat/lag call (chance above or below 50%) right. */

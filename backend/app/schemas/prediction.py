@@ -11,6 +11,9 @@ class PredictionTestResult(BaseModel):
     like the one asked for."""
 
     horizon_group: str
+    # "tracked": the 20 tracked stocks; "all": every stock in the test set.
+    tested_on: str
+    stock_count: int  # stocks the model was trained and tested on
     test_years: list[int]
     range_hit_rate: float  # share of real results inside the range (aim: 0.8)
     call_accuracy: float  # beat/lag call (chance above or below 50%) right

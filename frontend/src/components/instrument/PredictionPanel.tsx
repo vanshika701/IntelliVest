@@ -110,10 +110,10 @@ function Result({ p, name }: { p: StockPrediction; name: string }) {
       <p className="text-xs text-[var(--color-text-muted)]">
         Ahead means the stock does better than the Nifty 50 index over the same days, whether the market rises or falls.
       </p>
-      {!p.tracked && (
+      {!p.tracked && test && (
         <p className="rounded-md bg-[var(--color-background-tertiary)]/40 px-3 py-2 text-xs text-[var(--color-text-secondary)]">
-          The model was trained and tested on 20 large companies. {name} isn't one of them, so its test results may
-          not hold here, especially for smaller companies.
+          {name} isn't one of the 20 tracked stocks. Test results above are for the {test.stock_count} NSE stocks of
+          every size the model was trained and tested on, not for {name} alone.
         </p>
       )}
       <p className="text-[11px] text-[var(--color-text-muted)]">Model {p.model_version}</p>
