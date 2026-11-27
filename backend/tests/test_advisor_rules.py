@@ -185,6 +185,16 @@ def test_concentration() -> None:
     action = next(a for a in build_actions(modules(holdings=held))["actions"] if a["id"] == "concentration")
     assert action["title"] == "TCS is 20% of everything you've invested"
     assert action["link"] == "/instrument/stock-TCS.NS"
+    assert action["data"]["share_pct"] == {"stock-TCS.NS": 20.0}
+
+
+def test_several_concentrated_stocks_share_one_card() -> None:
+    held = holdings([("stock-TCS.NS", "TCS", "STOCK", 30_000.0), ("stock-ITC.NS", "ITC", "STOCK", 20_000.0),
+                     ("mf-118987", "HDFC Corporate Bond", "MF", 50_000.0)])
+    found = [a for a in build_actions(modules(holdings=held))["actions"] if a["id"] == "concentration"]
+    assert len(found) == 1
+    assert found[0]["title"] == "2 stocks are each over 15% of everything you've invested"
+    assert found[0]["detail"].startswith("TCS (30%), ITC (20%).")
 
 
 def _held_wipro():

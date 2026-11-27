@@ -87,7 +87,7 @@ year") and says why it doesn't use direction.
 - [x] **6. Frontend.** Enable the disabled "AI Advisor" sidebar item
       (`/ai`): action cards with "why" and module chips, a module status
       panel, links to the pages each action came from.
-- [ ] **7. Evaluation.** 15-20 hand-written user situations (no emergency
+- [x] **7. Evaluation.** 15-20 hand-written user situations (no emergency
       fund, heavy EMIs, drifted portfolio, nothing invested, all modules
       down...) with the expected top actions, checked automatically. Plus:
       every action traceable to module facts; LLM wording fallback rate;

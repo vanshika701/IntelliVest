@@ -878,3 +878,44 @@ Script: `ml/backtest_portfolio.py`; results: `ml/models/portfolio_backtest/metri
   which flatters all stock strategies against the index; ^NSEI excludes
   dividends (~1-1.5% a year). Both affect the index comparison more than
   min-variance vs equal weight, which share the universe.
+
+## Phase 9 — AI Investment Advisor
+
+### Scenario evaluation of the rules advisor (2026-11-27)
+
+No model is trained in Phase 9: the advisor is rules over the other modules'
+outputs. Script: `ml/evaluate_advisor.py`; scenarios:
+`backend/tests/advisor_scenarios.py`; results:
+`ml/models/advisor_eval/metrics.json`. The same checks run in the test suite
+(`backend/tests/test_advisor_eval.py`).
+
+- **Method:** no dataset of "correct advice" exists, so, as with the Phase 3
+  and 5 realistic-text tests, 18 hand-written user situations (new user,
+  overspender, no emergency fund, critical and high EMIs, drifted and
+  on-target portfolios, all money in one stock, bad news with and without a
+  falling sector, unaffordable goal, stale plan, short-horizon conservative
+  plan, unclassifiable funds, profile without a plan, everything wrong at
+  once, savings not entered). Expectations were written from each situation
+  before running the rules: which action comes first, which must and must
+  not appear, which setup steps.
+- **Results:** 18/18 scenarios give the expected advice; all 10 rules are
+  triggered somewhere. 109 module knock-outs (every usable module, every
+  scenario): 0 problems — advice still built, marked partial, never citing
+  the missing module. 50 ₹ figures shown in actions: all traced to the
+  action's data or its source modules.
+- **The checks were tested too:** putting investing before the safety net,
+  adding an invented ₹ figure, or citing a missing module each makes the
+  checks fail (`test_advisor_eval.py`).
+- **Problems found and fixed while writing the scenarios:**
+  - Several stocks over 15% each produced one card per stock (three cards
+    for one problem); now one combined card.
+  - Two scenario spending categories were misspelt (`transport`,
+    `shopping`). `analyze_budget` silently ignores unknown ids, so the
+    spending would have vanished; the scenario builder now rejects them.
+  - Earlier, on real data: investing advice for a user without a budget
+    didn't say the emergency-fund and debt checks had been skipped; it does now.
+- **Not measured:** the optional LLM wording (no key configured); its number
+  guard is unit-tested with changed, reordered and failed replies.
+- **Limits:** scenarios written by the developers, not reviewed by a
+  certified planner; they check decisions on realistic inputs, not whether
+  real users find the advice useful, which needs a user study.

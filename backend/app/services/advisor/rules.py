@@ -191,23 +191,34 @@ def rebalance_action(holdings: dict, plan: dict) -> list[dict]:
 
 
 def concentration_actions(holdings: dict) -> list[dict]:
+    """One action for every stock above CONCENTRATION_PCT of all holdings,
+    combined into a single card when there are several."""
     if not is_usable(holdings):
         return []
     total = holdings["data"]["total_value"]
-    actions = []
-    for h in holdings["data"]["holdings"]:
-        if h["asset_class"] != "equity" or not h["current_value"] or not total:
-            continue
-        share = h["current_value"] / total * 100
-        if share > CONCENTRATION_PCT:
-            actions.append(action(
-                "concentration", "medium", f"{h['name']} is {share:.0f}% of everything you've invested",
-                f"One company above {CONCENTRATION_PCT:g}% means its bad news hits your whole portfolio. "
-                "Add to other holdings rather than this one.",
-                [holdings], f"/instrument/{h['instrument_id']}", {"share_pct": round(share, 1)},
-                about=["You hold"],
-            ))
-    return actions
+    heavy = [
+        (h, h["current_value"] / total * 100) for h in holdings["data"]["holdings"]
+        if h["asset_class"] == "equity" and h["current_value"] and total
+        and h["current_value"] / total * 100 > CONCENTRATION_PCT
+    ]
+    if not heavy:
+        return []
+    heavy.sort(key=lambda pair: pair[1], reverse=True)
+    shares = {h["instrument_id"]: round(share, 1) for h, share in heavy}
+    if len(heavy) == 1:
+        h, share = heavy[0]
+        title = f"{h['name']} is {share:.0f}% of everything you've invested"
+        detail = (f"One company above {CONCENTRATION_PCT:g}% means its bad news hits your whole portfolio. "
+                  "Add to other holdings rather than this one.")
+        link = f"/instrument/{h['instrument_id']}"
+    else:
+        listed = ", ".join(f"{h['name']} ({share:.0f}%)" for h, share in heavy)
+        title = f"{len(heavy)} stocks are each over {CONCENTRATION_PCT:g}% of everything you've invested"
+        detail = (f"{listed}. A company's bad news then hits your whole portfolio; spread new money "
+                  "across other holdings instead.")
+        link = "/investments"
+    return [action("concentration", "medium", title, detail, [holdings], link,
+                   {"share_pct": shares}, about=["You hold"])]
 
 
 def review_actions(holdings: dict, sentiment: dict, sectors: dict) -> list[dict]:
