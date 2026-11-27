@@ -62,7 +62,7 @@ class TaskResponse(BaseModel):
     vault: str | None = None
     outcome: str | None = None
     reason: str | None = None
-    amount_out: int | None = None
+    amount_out: str | None = None  # base units; can exceed 64 bits
     evidence: list[EvidenceView] = []
     proposal: dict | None = None
     last_error: str | None = None

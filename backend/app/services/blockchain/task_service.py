@@ -10,16 +10,20 @@ from datetime import UTC, datetime
 from app.data import blockchain_repository as repo
 from app.services.blockchain.formats import EvidenceStatus, Step
 
-# Unfinished states keep `active` true. Final: pending_user is not final on
-# chain, but the worker is done; the event reader moves it on.
+# Worker states: queued -> opening -> evidence -> proposing -> submitted.
+# The event reader then sets pending_user, executed or rejected. Others end
+# the task early: no_trade (advisor passed), expired, failed.
 STATES = (
     "queued",
     "opening",
     "evidence",
     "proposing",
+    "submitted",
     "pending_user",
     "executed",
     "rejected",
+    "no_trade",
+    "expired",
     "failed",
 )
 

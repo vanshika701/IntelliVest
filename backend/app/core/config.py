@@ -75,6 +75,14 @@ class Settings(BaseSettings):
     blockchain_advisor_private_key: SecretStr | None = None
     blockchain_relayer_private_key: SecretStr | None = None
     blockchain_sip_runner_private_key: SecretStr | None = None
+    # Model versions registered on chain for each signer (see
+    # backend/scripts/register_models.py). Unset: that evidence step is skipped.
+    blockchain_sentiment_model_version: str | None = None
+    blockchain_stock_model_version: str | None = None
+    # Blocks to wait before trusting an event (0 locally; a few on a testnet).
+    blockchain_confirmations: int = 0
+    # Where the event reader starts: the deployment block on a testnet.
+    blockchain_start_block: int = 0
 
     # External API keys — needed from Phase 1 onward, optional for now so
     # the app still boots without them during Phase 0.

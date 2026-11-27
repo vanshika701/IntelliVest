@@ -240,8 +240,10 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
 - [x] **B11.** Wallet linking (one-time nonce), repositories, indexes and `/api/v1/blockchain/...`.
       Follow routes -> services -> data. Routes 404 while the flag is off (except `/status`);
       creating a task only queues it, one unfinished task per user and fund.
-- [ ] **B12.** Background worker and event reader: retry, timeout, no double submission, resume
-      after restart, handle reorganized blocks. Requests never wait for the chain.
+- [x] **B12.** Background worker and event reader: retry, timeout, no double submission, resume
+      after restart, handle reorganized blocks. Requests never wait for the chain. Transactions are
+      signed and saved before sending; the event reader alone records outcomes. Tested on Hardhat
+      with crashes before and after sending and a simulated reorganization.
 - [ ] **B13.** Sentiment adapter. Add evidence details without changing existing responses.
       Stored articles hold their model name; keep the exact model revision too.
 

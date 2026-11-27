@@ -62,12 +62,32 @@ All routes but `/status` need a login and return 404 while `BLOCKCHAIN_ENABLED=f
 
 Collections: `wallet_links`, `wallet_challenges` (TTL), `chain_tasks`, `chain_events`, `chain_state`.
 
+### Worker and event reader (B12)
+
+Every 15 seconds while the flag is on (`runner.py`): the worker advances due tasks, then the event
+reader copies `AITaskManager` events into `chain_events`.
+
+- **States:** `queued` -> `opening` -> `evidence` -> `proposing` -> `submitted`; the event reader then
+  sets `pending_user`, `executed` or `rejected` (also after approve or decline from the wallet).
+  `no_trade` (advisor passed), `expired` and `failed` end a task early.
+- **No double submission:** each transaction is signed and saved (`pending_tx`) before it is sent.
+  After a restart the worker finds its receipt or resends the same bytes; a dropped one is rebuilt.
+  Evidence and proposals are also checked on chain first.
+- **Retries:** 15 s doubling to 10 min, 6 attempts, a 3-minute timeout per run, a 10-minute lease.
+  Stored errors never contain the RPC URL. Run one worker per relayer key.
+- **Reorganizations:** the reader saves the hash of the last block it read. If that block changed,
+  it drops events from the last 64 blocks, resets those outcomes and reads them again. Deeper
+  reorganizations are not handled. Use `BLOCKCHAIN_CONFIRMATIONS=3` or more on Sepolia.
+- **Models:** `python -m scripts.register_models` registers FinBERT, the stock predictor (version
+  from `metrics.json`, sha256 of the model file) and the mock advisor, and prints the
+  `BLOCKCHAIN_*_MODEL_VERSION` settings. A step without a version setting is skipped.
+
 End-to-end test on a local chain (skipped otherwise):
 
 ```bash
 cd blockchain && npm run node          # keep open
 cd blockchain && npm run deploy:local  # second terminal
-cd backend && BLOCKCHAIN_TEST_RPC=http://127.0.0.1:8545 pytest tests/test_blockchain_chain.py
+cd backend && BLOCKCHAIN_TEST_RPC=http://127.0.0.1:8545 pytest tests/test_blockchain_chain.py tests/test_blockchain_worker.py
 ```
 
 ## Contracts
