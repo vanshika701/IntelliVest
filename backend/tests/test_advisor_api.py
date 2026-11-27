@@ -168,25 +168,3 @@ async def test_no_llm_call_without_actions(monkeypatch: pytest.MonkeyPatch) -> N
     out = await summarize({"actions": [], "setup": [{"title": "Set up your budget"}], "partial": False})
     assert out["source"] == "template" and calls == []
 
-
-def test_advice_carries_proposal_drafts_but_never_the_salt(
-    client: TestClient, auth_headers: dict[str, str], offline_funds: None  # noqa: F811
-) -> None:
-    import pymongo
-
-    from app.core.config import settings
-
-    client.put("/api/v1/risk-profile", headers=auth_headers, json={"answers": ANSWERS})
-    _store_stats()
-    client.post("/api/v1/recommendations", headers=auth_headers,
-                json={"horizon_months": 84, "lump_sum": 50_000, "monthly_sip": 5_000})
-    body = client.post("/api/v1/advisor/advice", headers=auth_headers).json()
-    proposals = body["proposals"]
-    assert "salt" not in proposals
-    assert sum(d["amount"] for d in proposals["drafts"]) == 50_000 * 10**6
-    assert all(d["vault"] is None for d in proposals["drafts"])
-    latest = client.get("/api/v1/advisor/advice/latest", headers=auth_headers).json()
-    assert "salt" not in latest["proposals"]
-    with pymongo.MongoClient(settings.mongodb_uri) as sync:
-        stored = sync[settings.mongodb_db_name].advice.find_one({}, sort=[("created_at", -1)])
-    assert stored["proposals"]["salt"].startswith("0x")  # kept server-side for checking hashes

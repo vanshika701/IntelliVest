@@ -6,13 +6,8 @@ from app.data.collections import get_advice_collection
 
 
 def _public(doc: dict) -> dict:
-    """API view: no user id, and no proposal salt (it would let anyone with
-    the on-chain hashes test guesses about the user's amounts)."""
     doc["id"] = str(doc.pop("_id"))
     doc.pop("user_id", None)
-    proposals = doc.get("proposals")
-    if proposals:
-        doc["proposals"] = {k: v for k, v in proposals.items() if k != "salt"}
     return doc
 
 

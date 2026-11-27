@@ -1,104 +1,166 @@
 # Phase 9: AI Investment Advisor (orchestration layer)
 
-Planned 2026-11-26 on branch `phase-9-advisor` (built on `phase-7-portfolio`).
+Built 2026-11-27 on branch `phase-9-advisor`.
 
-## What Phase 9 is
+One page, **AI Advisor** (`/ai`), that tells a user what to do next with
+their money, in priority order, and shows which part of IntelliVest each
+piece of advice came from. It reads what the other modules already
+produce; it trains no model and computes no new market data.
 
-One page that tells a user what to do next with their money, in priority
-order, and shows which part of IntelliVest each piece of advice came from.
-It reads what the other modules already produce; it trains no model and
-computes no new market data.
+Educational guidance only, not investment advice: IntelliVest is not a
+SEBI-registered investment adviser. Every piece of advice says so.
 
-Example output:
-
-1. **Build your emergency fund first** — ₹45,000 short of 3 months'
-   expenses. *(Budget health)*
-2. **Invest ₹10,000 a month for "House"** — 45% stocks, 45% debt, 10% gold.
-   *(Risk profile, Portfolio plan, Goals)*
-3. **Rebalance: stocks are 58% of your portfolio, the plan says 45%.**
-   *(Holdings, Portfolio plan)*
-4. **Review Wipro: negative news this week and the IT sector is down 6%
-   this month.** Not a sell signal. *(Sentiment, Sectors)*
-
-Educational illustration only, not investment advice.
+- [x] 1. Module interface: every module reports in one shape, failures become a status
+- [x] 2. Rules engine: prioritised, traceable actions
+- [x] 3. Advice service, storage (`advice`) and API
+- [x] 4. Optional LLM summary, rejected if it changes any number
+- [x] 5. Phase 10: `Phase9Advisor` implements Phase 10's `Advisor` interface (B20)
+- [x] 6. Frontend: AI Advisor page, enabled in the sidebar
+- [x] 7. Evaluation: 18 scenarios, module knock-outs, ₹ traceability
+- [x] 8. Documentation
 
 ## Decisions
 
-- **The advisor is rules, not an LLM or a trained model.** No dataset maps
-  "this user's situation → right advice", so a trained advisor can't be
-  trained or evaluated honestly. An LLM deciding would be hard to test, could
-  invent numbers, and can't produce the reproducible, signed proposals
-  Phase 10 needs. Rules decide; every number comes from a module.
-- **An LLM may only reword,** using Phase 8's explainer pattern: optional
-  (Groq / Gemini free tier), rejected if it adds or changes any number,
-  template text otherwise.
-- **Priorities follow the standard financial-planning order:** safety net
-  and debt before goals, goals before investing, investing before
-  fine-tuning (rebalancing, single holdings).
-- **Every module sits behind the same interface** and returns a status:
-  `ok`, `stale`, `unavailable` or `not_built`. A slow or failing module
-  is skipped with a timeout and named in the response; the advice is
-  marked partial, never an error page.
-- **Every action records its contributors:** which modules, which facts,
-  which versions and data dates. This is the evidence Phase 10 hashes and
-  signs (checklist B20).
-- **Advice is stored** per user with its inputs, like Phase 7
-  recommendations, so it can be explained later.
+- **Rules decide; an LLM may only reword.** No dataset maps "this user's
+  situation → right advice", so a trained advisor couldn't be trained or
+  evaluated honestly. An LLM deciding would be hard to test, could invent
+  numbers, and can't give the reproducible decisions Phase 10 signs.
+- **Priority follows the financial-planning sequence:** stop overspending,
+  build a safety net, deal with heavy debt, fund goals, invest, then
+  fine-tune (rebalance, concentration, single holdings).
+- **Every module behind one interface,** each with its own timeout. A slow
+  or failing module is reported and skipped; the advice is marked partial.
+- **Every action is traceable:** its facts, contributing modules, their
+  versions and data dates are stored with the advice.
+- **Phase 4 predictions are used for ranges only.** Its own backtest found
+  up/down calls no better than "always up" and ranking weak, so direction
+  and rank never drive a buy or sell, here or in vault trades.
 
-## Modules it draws on
+## How it works
 
-| Module | Phase | Gives the advisor | Status today |
+```
+ round 1 (concurrent)                         round 2 (concurrent, for held + planned stocks)
+ budget · goals · risk profile ·   ──tickers──>  sectors · sentiment · predictions
+ portfolio plan · holdings
+                 └──────────────── 8 ModuleResults ───────────────┘
+                                         │
+              rules ──> actions + setup steps ──> summary (template, or LLM if enabled)
+                                         │
+                                 stored in `advice` ──> Phase9Advisor (Phase 10 vault trades)
+```
+
+**Module statuses:** `ok`, `stale` (used, flagged), `not_set_up` (the user
+hasn't entered it), `unavailable` (failed or timed out), `not_built`.
+
+| Module | Phase | Gives the advisor |
+|---|---|---|
+| Budget health | 8 | Surplus, emergency-fund gap, EMI load, overspent categories |
+| Goals | 8 | Affordability of each goal, first option if it doesn't fit |
+| Risk profile | 7 | Profile and scores |
+| Portfolio plan | 7 | Target split and holdings; stale after 30 days |
+| Holdings | 2 | What the user owns, by asset class; unclassifiable funds left out of drift checks |
+| Sectors | 6 | 1-month trend and news for the sectors of held and planned stocks |
+| News sentiment | 5 | Recent FinBERT sentiment per held and planned stock |
+| Stock return ranges | 4 | 1-year 10th / 50th / 90th percentile returns |
+
+### Rules
+
+| Priority | Action | Trigger | Source of the threshold |
 |---|---|---|---|
-| Budget health score and rules | 8 | Emergency-fund gap, EMI load, monthly surplus | Built |
-| Goals and SIP plans | 8 | Which goals are on track, affordable | Built |
-| Risk profile, portfolio plan | 7 | Target split and holdings | Built (branch) |
-| Current holdings | 2 | What the user owns, drift from the plan | Built |
-| Sector intelligence | 6 | Sector trend and news for held stocks | Built |
-| News sentiment | 5 | Negative news on held stocks | Built |
-| Stock predictions | 4 | Return ranges (10th/50th/90th percentile) per stock and horizon | Built. Direction doesn't beat "always up", so ranges are used for risk context only, never to buy or sell |
-| Expense categorizer | 3 | — | Retired from the app in Phase 8 |
+| 10 | Spending exceeds income | Monthly surplus below 0 | — |
+| 20 | Build your emergency fund | Under 3 months of essential spending | Phase 8 config (3-6 months) |
+| 30 / 35 | Loan EMIs | Above 36% critical / above 30% high | Phase 8 config |
+| 40 | Goal out of reach | Goal planner: not affordable | Phase 8 goal planner |
+| 50 | Invest per your plan | Risk profile and plan exist | — |
+| 60 | Rebalance | An asset class 5+ points off the plan | Vanguard rebalancing research (2010) |
+| 65 | Concentration | Stocks above 15% of all holdings (one card for all) | Same as the Phase 7 per-stock cap (ours) |
+| 70 | Review a holding | Negative news **and** its sector down 5%+ in a month | Ours; never a sell signal |
+| 80 | Holdings outside the plan | Owned but not in the plan | — |
 
-The exit criterion asks for advice that "draws on every module built so
-far". Phase 4's own backtest found its up/down calls no better than
-"always up" and its ranking weak, so the advisor uses only its ranges (for
-example, "a 10% chance this goal's stock part is down 18% or more in a
-year") and says why it doesn't use direction.
+When a high-severity safety action exists, the invest action is
+downgraded and says to do it afterwards; without a budget, it says the
+safety checks were skipped. Setup steps ("answer the risk questionnaire")
+are listed separately: they unlock advice rather than being advice.
 
-## Build steps
+### LLM summary (optional)
 
-- [x] **1. Module interface.** One `ModuleResult` shape (module, status,
-      as_of, version, facts, data) and an adapter per module above, each
-      reading through that module's existing service. Timeouts per module.
-- [x] **2. Rules engine.** Pure functions that turn module results into
-      prioritised actions: emergency fund, high EMIs, unaffordable goals,
-      invest per plan, rebalance when a class drifts more than 5 points,
-      review a holding with negative news and a falling sector. Each
-      action lists its facts and contributors. Thresholds in one config
-      file, sourced or marked as ours.
-- [x] **3. Advice service, storage and API.** Gather modules concurrently,
-      run the rules, store in `advice`.
-      `POST /api/v1/advisor/advice`, `GET /api/v1/advisor/advice/latest`.
-- [x] **4. Optional LLM summary.** A short plain-language summary of the
-      actions, reusing the Phase 8 explainer's providers and number check.
-- [x] **5. Phase 10 bridge.** Turn an "invest" action into a
-      `Proposal`-shaped draft (fund, side, amount, confidence 0-10000,
-      model id and version, input / evidence / explanation hashes) using
-      `blockchain/hashing.py`. Not sent on chain until B10-B12 exist.
-- [x] **6. Frontend.** Enable the disabled "AI Advisor" sidebar item
-      (`/ai`): action cards with "why" and module chips, a module status
-      panel, links to the pages each action came from.
-- [x] **7. Evaluation.** 15-20 hand-written user situations (no emergency
-      fund, heavy EMIs, drifted portfolio, nothing invested, all modules
-      down...) with the expected top actions, checked automatically. Plus:
-      every action traceable to module facts; LLM wording fallback rate;
-      advice still produced with each module failing in turn.
-- [ ] **8. Documentation.** Method, rules and sources, limits, results in
-      `ml/log.md`.
+Off by default. With `BUDGET_EXPLAINER_PROVIDER=groq` or `gemini` and a key,
+the top 3 actions are reworded through Phase 8's explainer with
+advisor-specific instructions. The reply is rejected (template used) if it
+adds, changes or reorders a number, or the call fails.
 
-**Done when:** a user gets one stored, prioritised, explained piece of
-advice that names every module it used (and the ones it couldn't), the
-scenario tests pass, and it degrades cleanly when modules fail.
+### Phase 10 (checklist B20)
 
-## Hardware
+`app/services/advisor/chain_advisor.py` implements Phase 10's `Advisor`
+interface (`app/services/blockchain/advisor.py`), replacing the mock.
+Phase 10 asks about one vault and one fund; `Phase9Advisor`, built from the
+owner's stored advice, answers:
 
-CPU only. The optional LLM summary calls a hosted API.
+- no trade while the advice has a high-severity safety action, or without
+  a usable plan;
+- otherwise buy or sell this fund towards the plan's share for its kind
+  (stocks for an equity fund, debt plus gold otherwise), only outside the
+  same 5-point band as the rebalance advice;
+- sentiment and stock-prediction evidence recorded in the contributions,
+  marked `used_to_decide: false`;
+- confidence in the inputs: 10000 with a fresh plan and profile, 5000 if
+  either is stale.
+
+Phase 10's `build_proposal` then adds the hashes, minimum received, nonce
+and deadline. Using it for live vault tasks needs B11 (vault → user) and
+B12 (the worker); until then the mock stays wired in.
+
+## API
+
+| Method | Path | |
+|---|---|---|
+| POST | `/api/v1/advisor/advice` | Build, store and return fresh advice. Always 201; failed modules are listed. 10 per user per minute |
+| GET | `/api/v1/advisor/advice/latest` | The user's latest advice, 404 if none |
+
+Collection: `advice` (by user, newest first), with every module result,
+the actions, setup steps, summary and versions.
+
+## Evaluation
+
+`ml/evaluate_advisor.py`, with the same checks in
+`backend/tests/test_advisor_eval.py`; results in
+`ml/models/advisor_eval/metrics.json` and `ml/log.md`.
+
+| Check | Result |
+|---|---|
+| 18 hand-written situations: right first action, required and forbidden actions, setup steps | 18/18 |
+| Rules triggered across the scenarios | 10/10 |
+| Every usable module knocked out in turn (109 runs) | 0 problems |
+| ₹ figures shown, traced to their source | 50/50 |
+
+The checks themselves were tested: wrong priority order, an invented ₹
+figure and citing a missing module each make them fail.
+
+## Limits
+
+- Scenarios were written by the developers, not reviewed by a certified
+  financial planner, and they test decisions, not whether real users find
+  the advice useful. That needs a user study.
+- Rules are coarse by design: one threshold per situation, no tax, no
+  income growth, no inflation beyond what Phase 8 assumes.
+- The LLM wording wasn't measured live (no key configured).
+- Holdings in funds the advisor can't classify are left out of rebalancing
+  rather than guessed.
+- Stocks outside the 20 tracked get no sector, sentiment or range.
+- Vault decisions see only the vault's cash and the fund asked about.
+
+## Files
+
+Backend: `app/core/advisor_config.py`; `app/services/advisor/`
+(`modules.py`, `adapters.py`, `rules.py`, `summary.py`, `service.py`,
+`chain_advisor.py`); `app/data/advice_repository.py`;
+`app/api/v1/routes/advisor.py`. Frontend: `src/pages/AdvisorPage.tsx`,
+`src/components/advisor/AdviceViews.tsx`, `src/api/advisor.ts`. Tests:
+`backend/tests/test_advisor_*.py`, `test_chain_advisor.py`,
+`advisor_scenarios.py`; `frontend/src/pages/AdvisorPage.test.tsx`.
+
+## Open items
+
+- [ ] Agree the disclaimer wording and placement with the team.
+- [ ] A short study with 5-10 real users on whether the advice is clear and useful.
+- [ ] Phase 10 B11-B12: map vaults to users and use `Phase9Advisor` in the worker.

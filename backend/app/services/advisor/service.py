@@ -10,7 +10,6 @@ from datetime import UTC, datetime
 from app.core.advisor_config import ADVISOR_VERSION, DISCLAIMER
 from app.data import advice_repository
 from app.services.advisor.adapters import gather_modules
-from app.services.advisor.proposal import build_proposal_drafts
 from app.services.advisor.rules import build_actions
 from app.services.advisor.summary import summarize
 
@@ -23,8 +22,6 @@ async def create_advice(user_id: str, now: datetime | None = None) -> dict:
         **result,
         "summary": await summarize(result),
         "modules": modules,
-        # Phase 10 bridge (checklist B20): drafts only, nothing is signed or sent.
-        "proposals": build_proposal_drafts(result["actions"], modules),
         "version": ADVISOR_VERSION,
         "disclaimer": DISCLAIMER,
         "created_at": now,
