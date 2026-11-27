@@ -93,20 +93,21 @@ class ChainClient:
     async def open_task(self, vault: str, fund: str, deadline: int) -> bytes:
         manager = self.contract("AITaskManager")
         receipt = await self.send(manager.functions.openTask(vault, fund, deadline))
-        events = manager.events.TaskOpened().process_receipt(receipt)
-        if not events:
-            raise ChainError("openTask emitted no TaskOpened event")
-        return bytes(events[0]["args"]["taskId"])
+        return self.task_opened(receipt)
+
+    def evidence_call(self, signed: Signed):
+        evidence = signed.message.message()
+        return self.contract("AITaskManager").functions.submitEvidence(evidence, signed.signature)
+
+    def proposal_call(self, signed: Signed):
+        proposal = signed.message.message()
+        return self.contract("AITaskManager").functions.submitProposal(proposal, signed.signature)
 
     async def submit_evidence(self, signed: Signed) -> dict:
-        evidence = signed.message.message()
-        call = self.contract("AITaskManager").functions.submitEvidence(evidence, signed.signature)
-        return await self.send(call)
+        return await self.send(self.evidence_call(signed))
 
     async def submit_proposal(self, signed: Signed) -> dict:
-        proposal = signed.message.message()
-        call = self.contract("AITaskManager").functions.submitProposal(proposal, signed.signature)
-        return await self.send(call)
+        return await self.send(self.proposal_call(signed))
 
     async def task(self, task_id: bytes) -> dict:
         vault, fund, deadline, outcome, reason, evidence_hash = (
@@ -140,11 +141,25 @@ class ChainClient:
             "max_slippage_bps": mandate[7],  # Mandate.maxSlippageBps
         }
 
+    async def evidence_present(self, task_id: bytes, step: int) -> bool:
+        stored = await self.contract("AITaskManager").functions.evidenceOf(task_id, step).call()
+        return bool(stored[3])  # StoredEvidence.present
+
+    async def vault_of(self, owner: str) -> str | None:
+        vault = (
+            await self.contract("VaultFactory").functions.vaultOf(to_checksum_address(owner)).call()
+        )
+        return None if int(vault, 16) == 0 else vault
+
     # --- Transactions ---
 
-    async def send(self, call) -> dict:
-        """Sends `call` from the relayer and waits for it. Raises on revert."""
-        sender = self._relayer.address
+    async def sign_tx(self, call, role: str = "relayer") -> tuple[str, bytes, int]:
+        """Signs `call` from the relayer (or the SIP runner) without sending
+        it, so the caller can save the hash first and never lose track of it."""
+        if role not in ("relayer", "sip_runner"):
+            raise ValueError(f"{role} does not send transactions")
+        account = self.config.accounts[role]
+        sender = account.address
         tx = await call.build_transaction(
             {
                 "from": sender,
@@ -153,11 +168,47 @@ class ChainClient:
             }
         )
         tx["gas"] = tx["gas"] * (100 + GAS_MARGIN_PERCENT) // 100
-        signed = self._relayer.sign_transaction(tx)
-        tx_hash = await self.w3.eth.send_raw_transaction(signed.raw_transaction)
+        signed = account.sign_transaction(tx)
+        return "0x" + bytes(signed.hash).hex(), bytes(signed.raw_transaction), tx["nonce"]
+
+    async def mined_nonce(self) -> int:
+        """Transactions the relayer has had mined; a lower nonce can't be mined any more."""
+        return await self.w3.eth.get_transaction_count(self._relayer.address, "latest")
+
+    async def broadcast(self, raw: bytes) -> None:
+        """Sends a signed transaction. Sending the same one twice is harmless:
+        it has one nonce, so it can only be mined once."""
+        try:
+            await self.w3.eth.send_raw_transaction(raw)
+        except ValueError as exc:  # node refuses a transaction it already has
+            text = str(exc).lower()
+            if not any(s in text for s in ("already known", "nonce too low", "known transaction")):
+                raise
+
+    async def receipt(self, tx_hash: str) -> dict | None:
+        from web3.exceptions import TransactionNotFound
+
+        try:
+            return await self.w3.eth.get_transaction_receipt(tx_hash)
+        except TransactionNotFound:
+            return None
+
+    async def wait(self, tx_hash: str) -> dict:
         receipt = await self.w3.eth.wait_for_transaction_receipt(
             tx_hash, timeout=RECEIPT_TIMEOUT_SECONDS
         )
         if receipt["status"] != 1:
-            raise ChainError(f"Transaction {tx_hash.hex()} reverted")
+            raise ChainError(f"Transaction {tx_hash} reverted")
         return receipt
+
+    def task_opened(self, receipt: dict) -> bytes:
+        events = self.contract("AITaskManager").events.TaskOpened().process_receipt(receipt)
+        if not events:
+            raise ChainError("openTask emitted no TaskOpened event")
+        return bytes(events[0]["args"]["taskId"])
+
+    async def send(self, call, role: str = "relayer") -> dict:
+        """Sends `call` and waits for it. Raises on revert."""
+        tx_hash, raw, _ = await self.sign_tx(call, role)
+        await self.broadcast(raw)
+        return await self.wait(tx_hash)

@@ -1,0 +1,72 @@
+[
+  {
+    "attack": "Stolen advisor key",
+    "blocked": false,
+    "how": "Bounded: 2 trades, then daily cap and trade count stopped it",
+    "lossTinr": 159.2,
+    "measured": true
+  },
+  {
+    "attack": "Hacked backend (all its keys)",
+    "blocked": false,
+    "how": "Bounded like a stolen advisor key; no withdrawal or term change possible",
+    "lossTinr": 200,
+    "measured": false
+  },
+  {
+    "attack": "Replay",
+    "blocked": true,
+    "how": "Reverted: task closed / nonce used",
+    "lossTinr": 0,
+    "measured": true
+  },
+  {
+    "attack": "Over the limits",
+    "blocked": true,
+    "how": "Rejected OVER_TRADE_CAP; above the sign limit goes to the owner",
+    "lossTinr": 0,
+    "measured": true
+  },
+  {
+    "attack": "Fund not allowed",
+    "blocked": true,
+    "how": "Rejected FUND_NOT_ALLOWED",
+    "lossTinr": 0,
+    "measured": true
+  },
+  {
+    "attack": "Old or changed model",
+    "blocked": true,
+    "how": "Rejected MODEL_INACTIVE / MODEL_NOT_ACCEPTED; a version can't be re-registered",
+    "lossTinr": 0,
+    "measured": true
+  },
+  {
+    "attack": "Stale price",
+    "blocked": true,
+    "how": "Rejected STALE_PRICE",
+    "lossTinr": 0,
+    "measured": true
+  },
+  {
+    "attack": "Price manipulation (feed admin)",
+    "blocked": false,
+    "how": "Not blocked: moves capped at 20%/hour; a trusted-feed limit",
+    "lossTinr": 833,
+    "measured": false
+  },
+  {
+    "attack": "Missing evidence",
+    "blocked": true,
+    "how": "Rejected MISSING_EVIDENCE",
+    "lossTinr": 0,
+    "measured": true
+  },
+  {
+    "attack": "Backend switched off",
+    "blocked": true,
+    "how": "Owner withdraws, trades and runs the SIP with no backend",
+    "lossTinr": 0,
+    "measured": true
+  }
+]

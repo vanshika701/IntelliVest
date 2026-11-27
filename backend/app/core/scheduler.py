@@ -21,6 +21,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from app.core.config import settings
 from app.core.constants import FINANCE_SUBREDDITS, STOCK_UNIVERSE
 from app.services.alert_service import evaluate_all_alerts
 from app.services.market_data_service import IST, catch_up, ingest_stock_universe
@@ -116,6 +117,18 @@ def start_scheduler() -> None:
         id="alert_evaluation",
         replace_existing=True,
     )
+    if settings.blockchain_enabled:
+        from app.services.blockchain.runner import run_cycle
+
+        # Phase 10: AI trade tasks and chain events. One at a time.
+        scheduler.add_job(
+            run_cycle,
+            trigger=IntervalTrigger(seconds=15),
+            id="blockchain_cycle",
+            max_instances=1,
+            coalesce=True,
+            replace_existing=True,
+        )
     scheduler.start()
     logger.info(
         "Ingestion scheduler started (market data daily with catch-up, news/Reddit hourly, alerts every 5min)"

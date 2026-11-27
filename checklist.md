@@ -237,33 +237,46 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
       mock advisor, and stock evidence from the **real** Phase 4 predictions (no mock predictor).
       `web3.py` imported only here. A mock-advisor trade with stock evidence runs end to end on
       Hardhat (`tests/test_blockchain_chain.py`).
-- [ ] **B11.** Wallet linking (one-time nonce), repositories, indexes and `/api/v1/blockchain/...`.
-      Follow routes -> services -> data.
-- [ ] **B12.** Background worker and event reader: retry, timeout, no double submission, resume
-      after restart, handle reorganized blocks. Requests never wait for the chain.
-- [ ] **B13.** Sentiment adapter. Add evidence details without changing existing responses.
-      Stored articles hold their model name; keep the exact model revision too.
+- [x] **B11.** Wallet linking (one-time nonce), repositories, indexes and `/api/v1/blockchain/...`.
+      Follow routes -> services -> data. Routes 404 while the flag is off (except `/status`);
+      creating a task only queues it, one unfinished task per user and fund.
+- [x] **B12.** Background worker and event reader: retry, timeout, no double submission, resume
+      after restart, handle reorganized blocks. Requests never wait for the chain. Transactions are
+      signed and saved before sending; the event reader alone records outcomes. Tested on Hardhat
+      with crashes before and after sending and a simulated reorganization.
+- [x] **B13.** Sentiment adapter. Add evidence details without changing existing responses.
+      Stored articles hold their model name; keep the exact model revision too. Fixed 7-day
+      window; under 3 articles is `NO_DATA`; any non-FinBERT score (e.g. `lexicon`) is `FALLBACK`.
 
 ### D. Frontend
-- [ ] **B14.** Connect wallet, vault, deposit/withdraw and mandate form (goal values prefilled).
-      Withdrawal goes wallet-to-contract directly, with no backend call.
-- [ ] **B15.** Pending trades with approve/reject, evidence view, "Revoke AI", privacy notice.
-- [ ] **B16.** Vault SIP, triggered by any permitted runner; the vault enforces date and amount.
-- [ ] **B17.** With the flag off, the existing invest flow and tests are unchanged.
+- [x] **B14.** Connect wallet, vault, deposit/withdraw and mandate form (goal values prefilled).
+      Withdrawal goes wallet-to-contract directly, with no backend call. `/vault` page, ethers 6.17.0
+      (loaded only on that page).
+- [x] **B15.** Pending trades with approve/reject, evidence view, "Revoke AI", privacy notice.
+      Approve, decline and revoke go from the wallet to the contracts; the mock advisor is labelled.
+- [x] **B16.** Vault SIP, triggered by any permitted runner; the vault enforces date and amount.
+      The backend's SIP runner uses its own key and only calls `runSip()`.
+- [x] **B17.** With the flag off, the existing invest flow and tests are unchanged. No sidebar link,
+      routes 404, web3 not imported; all 563 backend and 111 frontend tests pass.
 
 ### E. Connect later
-- [ ] **B18.** Phase 4: evidence already uses the real model, version and artifact hash (B10).
-      Left: register each retrained version (owners must accept it) and store the evidence
-      record in MongoDB (B11-B12).
-- [ ] **B19.** Phase 7: prefill mandate limits from the risk profile.
+- [x] **B18.** Phase 4: evidence uses the real model, version and artifact hash (B10); the worker
+      stores each evidence record in MongoDB (B12); `scripts/register_models.py` registers a
+      retrained version (owners must still accept it).
+- [x] **B19.** Phase 7: prefill mandate limits from the risk profile. Equity limit from the latest
+      portfolio plan, loss limit by risk profile; only suggestions, the owner signs the final terms.
 - [ ] **B20.** Phase 9: replace the mock advisor; include contributions per module.
 
 ### F. Evaluate
-- [ ] **B21.** Attack tests: stolen advisor key, hacked backend, replay, over limit, bad fund, old
+- [x] **B21.** Attack tests: stolen advisor key, hacked backend, replay, over limit, bad fund, old
       or changed model, stale price, price manipulation, missing evidence, backend switched off.
-- [ ] **B22.** Compare no limits, backend-only limits and vault limits. Report blocked attacks,
+      `blockchain/test/attacks.test.ts`, one test each; results in `blockchain/reports/attacks.json`.
+- [x] **B22.** Compare no limits, backend-only limits and vault limits. Report blocked attacks,
       maximum loss, valid trades wrongly blocked, gas and latency. Label mock results as mock.
-- [ ] **B23.** Deploy to Sepolia and verify the source.
+      `docs/PHASE_10_EVALUATION.md`: vault blocks or bounds 9 of 10 attacks (backend-only 7, none 0),
+      0 of 40 valid trades blocked, 886,681 gas per automatic trade.
+- [ ] **B23.** Deploy to Sepolia and verify the source. Prepared: `npm run deploy:sepolia` and the steps
+      in `docs/PHASE_10_BLOCKCHAIN.md`. Blocked on a funded test wallet and an RPC URL.
 
 **Infrastructure done (without Phases 4, 7, 9):** B1-B17 pass, B21 passes locally, and a
 mock-advisor trade with real FinBERT evidence runs end to end.

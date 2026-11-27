@@ -11,6 +11,9 @@ import logging
 from app.data.collections import (
     get_alerts_collection,
     get_budget_profiles_collection,
+    get_chain_events_collection,
+    get_chain_state_collection,
+    get_chain_tasks_collection,
     get_expenses_collection,
     get_investments_collection,
     get_market_stats_collection,
@@ -23,6 +26,8 @@ from app.data.collections import (
     get_sector_snapshots_collection,
     get_stock_predictions_collection,
     get_users_collection,
+    get_wallet_challenges_collection,
+    get_wallet_links_collection,
     get_watchlist_collection,
 )
 
@@ -139,9 +144,42 @@ async def ensure_indexes() -> None:
         [("user_id", 1), ("created_at", -1)], name="user_recommendations_by_created"
     )
 
+    # --- Phase 10 (blockchain); empty unless BLOCKCHAIN_ENABLED ---
+    # One wallet per user and one user per wallet.
+    links = get_wallet_links_collection()
+    await links.create_index("user_id", name="uniq_wallet_user", unique=True)
+    await links.create_index("address", name="uniq_wallet_address", unique=True)
+    # One live challenge per user; Mongo deletes it once expired.
+    challenges = get_wallet_challenges_collection()
+    await challenges.create_index("user_id", name="uniq_challenge_user", unique=True)
+    await challenges.create_index("expires_at", name="challenge_ttl", expireAfterSeconds=0)
+    tasks = get_chain_tasks_collection()
+    # "My AI trades", newest first.
+    await tasks.create_index([("user_id", 1), ("created_at", -1)], name="user_tasks_by_created")
+    # An on-chain task maps to one document.
+    await tasks.create_index(
+        "task_id", name="uniq_task_id", unique=True, partialFilterExpression={"task_id": {"$type": "string"}}
+    )
+    # At most one unfinished task per user and fund, so a double click can't queue two trades.
+    await tasks.create_index(
+        [("user_id", 1), ("fund", 1)],
+        name="uniq_active_task",
+        unique=True,
+        partialFilterExpression={"active": True},
+    )
+    # The worker's queue.
+    await tasks.create_index([("active", 1), ("next_attempt_at", 1)], name="task_queue")
+    # Each log once, however often the reader rescans a block.
+    events = get_chain_events_collection()
+    await events.create_index(
+        [("tx_hash", 1), ("log_index", 1)], name="uniq_tx_log", unique=True
+    )
+    await events.create_index("block_number", name="events_by_block")
+    await get_chain_state_collection().create_index("key", name="uniq_state_key", unique=True)
+
     logger.info(
         "MongoDB indexes ensured (prices, news_articles, reddit_posts, "
         "users, expenses, watchlist, alerts, investments, budget_profiles, savings_goals, "
-        "sector_snapshots, stock_predictions, risk_profiles, market_stats, recommendations)"
+        "sector_snapshots, stock_predictions, risk_profiles, market_stats, recommendations, blockchain)"
     )
 

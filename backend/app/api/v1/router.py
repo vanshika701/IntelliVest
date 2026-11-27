@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.routes import (
     alerts,
     auth,
+    blockchain,
     budget,
     dashboard,
     expenses,
@@ -32,3 +33,4 @@ api_router.include_router(sectors.router)
 api_router.include_router(risk_profile.router)
 api_router.include_router(market_stats.router)
 api_router.include_router(recommendations.router)
+api_router.include_router(blockchain.router)

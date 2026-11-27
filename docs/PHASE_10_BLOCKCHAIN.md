@@ -16,6 +16,42 @@ npm run deploy:local   # second terminal; writes deployments/local.json
 If C: is full on Windows, point `npm_config_cache`, `TEMP`, `TMP` and `LOCALAPPDATA` at a folder on
 another drive for these commands.
 
+## Demo on a laptop (local chain)
+
+Needs MongoDB with the usual data, Node, the backend venv and MetaMask in the browser.
+
+1. `cd blockchain && npm run node` (keep it open).
+2. Second terminal: `cd blockchain && npm run deploy:local`.
+3. `cd backend && python -m scripts.local_chain_env` and paste its `BLOCKCHAIN_*` lines into
+   `backend/.env`. They use Hardhat's public test keys, which only work on the local chain.
+4. `python -m scripts.register_models` (safe to run again).
+5. Start the backend and frontend as usual. "AI vault" appears in the sidebar.
+6. In MetaMask, add the network `http://127.0.0.1:8545` (chain 31337) and import the account the
+   script printed. On the vault page: connect, link, create the vault, get test tINR, deposit, sign
+   the mandate, then "Ask the AI" with a stock such as RELIANCE. The result appears within about 15 s.
+
+Restarting `npm run node` wipes the chain: repeat steps 2 and 4, and in MetaMask clear the account's
+activity (Settings > Advanced) so its nonce starts again.
+
+## Sepolia (B23)
+
+Not deployed yet. It needs a test wallet with Sepolia ETH (from a faucet) and an RPC URL (for
+example a free Alchemy or Infura key). Then:
+
+```bash
+cd blockchain
+export SEPOLIA_RPC_URL=...                # https URL
+export SEPOLIA_DEPLOYER_PRIVATE_KEY=...    # deployer only; never commit or share it
+npm run deploy:sepolia                     # writes deployments/sepolia.json
+```
+
+Then set `BLOCKCHAIN_CHAIN_ID=11155111`, `BLOCKCHAIN_RPC_URL`, `BLOCKCHAIN_DEPLOYMENT_PATH=blockchain/deployments/sepolia.json`,
+`BLOCKCHAIN_START_BLOCK` (`deployedAtBlock` from that file), `BLOCKCHAIN_CONFIRMATIONS=3` and five new
+role keys (the relayer and SIP runner need test ETH), and run
+`BLOCKCHAIN_ADMIN_PRIVATE_KEY=<deployer key> python -m scripts.register_models`. Test prices go stale
+after a day, so the deployer must post prices daily. Source verification needs an Etherscan key and the
+`@nomicfoundation/hardhat-verify` plugin, which is not installed.
+
 ## Settings
 
 Listed in `backend/.env.example`; keys go only in `backend/.env`. With `BLOCKCHAIN_ENABLED=false`
@@ -36,6 +72,7 @@ The relayer is a fifth role: it pays gas to submit signed messages, so the signe
 | `client.py` | The only `web3` user: contracts, relayer transactions, task and vault reads |
 | `advisor.py` | `Advisor` interface: an advisor returns an `AdvisorDecision`; this builds the `Proposal` |
 | `mock_advisor.py` | Fixed rules on the evidence. Results made with it are labelled mock |
+| `sentiment_evidence.py` | Sentiment evidence from **stored** FinBERT scores: 7-day window, `NO_DATA` under 3 articles, `FALLBACK` for any other engine |
 | `stock_evidence.py` | Stock evidence from **stored** Phase 4 predictions; never imports the model |
 
 - **Advisor (Phase 9, B20):** implement `Advisor` (`model_name`, `model_version`, `async decide(request)`).
@@ -47,14 +84,65 @@ The relayer is a fifth role: it pays gas to submit signed messages, so the signe
   models (`chance_up`) give `NO_DATA`.
   Renaming them breaks this adapter. A retrained model gives `NO_DATA` until its version is
   registered and each owner accepts it.
+- **Sentiment (Phase 5):** newly scored articles also store `sentiment.revision`, the exact Hugging Face
+  commit; evidence inputs list the revisions and article URLs and title hashes, never the text.
 - The proposal nonce is the task ID, so a task can only ever get one proposal.
+
+### API (`/api/v1/blockchain`, B11)
+
+All routes but `/status` need a login and return 404 while `BLOCKCHAIN_ENABLED=false`.
+
+| Route | Does |
+|---|---|
+| `GET /status` | On/off, chain, public contract addresses, privacy notice |
+| `POST /wallet/challenge` | One-time message to sign (`personal_sign`); expires in 10 minutes, newest only |
+| `POST /wallet/verify` | Checks the signature and links the wallet. One wallet per user, one user per wallet |
+| `GET` / `DELETE /wallet` | Show or remove the link. Unlinking never touches the vault |
+| `POST /tasks` | Queues an AI trade for a fund (202). The worker does the chain work |
+| `GET /tasks`, `GET /tasks/{id}` | The user's tasks with evidence and proposal records (no salt) |
+
+Collections: `wallet_links`, `wallet_challenges` (TTL), `chain_tasks`, `chain_events`, `chain_state`.
+
+### Worker and event reader (B12)
+
+Every 15 seconds while the flag is on (`runner.py`): the worker advances due tasks, then the event
+reader copies `AITaskManager` events into `chain_events`.
+
+- **States:** `queued` -> `opening` -> `evidence` -> `proposing` -> `submitted`; the event reader then
+  sets `pending_user`, `executed` or `rejected` (also after approve or decline from the wallet).
+  `no_trade` (advisor passed), `expired` and `failed` end a task early.
+- **No double submission:** each transaction is signed and saved (`pending_tx`) before it is sent.
+  After a restart the worker finds its receipt or resends the same bytes; a dropped one is rebuilt.
+  Evidence and proposals are also checked on chain first.
+- **Retries:** 15 s doubling to 10 min, 6 attempts, a 3-minute timeout per run, a 10-minute lease.
+  Stored errors never contain the RPC URL. Run one worker per relayer key.
+- **Reorganizations:** the reader saves the hash of the last block it read. If that block changed,
+  it drops events from the last 64 blocks, resets those outcomes and reads them again. Deeper
+  reorganizations are not handled. Use `BLOCKCHAIN_CONFIRMATIONS=3` or more on Sepolia.
+- **Models:** `python -m scripts.register_models` registers FinBERT, the stock predictor (version
+  from `metrics.json`, sha256 of the model file) and the mock advisor, and prints the
+  `BLOCKCHAIN_*_MODEL_VERSION` settings. A step without a version setting is skipped.
+
+### Frontend (`/vault`, B14-B16, B19)
+
+Shown in the sidebar only when the server has the flag on; the page and ethers load only when opened.
+Needs MetaMask (or any EIP-1193 wallet); on the local chain it offers to add Hardhat (chain 31337).
+
+- **Wallet:** connect, then link by signing the one-time challenge. A warning shows if the connected
+  account is not the linked one.
+- **Vault:** create, get test tINR from the faucet, deposit, withdraw. All are wallet-to-contract.
+- **Mandate:** prefilled from the first saved goal (monthly amount, end date) and the latest portfolio
+  plan (equity limit; loss limit by risk profile). The model versions to accept come from `/status`.
+- **AI trades:** ask the AI for a fund (optional stock for evidence), approve or decline pending
+  trades, see evidence, and "Revoke AI" (pauses AI trading; withdrawals still work). Polls every 5 s.
+- **Vault SIP:** amount, day 1-28, slippage and length. The backend SIP runner calls `runSip()` when due.
 
 End-to-end test on a local chain (skipped otherwise):
 
 ```bash
 cd blockchain && npm run node          # keep open
 cd blockchain && npm run deploy:local  # second terminal
-cd backend && BLOCKCHAIN_TEST_RPC=http://127.0.0.1:8545 pytest tests/test_blockchain_chain.py
+cd backend && BLOCKCHAIN_TEST_RPC=http://127.0.0.1:8545 pytest tests/test_blockchain_chain.py tests/test_blockchain_worker.py
 ```
 
 ## Contracts
