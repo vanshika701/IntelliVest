@@ -42,7 +42,9 @@ The relayer is a fifth role: it pays gas to submit signed messages, so the signe
   Return the side, amount, confidence 0..10000, explanation and contributions per module, or `None`
   for no trade. Hashes, salt, minimum received, nonce and deadline are added here.
 - **Stock predictor (Phase 4):** only these stored fields are read: `ticker`, `as_of`,
-  `horizon_days`, `chance_up`, `model_version`, `artifact_hash` (and `low`/`mid`/`high` if present).
+  `horizon_days`, `chance_beat`, `target`, `model_version`, `artifact_hash` (and `low`/`mid`/`high`
+  if present). Since model 2.0.0 the score is the chance of beating the Nifty 50; rows from older
+  models (`chance_up`) give `NO_DATA`.
   Renaming them breaks this adapter. A retrained model gives `NO_DATA` until its version is
   registered and each owner accepts it.
 - The proposal nonce is the task ID, so a task can only ever get one proposal.

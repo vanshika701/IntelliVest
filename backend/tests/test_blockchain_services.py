@@ -54,7 +54,8 @@ def _record(**over) -> dict:
         "ticker": "RELIANCE",
         "as_of": datetime(2026, 11, 26, tzinfo=UTC),
         "horizon_days": 5,
-        "chance_up": 0.62,
+        "chance_beat": 0.62,
+        "target": "excess_log_return_vs_nifty",
         "low": -0.031,
         "mid": 0.004,
         "high": 0.04,
@@ -142,7 +143,7 @@ def test_stock_evidence_from_stored_prediction():
     assert e.asOf == int(datetime(2026, 11, 26, tzinfo=UTC).timestamp())
     assert e.modelId == hashing.model_id(MODEL_NAME) and e.modelVersion == hashing.model_id("v3")
     assert result.outputs == {
-        "chance_up_bps": 6200,
+        "chance_beat_bps": 6200,
         "low_bps": -310,
         "mid_bps": 40,
         "high_bps": 400,
@@ -154,8 +155,8 @@ def test_stock_evidence_from_stored_prediction():
 
 def test_stock_evidence_picks_nearest_horizon_and_tolerates_missing_extras():
     records = [
-        _record(horizon_days=1, chance_up=0.4),
-        _record(horizon_days=20, chance_up=0.7, low=None),
+        _record(horizon_days=1, chance_beat=0.4),
+        _record(horizon_days=20, chance_beat=0.7, low=None),
     ]
     result = build_stock_evidence(TASK, "RELIANCE", 15, records, NOW, "v3")
     assert result.evidence.horizonDays == 20 and result.evidence.score == 7000
@@ -175,7 +176,7 @@ def test_naive_mongo_dates_are_utc():
         [],
         [_record(as_of=NOW - timedelta(days=8))],
         [_record(model_version="v4")],  # retrained but not registered yet
-        [_record(chance_up=None)],
+        [_record(chance_beat=None)],
     ],
 )
 def test_stock_evidence_without_usable_prediction_is_no_data(records):

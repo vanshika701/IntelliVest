@@ -1,5 +1,10 @@
 """Phase 4: daily stock predictions, stored and then read per request.
 
+Since model 2.0.0 a prediction is about the stock against the Nifty 50:
+the chance it beats the index over the horizon, and a range for how far
+ahead or behind it finishes (excess log return at the 10th, 50th and 90th
+percentile).
+
 After prices update, `refresh_predictions` runs the trained model once for
 every tracked stock and every horizon in HORIZON_GRID and stores the
 results. Requests (`get_prediction`) only read stored rows and interpolate
@@ -38,7 +43,7 @@ from app.services.prediction.distribution import (
     LOW_Q,
     MID_Q,
     Buckets,
-    chance_up,
+    chance_above_zero,
     full_probabilities,
     quantiles,
 )
@@ -59,6 +64,9 @@ MARKET_TICKERS = {"nifty": "^NSEI", "vix": "^INDIAVIX"}
 # Long enough for the 252-day features plus the 200-day market average.
 MARKET_PERIOD = "2y"
 _market_cache = TTLCache(ttl_seconds=60 * 60, max_items=1)
+# What the stored numbers mean. Rows from an older model (plain returns)
+# are never served; the next refresh replaces them.
+TARGET = "excess_log_return_vs_nifty"
 
 
 class PredictionUnavailable(Exception):
@@ -77,11 +85,12 @@ class Predictor:
         self.feature_columns: list[str] = artifact["feature_columns"]
         self.horizons: list[int] = artifact["horizons"]
         self.version: str = artifact["version"]
+        self.target: str = artifact.get("target", "log_return")
         self.artifact_hash = artifact_hash
         self.metrics = metrics if metrics and metrics.get("model_version") == self.version else None
 
     def forecast(self, rows: pd.DataFrame, horizon_days: int) -> pd.DataFrame:
-        """Log-return percentiles and chance up for each row."""
+        """Excess-return percentiles and chance of beating the Nifty per row."""
         rows = with_horizon(rows, horizon_days)
         raw = self.model.predict_proba(rows[self.feature_columns].to_numpy())
         probs = full_probabilities(raw, self.model.classes_, self.buckets.count)
@@ -90,7 +99,7 @@ class Predictor:
             * scale(rows, horizon_days).to_numpy()[:, None]
         )
         out = pd.DataFrame(q, columns=["low", "mid", "high"], index=rows.index)
-        out["chance_up"] = chance_up(probs, self.buckets)
+        out["chance_beat"] = chance_above_zero(probs, self.buckets)
         return out
 
     def test_result(self, trading_days: int) -> dict | None:
@@ -104,8 +113,9 @@ class Predictor:
             "horizon_group": group,
             "test_years": self.metrics["evaluation"]["test_years"],
             "range_hit_rate": scores["range_hit_rate"],
-            "direction_accuracy": scores["direction_accuracy"],
-            "always_up_accuracy": scores["always_up_accuracy"],
+            "call_accuracy": scores["call_accuracy"],
+            "majority_call_accuracy": scores["majority_call_accuracy"],
+            "beat_share": scores["beat_share"],
         }
 
 
@@ -190,13 +200,14 @@ def build_predictions(
                     ),
                     "horizon_days": int(h),
                     "close": float(row["close"]),
-                    "chance_up": float(result.at[i, "chance_up"]),
+                    "chance_beat": float(result.at[i, "chance_beat"]),
                     "low": float(result.at[i, "low"]),
                     "mid": float(result.at[i, "mid"]),
                     "high": float(result.at[i, "high"]),
                     "rank": int(order[i]),
                     "rank_of": len(latest),
                     "tracked": stock_listing.is_tracked(row["ticker"]),
+                    "target": predictor.target,
                     "model_version": predictor.version,
                     "artifact_hash": predictor.artifact_hash,
                     "created_at": now,
@@ -293,11 +304,11 @@ async def get_prediction(instrument_id: str, amount: int, unit: Unit) -> dict:
     if not stock_listing.is_tracked(ticker):
         await _predict_untracked(ticker)
     docs = await repo.get_latest_for_ticker(ticker)
-    if not docs:
+    if not docs or docs[0].get("target") != TARGET:
         raise PredictionUnavailable(instrument_id)
 
     stored = {
-        d["horizon_days"]: Forecast(d["chance_up"], d["low"], d["mid"], d["high"]) for d in docs
+        d["horizon_days"]: Forecast(d["chance_beat"], d["low"], d["mid"], d["high"]) for d in docs
     }
     forecast = interpolate(stored, trading_days)
     # Rank from the stored horizon nearest on a log scale.
@@ -320,13 +331,10 @@ async def get_prediction(instrument_id: str, amount: int, unit: Unit) -> dict:
         "as_of": as_of,
         "target_date": target_date(as_of, amount, unit),
         "last_close": round(close, 2),
-        "chance_up": round(forecast.chance_up, 4),
+        "chance_beat": round(forecast.chance_beat, 4),
         "low_pct": _pct(forecast.low),
         "mid_pct": _pct(forecast.mid),
         "high_pct": _pct(forecast.high),
-        "low_price": round(close * math.exp(forecast.low), 2),
-        "mid_price": round(close * math.exp(forecast.mid), 2),
-        "high_price": round(close * math.exp(forecast.high), 2),
         "rank": nearest["rank"],
         "rank_of": nearest["rank_of"],
         "tracked": stock_listing.is_tracked(ticker),

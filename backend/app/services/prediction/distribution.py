@@ -72,6 +72,6 @@ def quantiles(probs: np.ndarray, buckets: Buckets, levels: tuple[float, ...]) ->
     return out
 
 
-def chance_up(probs: np.ndarray, buckets: Buckets) -> np.ndarray:
+def chance_above_zero(probs: np.ndarray, buckets: Buckets) -> np.ndarray:
     above_zero = buckets.points[:-1] >= 0
     return probs[:, above_zero].sum(axis=1)

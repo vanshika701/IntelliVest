@@ -106,7 +106,8 @@ def market_features(market: pd.DataFrame) -> pd.DataFrame:
     market = market.sort_values("date").reset_index(drop=True)
     log_nifty = np.log(market["nifty"])
     daily = log_nifty.diff()
-    out = pd.DataFrame({"date": market["date"]})
+    # Level, not a model input: training uses it for the Nifty's own return.
+    out = pd.DataFrame({"date": market["date"], "nifty_close": market["nifty"]})
     for days in (5, 21, 63):
         out[f"mkt_ret_{days}"] = log_nifty - log_nifty.shift(days)
     out["mkt_vol_21"] = daily.rolling(21, min_periods=21).std()

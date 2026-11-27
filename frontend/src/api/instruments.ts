@@ -133,11 +133,15 @@ export interface PredictionTestResult {
   horizon_group: string
   test_years: number[]
   range_hit_rate: number
-  direction_accuracy: number
-  always_up_accuracy: number
+  /** Beat/lag call (chance above or below 50%) right. */
+  call_accuracy: number
+  /** Always making the more common call. */
+  majority_call_accuracy: number
+  /** Share of test cases where the stock beat the Nifty. */
+  beat_share: number
 }
 
-/** Stored stock prediction for a horizon; percentages are returns. */
+/** Stored prediction against the Nifty 50; percentages are (1 + stock) / (1 + Nifty) - 1. */
 export interface StockPrediction {
   instrument_id: string
   ticker: string
@@ -147,13 +151,10 @@ export interface StockPrediction {
   as_of: string
   target_date: string
   last_close: number
-  chance_up: number
+  chance_beat: number
   low_pct: number
   mid_pct: number
   high_pct: number
-  low_price: number
-  mid_price: number
-  high_price: number
   rank: number
   rank_of: number
   /** False: not one of the 20 stocks the model was tested on. */

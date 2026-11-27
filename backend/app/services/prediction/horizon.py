@@ -60,9 +60,10 @@ def horizon_group(trading_days: int) -> str:
 
 @dataclass(frozen=True)
 class Forecast:
-    """Log returns over the horizon at the 10th, 50th and 90th percentile."""
+    """Excess log returns over the Nifty 50 for the horizon, at the 10th,
+    50th and 90th percentile, and the chance of beating it."""
 
-    chance_up: float
+    chance_beat: float
     low: float
     mid: float
     high: float
@@ -84,8 +85,8 @@ def interpolate(stored: dict[int, Forecast], trading_days: int) -> Forecast:
         *(
             x + w * (y - x)
             for x, y in zip(
-                (a.chance_up, a.low, a.mid, a.high),
-                (b.chance_up, b.low, b.mid, b.high),
+                (a.chance_beat, a.low, a.mid, a.high),
+                (b.chance_beat, b.low, b.mid, b.high),
                 strict=True,
             )
         )

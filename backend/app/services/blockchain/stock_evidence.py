@@ -2,8 +2,13 @@
 
 Reads the predictions Phase 4 already stored; it never runs or imports the
 model, so changes to the predictor don't reach here. It relies on these
-fields of a stored prediction only: ticker, as_of, horizon_days, chance_up,
-model_version, artifact_hash (optional: low, mid, high).
+fields of a stored prediction only: ticker, as_of, horizon_days, chance_beat,
+target, model_version, artifact_hash (optional: low, mid, high).
+
+Since Phase 4 model 2.0.0 the score is the chance the stock beats the Nifty
+50 over the horizon (`target` = excess_log_return_vs_nifty), and low, mid
+and high are excess log returns. Rows from older models (chance_up, plain
+returns) give NO_DATA.
 """
 
 import math
@@ -20,7 +25,8 @@ from app.services.blockchain.formats import (
 )
 
 MODEL_NAME = "intellivest/stock-predictor"
-_OPTIONAL_OUTPUTS = ("low", "mid", "high")  # log returns
+TARGET = "excess_log_return_vs_nifty"
+_OPTIONAL_OUTPUTS = ("low", "mid", "high")  # excess log returns vs the Nifty 50
 
 
 def model_ref(record: dict) -> tuple[bytes, bytes, bytes]:
@@ -67,9 +73,10 @@ def build_stock_evidence(
         "horizon_days": int(record["horizon_days"]),
         "model_version": record["model_version"],
         "artifact_hash": record["artifact_hash"],
+        "target": record["target"],
     }
-    score = _bps(record["chance_up"], 0, BPS)
-    outputs = {"chance_up_bps": score}
+    score = _bps(record["chance_beat"], 0, BPS)
+    outputs = {"chance_beat_bps": score}
     outputs |= {f"{k}_bps": _bps(record[k]) for k in _OPTIONAL_OUTPUTS if _is_number(record.get(k))}
     model, version, _ = model_ref(record)
     evidence = Evidence(
@@ -104,7 +111,13 @@ async def stock_evidence(
 
 
 def _nearest(records: list[dict], horizon_days: int) -> dict | None:
-    usable = [r for r in records if r.get("horizon_days", 0) > 0 and _is_number(r.get("chance_up"))]
+    usable = [
+        r
+        for r in records
+        if r.get("horizon_days", 0) > 0
+        and r.get("target") == TARGET
+        and _is_number(r.get("chance_beat"))
+    ]
     if not usable:
         return None
     target = math.log(max(horizon_days, 1))
