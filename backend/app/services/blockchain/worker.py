@@ -24,6 +24,7 @@ from app.services.blockchain.advisor import Advisor, AdvisorRequest, build_propo
 from app.services.blockchain.client import ChainClient, ChainError
 from app.services.blockchain.formats import Evidence, EvidenceResult, Outcome, Step
 from app.services.blockchain.mock_advisor import MockAdvisor
+from app.services.blockchain.sentiment_evidence import sentiment_evidence
 from app.services.blockchain.stock_evidence import stock_evidence
 
 logger = logging.getLogger(__name__)
@@ -166,6 +167,15 @@ class Worker:
     def evidence_steps(self, doc: dict, task_id: bytes) -> list:
         """(step, signing role, async builder) for each step with a registered version."""
         steps = []
+        sentiment_version = settings.blockchain_sentiment_model_version
+        if sentiment_version:
+
+            async def sentiment() -> EvidenceResult:
+                chain_now = datetime.fromtimestamp(await self.client.now(), UTC)
+                ticker = doc.get("ticker") or ""
+                return await sentiment_evidence(task_id, ticker, sentiment_version, chain_now)
+
+            steps.append((int(Step.SENTIMENT), "sentiment", sentiment))
         version = settings.blockchain_stock_model_version
         if version:
 

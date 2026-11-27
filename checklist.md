@@ -244,8 +244,9 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
       after restart, handle reorganized blocks. Requests never wait for the chain. Transactions are
       signed and saved before sending; the event reader alone records outcomes. Tested on Hardhat
       with crashes before and after sending and a simulated reorganization.
-- [ ] **B13.** Sentiment adapter. Add evidence details without changing existing responses.
-      Stored articles hold their model name; keep the exact model revision too.
+- [x] **B13.** Sentiment adapter. Add evidence details without changing existing responses.
+      Stored articles hold their model name; keep the exact model revision too. Fixed 7-day
+      window; under 3 articles is `NO_DATA`; any non-FinBERT score (e.g. `lexicon`) is `FALLBACK`.
 
 ### D. Frontend
 - [ ] **B14.** Connect wallet, vault, deposit/withdraw and mandate form (goal values prefilled).

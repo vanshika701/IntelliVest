@@ -60,7 +60,7 @@ class Chain:
         return count - self.task_count
 
 
-async def _setup(monkeypatch, *, vault=True, require_stock=True) -> Chain:
+async def _setup(monkeypatch, *, vault=True, require_stock=True, sentiment=False) -> Chain:
     from app.services.blockchain.client import ChainClient
     from app.services.blockchain.mock_advisor import MockAdvisor
     from app.services.blockchain.stock_evidence import MODEL_NAME
@@ -81,11 +81,15 @@ async def _setup(monkeypatch, *, vault=True, require_stock=True) -> Chain:
     advisor.model_version = f"adv-{run}"
     stock = (hashing.model_id(MODEL_NAME), hashing.model_id(stock_version))
     adv = (hashing.model_id(advisor.model_name), hashing.model_id(advisor.model_version))
+    models = [(stock, Step.STOCK_PREDICTION, "stock"), (adv, Step.ADVISOR, "advisor")]
+    sent = (hashing.model_id(settings.sentiment_model), hashing.model_id(f"sent-{run}"))
+    if sentiment:
+        monkeypatch.setattr(settings, "blockchain_sentiment_model_version", f"sent-{run}")
+        models.append((sent, Step.SENTIMENT, "sentiment"))
+    else:
+        monkeypatch.setattr(settings, "blockchain_sentiment_model_version", None)
     registry = c("ModelRegistry")
-    for (mid, ver), step, role in (
-        (stock, Step.STOCK_PREDICTION, "stock"),
-        (adv, Step.ADVISOR, "advisor"),
-    ):
+    for (mid, ver), step, role in models:
         signer = config.accounts[role].address
         await _send_as(
             w3, admin, registry.functions.register(mid, ver, int(step), signer, bytes(32))
@@ -117,11 +121,11 @@ async def _setup(monkeypatch, *, vault=True, require_stock=True) -> Chain:
             5000,
             50,
             5000,
-            False,
+            sentiment,
             require_stock,
             True,
         )
-        keys = [hashing.model_key(*stock), hashing.model_key(*adv)]
+        keys = [hashing.model_key(*m) for m, _, _ in models]
         await _send_as(
             w3, user, c("MandateManager").functions.setMandate(vault_addr, mandate, [fund], keys)
         )
@@ -140,6 +144,26 @@ async def _setup(monkeypatch, *, vault=True, require_stock=True) -> Chain:
             "artifact_hash": "cd" * 32,
         }
     )
+    if sentiment:  # three FinBERT-scored headlines from today
+        from app.data.collections import get_news_collection
+
+        await get_news_collection().insert_many(
+            [
+                {
+                    "url": f"https://news.example/{run}/{i}",
+                    "title": f"Reliance headline {i}",
+                    "tickers": ["RELIANCE"],
+                    "published_at": datetime.fromtimestamp(await client.now(), UTC)
+                    - timedelta(hours=i + 1),
+                    "sentiment": {
+                        "label": "positive",
+                        "score": 0.4,
+                        "model": settings.sentiment_model,
+                    },
+                }
+                for i in range(3)
+            ]
+        )
     await repo.insert_wallet_link("user-" + run, user.address, datetime.now(UTC))
     task_count = await c("AITaskManager").functions.taskCount().call()
     chain = Chain(client, user, vault_addr, advisor, task_count)
@@ -306,3 +330,17 @@ async def test_reorganized_blocks_are_read_again(events_from_now, monkeypatch):
     from app.data.collections import get_chain_events_collection
 
     assert await get_chain_events_collection().count_documents({"task_id": doc["task_id"]}) == 0
+
+
+async def test_sentiment_and_stock_evidence_both_count(events_from_now, monkeypatch):
+    from app.services.blockchain.events import sync_events
+    from app.services.blockchain.worker import Worker
+
+    chain = await _setup(monkeypatch, sentiment=True)
+    task = await _queue(chain)
+    await Worker(chain.client, chain.advisor).run_due()
+    doc = await _doc(task)
+    assert [e["step"] for e in doc["evidence"]] == [Step.SENTIMENT, Step.STOCK_PREDICTION]
+    assert doc["evidence"][0]["score"] == 4000 and doc["evidence"][0]["status"] == 0
+    await sync_events(chain.client)
+    assert (await _doc(task))["state"] == "executed"

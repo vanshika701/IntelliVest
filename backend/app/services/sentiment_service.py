@@ -85,6 +85,11 @@ def _load_model_locked() -> bool:
     return True
 
 
+def model_revision() -> str | None:
+    """The exact Hugging Face commit of the loaded model, if known."""
+    return getattr(getattr(_model, "config", None), "_commit_hash", None)
+
+
 def classify(texts: list[str]) -> list[dict[str, float]]:
     """Class probabilities per text, e.g. {"positive": 0.9, "negative": 0.05,
     "neutral": 0.05}. Label names come from the model's own config, so a
@@ -170,7 +175,16 @@ async def score_pending_articles() -> int:
         probabilities = await asyncio.to_thread(classify, [article_text(a) for a in articles])
         scored_at = datetime.now(UTC)
         updates = [
-            (a["_id"], {**sentiment_from_probabilities(p), "model": model_name, "scored_at": scored_at})
+            (
+                a["_id"],
+                {
+                    **sentiment_from_probabilities(p),
+                    "model": model_name,
+                    # Phase 10 records which exact weights scored the evidence.
+                    "revision": model_revision(),
+                    "scored_at": scored_at,
+                },
+            )
             for a, p in zip(articles, probabilities, strict=True)
         ]
         total += await set_article_sentiments(updates)

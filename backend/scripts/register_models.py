@@ -28,7 +28,6 @@ from app.services.blockchain.formats import Step
 from app.services.blockchain.mock_advisor import MockAdvisor
 from app.services.blockchain.stock_evidence import MODEL_NAME as STOCK_MODEL
 
-SENTIMENT_MODEL = "ProsusAI/finbert"
 HARDHAT_DEPLOYER_KEY = (
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"  # public
 )
@@ -90,7 +89,7 @@ async def main() -> None:
     await register(
         client,
         admin,
-        SENTIMENT_MODEL,
+        settings.sentiment_model,
         args.sentiment_version,
         Step.SENTIMENT,
         "sentiment",

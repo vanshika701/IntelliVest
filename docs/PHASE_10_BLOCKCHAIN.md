@@ -36,6 +36,7 @@ The relayer is a fifth role: it pays gas to submit signed messages, so the signe
 | `client.py` | The only `web3` user: contracts, relayer transactions, task and vault reads |
 | `advisor.py` | `Advisor` interface: an advisor returns an `AdvisorDecision`; this builds the `Proposal` |
 | `mock_advisor.py` | Fixed rules on the evidence. Results made with it are labelled mock |
+| `sentiment_evidence.py` | Sentiment evidence from **stored** FinBERT scores: 7-day window, `NO_DATA` under 3 articles, `FALLBACK` for any other engine |
 | `stock_evidence.py` | Stock evidence from **stored** Phase 4 predictions; never imports the model |
 
 - **Advisor (Phase 9, B20):** implement `Advisor` (`model_name`, `model_version`, `async decide(request)`).
@@ -45,6 +46,8 @@ The relayer is a fifth role: it pays gas to submit signed messages, so the signe
   `horizon_days`, `chance_up`, `model_version`, `artifact_hash` (and `low`/`mid`/`high` if present).
   Renaming them breaks this adapter. A retrained model gives `NO_DATA` until its version is
   registered and each owner accepts it.
+- **Sentiment (Phase 5):** newly scored articles also store `sentiment.revision`, the exact Hugging Face
+  commit; evidence inputs list the revisions and article URLs and title hashes, never the text.
 - The proposal nonce is the task ID, so a task can only ever get one proposal.
 
 ### API (`/api/v1/blockchain`, B11)
