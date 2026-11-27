@@ -91,3 +91,10 @@ def get_chain_events_collection() -> AsyncIOMotorCollection:
 
 def get_chain_state_collection() -> AsyncIOMotorCollection:
     return get_database()["chain_state"]
+
+
+# --- Phase 9 (advisor) ---
+
+
+def get_advice_collection() -> AsyncIOMotorCollection:
+    return get_database()["advice"]

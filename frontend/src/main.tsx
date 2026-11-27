@@ -17,6 +17,7 @@ import { SearchPage } from './pages/SearchPage'
 import { SectorPage } from './pages/SectorPage'
 import { SectorsPage } from './pages/SectorsPage'
 import { PortfolioPlanPage } from './pages/PortfolioPlanPage'
+import { AdvisorPage } from './pages/AdvisorPage'
 
 // Phase 10: loaded only when opened, so other pages don't ship the wallet library.
 const VaultPage = lazy(() => import('./pages/VaultPage').then((m) => ({ default: m.VaultPage })))
@@ -42,6 +43,7 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="/sectors/:id" element={<SectorPage />} />
                 <Route path="/portfolio-plan" element={<PortfolioPlanPage />} />
                 <Route path="/vault" element={<Suspense fallback={null}><VaultPage /></Suspense>} />
+                <Route path="/ai" element={<AdvisorPage />} />
                 
                 {/* Fallback to dashboard */}
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />

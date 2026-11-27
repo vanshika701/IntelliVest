@@ -266,6 +266,8 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
 - [x] **B19.** Phase 7: prefill mandate limits from the risk profile. Equity limit from the latest
       portfolio plan, loss limit by risk profile; only suggestions, the owner signs the final terms.
 - [ ] **B20.** Phase 9: replace the mock advisor; include contributions per module.
+      `Phase9Advisor` (`backend/app/services/advisor/chain_advisor.py`) implements `Advisor` and is
+      tested with `build_proposal`; wiring it into the worker waits for B11-B12.
 
 ### F. Evaluate
 - [x] **B21.** Attack tests: stolen advisor key, hacked backend, replay, over limit, bad fund, old

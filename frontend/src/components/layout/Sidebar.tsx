@@ -8,7 +8,8 @@ import {
   LogOut,
   Layers,
   PieChart,
-  ShieldCheck
+  ShieldCheck,
+  type LucideIcon,
 } from 'lucide-react';
 import { blockchainApi } from '../../api/blockchain';
 import { useApi } from '../../hooks/useApi';
@@ -22,7 +23,7 @@ export function Sidebar() {
   // Phase 10: the vault link appears only when the server turns the feature on.
   const blockchain = useApi('blockchain-status', blockchainApi.status);
 
-  const navItems = [
+  const navItems: { icon: LucideIcon; label: string; path: string; disabled?: boolean }[] = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: LineChart, label: 'Watchlist', path: '/watchlist' },
     { icon: Layers, label: 'Sectors', path: '/sectors' },
@@ -30,7 +31,7 @@ export function Sidebar() {
     { icon: Wallet, label: 'Budgeting', path: '/budget' },
     { icon: BellRing, label: 'Alerts', path: '/alerts' },
     ...(blockchain.data?.enabled ? [{ icon: ShieldCheck, label: 'AI vault', path: '/vault' }] : []),
-    { icon: Bot, label: 'AI Advisor', path: '/ai', disabled: true },
+    { icon: Bot, label: 'AI Advisor', path: '/ai' },
   ];
 
   if (!sidebarOpen) return null;

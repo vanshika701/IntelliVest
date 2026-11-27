@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.routes import (
+    advisor,
     alerts,
     auth,
     blockchain,
@@ -34,3 +35,4 @@ api_router.include_router(risk_profile.router)
 api_router.include_router(market_stats.router)
 api_router.include_router(recommendations.router)
 api_router.include_router(blockchain.router)
+api_router.include_router(advisor.router)

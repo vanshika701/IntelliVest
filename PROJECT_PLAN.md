@@ -268,6 +268,8 @@ so answers go both ways; model 3.0.0 trains it on 173 NSE stocks of every size, 
 
 **Owner:** _unassigned_
 
+**Status: built (2026-11-27)** as a rules advisor over every module (budget, goals, risk profile, portfolio plan, holdings, sectors, sentiment, Phase 4 return ranges), with per-module timeouts, traceable actions, an optional LLM summary that can't change numbers, and a Phase 10 `Advisor` implementation (B20). Evaluated on 18 hand-written situations (18/18), 109 module knock-outs (0 problems) and ₹ traceability (50/50). See `docs/PHASE_9_ADVISOR.md`.
+
 **Goal:** Combine every module built so far (Phases 3–8) into one coherent advisory output. This is the phase where "IntelliVest AI" stops being a collection of models and becomes one product.
 
 **What gets built:**

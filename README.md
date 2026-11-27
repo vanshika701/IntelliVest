@@ -191,6 +191,17 @@ Phase 2's exit criteria are met. Track remaining polish items in
   the Budgeting page shows the live accuracy metric and marks
   ML-categorized transactions.
 
+- **Phase 9** — built (AI Investment Advisor). One page that reads every
+  module through a common interface (each with its own timeout) and turns
+  their results into prioritised actions: overspending, emergency fund,
+  debt, goals, investing per plan, rebalancing, concentration and holdings
+  to review, each citing the facts and modules behind it. Rules decide; an
+  optional LLM only rewords and is rejected if it changes a number. Phase 4
+  predictions are used for return ranges only. Implements Phase 10's
+  `Advisor` interface for vault trades (B20). Evaluated on 18 hand-written situations (18/18), every
+  module knocked out in turn, and every ₹ figure traced. See
+  `docs/PHASE_9_ADVISOR.md`.
+
 - **Phase 7** — built (Portfolio Recommendation Engine). An 8-question
   risk profile (the lower of capacity and tolerance), an equity / debt /
   gold split by profile and goal horizon, minimum-variance stock weights

@@ -1,0 +1,298 @@
+{
+  "advisor_version": "advisor-v1",
+  "scenarios": {
+    "total": 18,
+    "passed": 18,
+    "pass_rate": 1.0
+  },
+  "degradation": {
+    "module_knockouts": 109,
+    "problems": 0
+  },
+  "traceability": {
+    "amounts_shown": 50,
+    "untraced": 0
+  },
+  "rule_coverage": {
+    "spending_exceeds_income": 2,
+    "emergency_fund": 3,
+    "debt_critical": 2,
+    "debt_high": 1,
+    "goal_unaffordable": 1,
+    "invest_per_plan": 16,
+    "rebalance": 5,
+    "concentration": 4,
+    "review_holding": 1,
+    "not_in_plan": 4
+  },
+  "llm_wording": "Not measured: no LLM key configured in this run. The number guard is tested in backend/tests/test_advisor_api.py with changed, reordered and failed replies.",
+  "limits": [
+    "Scenarios are hand-written by the developers, not reviewed by a certified financial planner.",
+    "They test the rules' decisions on realistic inputs, not whether users find the advice useful; that needs a user study.",
+    "18 scenarios cover every rule, but not every combination of situations."
+  ],
+  "results": [
+    {
+      "scenario": "new_user",
+      "story": "Just signed up; nothing entered.",
+      "expected_first": null,
+      "actions": [],
+      "setup": [
+        "Set up your budget",
+        "Answer the risk questionnaire",
+        "Build a portfolio plan"
+      ],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "overspender",
+      "story": "Earns ₹40,000, spends ₹48,000 with lots of dining out, has a plan.",
+      "expected_first": "spending_exceeds_income",
+      "actions": [
+        "spending_exceeds_income",
+        "emergency_fund",
+        "invest_per_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "no_safety_net",
+      "story": "Good income, no emergency savings, wants to start investing.",
+      "expected_first": "emergency_fund",
+      "actions": [
+        "emergency_fund",
+        "invest_per_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "heavy_emis",
+      "story": "Car and personal loan EMIs take 45% of take-home pay.",
+      "expected_first": "debt_critical",
+      "actions": [
+        "debt_critical",
+        "invest_per_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "moderate_emis",
+      "story": "Home-loan EMI is 32% of income: high but not critical.",
+      "expected_first": "debt_high",
+      "actions": [
+        "debt_high",
+        "invest_per_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "ready_to_start",
+      "story": "Healthy budget and a plan, nothing invested yet.",
+      "expected_first": "invest_per_plan",
+      "actions": [
+        "invest_per_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "drifted_after_rally",
+      "story": "Stocks rallied: 75% of the portfolio vs a 45% plan.",
+      "expected_first": "invest_per_plan",
+      "actions": [
+        "invest_per_plan",
+        "rebalance",
+        "concentration"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "on_target",
+      "story": "Invested roughly per plan (46/44/10).",
+      "expected_first": "invest_per_plan",
+      "actions": [
+        "invest_per_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "all_in_one_stock",
+      "story": "Everything in a single stock that isn't in the plan.",
+      "expected_first": "invest_per_plan",
+      "actions": [
+        "invest_per_plan",
+        "rebalance",
+        "concentration",
+        "not_in_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "bad_news_falling_sector",
+      "story": "Holds Wipro; negative news this week and IT down 7% in a month.",
+      "expected_first": "invest_per_plan",
+      "actions": [
+        "invest_per_plan",
+        "rebalance",
+        "review_holding",
+        "not_in_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "bad_news_rising_sector",
+      "story": "Holds Wipro; negative news but IT up 2%: not enough to flag.",
+      "expected_first": "invest_per_plan",
+      "actions": [
+        "invest_per_plan",
+        "rebalance",
+        "not_in_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "goal_out_of_reach",
+      "story": "Wants a ₹30 lakh house in 5 years on a ₹20,000 surplus.",
+      "expected_first": "goal_unaffordable",
+      "actions": [
+        "goal_unaffordable",
+        "invest_per_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "stale_plan",
+      "story": "Plan built 40 days ago; prices have moved since.",
+      "expected_first": "invest_per_plan",
+      "actions": [
+        "invest_per_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "short_horizon_conservative",
+      "story": "Saving for a car in 2 years: no stocks in the plan.",
+      "expected_first": "invest_per_plan",
+      "actions": [
+        "invest_per_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "mystery_funds",
+      "story": "Most money in funds we can't classify: drift isn't judged.",
+      "expected_first": "invest_per_plan",
+      "actions": [
+        "invest_per_plan",
+        "concentration",
+        "not_in_plan"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "profile_but_no_plan",
+      "story": "Answered the questionnaire but hasn't built a plan.",
+      "expected_first": null,
+      "actions": [],
+      "setup": [
+        "Build a portfolio plan"
+      ],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "everything_wrong",
+      "story": "Overspending, no savings, critical EMIs and a drifted portfolio.",
+      "expected_first": "spending_exceeds_income",
+      "actions": [
+        "spending_exceeds_income",
+        "emergency_fund",
+        "debt_critical",
+        "invest_per_plan",
+        "rebalance",
+        "concentration"
+      ],
+      "setup": [],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    },
+    {
+      "scenario": "savings_not_entered",
+      "story": "Budget set up but emergency savings left blank.",
+      "expected_first": "invest_per_plan",
+      "actions": [
+        "invest_per_plan"
+      ],
+      "setup": [
+        "Add your emergency savings"
+      ],
+      "passed": true,
+      "failures": [],
+      "degradation_failures": [],
+      "untraced_amounts": []
+    }
+  ],
+  "computed_at": "2026-11-27T02:30:15.882812+00:00"
+}
