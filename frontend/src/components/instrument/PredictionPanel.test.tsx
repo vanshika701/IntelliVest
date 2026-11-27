@@ -17,13 +17,10 @@ function prediction(overrides: Partial<StockPrediction> = {}): StockPrediction {
     as_of: '2026-11-26',
     target_date: '2026-12-03',
     last_close: 4000,
-    chance_up: 0.58,
+    chance_beat: 0.42,
     low_pct: -4.2,
-    mid_pct: 0.5,
-    high_pct: 5.1,
-    low_price: 3832,
-    mid_price: 4020,
-    high_price: 4204,
+    mid_pct: -0.6,
+    high_pct: 3.1,
     rank: 4,
     rank_of: 20,
     tracked: true,
@@ -33,8 +30,9 @@ function prediction(overrides: Partial<StockPrediction> = {}): StockPrediction {
       horizon_group: 'Up to 1 week',
       test_years: [2020, 2025],
       range_hit_rate: 0.82,
-      direction_accuracy: 0.51,
-      always_up_accuracy: 0.52,
+      call_accuracy: 0.5,
+      majority_call_accuracy: 0.52,
+      beat_share: 0.48,
     },
     ...overrides,
   }
@@ -43,10 +41,14 @@ function prediction(overrides: Partial<StockPrediction> = {}): StockPrediction {
 afterEach(() => vi.restoreAllMocks())
 
 describe('PredictionPanel', () => {
-  it('shows the range, chance up, rank and test results for the default week', async () => {
+  it('shows the chance of beating the Nifty, the range, rank and test results', async () => {
     const spy = vi.spyOn(instrumentsApi, 'prediction').mockResolvedValue(prediction())
     render(<PredictionPanel instrument={instrument} />)
-    expect(await screen.findByText('58%')).toBeInTheDocument()
+    expect(await screen.findByText('42%')).toBeInTheDocument()
+    expect(screen.getByText('Chance of beating the Nifty 50')).toBeInTheDocument()
+    expect(screen.getByText('-0.60% behind')).toBeInTheDocument()
+    expect(screen.getByText('+3.10% ahead')).toBeInTheDocument()
+    expect(screen.getByText(/always "lag": 52%/)).toBeInTheDocument()
     expect(spy).toHaveBeenCalledWith('stock-TCS.NS', 7, 'days')
     expect(screen.getByText(/By 3 Dec 2026/)).toBeInTheDocument()
     expect(screen.getByText('4th of 20 tracked stocks')).toBeInTheDocument()

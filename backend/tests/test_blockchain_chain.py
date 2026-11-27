@@ -92,7 +92,8 @@ async def test_mock_advisor_trade_executes_with_stock_evidence(client):
             hour=0, minute=0, second=0
         ),
         "horizon_days": 5,
-        "chance_up": 0.71,
+        "chance_beat": 0.71,
+        "target": "excess_log_return_vs_nifty",
         "model_version": f"stock-{run}",
         "artifact_hash": hashing.keccak(text=run).hex(),
     }

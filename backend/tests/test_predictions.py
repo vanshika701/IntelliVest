@@ -9,7 +9,7 @@ import pytest
 
 from app.data import prediction_repository
 from app.services import prediction_service
-from app.services.prediction.distribution import Buckets, chance_up, quantiles
+from app.services.prediction.distribution import Buckets, chance_above_zero, quantiles
 from app.services.prediction.features import FEATURE_COLUMNS, MIN_HISTORY, compute_features
 from app.services.prediction.horizon import (
     HORIZON_GRID,
@@ -53,7 +53,7 @@ def test_interpolation_between_stored_horizons() -> None:
     stored = {5: Forecast(0.5, -0.04, 0.0, 0.04), 20: Forecast(0.6, -0.08, 0.02, 0.10)}
     assert interpolate(stored, 5) == stored[5]
     middle = interpolate(stored, 10)  # halfway on a log scale
-    assert middle.chance_up == pytest.approx(0.55) and middle.high == pytest.approx(0.07)
+    assert middle.chance_beat == pytest.approx(0.55) and middle.high == pytest.approx(0.07)
     assert interpolate(stored, 1) == stored[5] and interpolate(stored, 100) == stored[20]
 
 
@@ -71,14 +71,14 @@ def test_buckets_always_have_an_edge_at_zero() -> None:
     ]
 
 
-def test_quantiles_and_chance_up_from_bucket_probabilities() -> None:
+def test_quantiles_and_chance_above_zero_from_bucket_probabilities() -> None:
     buckets = Buckets(edges=np.array([-1.0, 0.0, 1.0]), low=-2.0, high=2.0)
     uniform = np.full((1, 4), 0.25)  # flat density from -2 to 2
     assert quantiles(uniform, buckets, (0.1, 0.5, 0.9))[0] == pytest.approx([-1.6, 0.0, 1.6])
-    assert chance_up(uniform, buckets)[0] == pytest.approx(0.5)
+    assert chance_above_zero(uniform, buckets)[0] == pytest.approx(0.5)
     # An empty bucket doesn't break the inverse.
     skewed = np.array([[0.0, 0.2, 0.3, 0.5]])
-    assert chance_up(skewed, buckets)[0] == pytest.approx(0.8)
+    assert chance_above_zero(skewed, buckets)[0] == pytest.approx(0.8)
     assert quantiles(skewed, buckets, (0.1,))[0][0] == pytest.approx(-0.5)
 
 
@@ -157,6 +157,7 @@ def fake_predictor() -> prediction_service.Predictor:
         "feature_columns": FEATURE_COLUMNS,
         "horizons": [1, 5, 21],
         "version": "test",
+        "target": prediction_service.TARGET,
     }
     return prediction_service.Predictor(artifact, "hash", None)
 
@@ -170,7 +171,7 @@ def test_build_predictions_covers_every_stock_and_horizon() -> None:
     assert {d["horizon_days"] for d in docs} == {1, 5, 21}
     for h in (1, 5, 21):
         assert sorted(d["rank"] for d in docs if d["horizon_days"] == h) == [1, 2, 3]
-    assert all(d["chance_up"] == pytest.approx(0.5) and d["low"] < 0 < d["high"] for d in docs)
+    assert all(d["chance_beat"] == pytest.approx(0.5) and d["low"] < 0 < d["high"] for d in docs)
     assert docs[0]["as_of"] == datetime(*prices["date"].max().timetuple()[:3], tzinfo=UTC)
 
 
@@ -181,7 +182,8 @@ def stored_docs() -> list[dict]:
             "as_of": AS_OF,
             "horizon_days": h,
             "close": 4000.0,
-            "chance_up": 0.5 + h / 1000,
+            "chance_beat": 0.5 + h / 1000,
+            "target": prediction_service.TARGET,
             "low": -0.01 * h**0.5,
             "mid": 0.001 * h,
             "high": 0.012 * h**0.5,
@@ -203,9 +205,9 @@ def test_prediction_route(client, auth_headers, monkeypatch) -> None:
 
     body = client.get(f"{url}?amount=7&unit=days", headers=auth_headers).json()
     assert body["trading_days"] == 5 and body["target_date"] == "2026-12-03"
-    assert body["chance_up"] == pytest.approx(0.505)
+    assert body["chance_beat"] == pytest.approx(0.505)
     assert body["low_pct"] < body["mid_pct"] < body["high_pct"]
-    assert body["mid_price"] == pytest.approx(4000 * np.exp(0.005), abs=0.01)
+    assert body["mid_pct"] == pytest.approx(np.expm1(0.005) * 100, abs=0.01)
     assert body["rank"] == 3 and body["test_result"] is None
 
     years = client.get(f"{url}?amount=2&unit=years", headers=auth_headers).json()
@@ -262,3 +264,11 @@ def test_untracked_prediction_is_made_on_demand_and_then_read(
     assert client.get(url, headers=auth_headers).json() == first  # second read: stored, not rebuilt
     run = client.portal.call(prediction_repository.get_latest_run)
     assert run is None  # untracked rows never count as the scheduled run
+
+
+def test_rows_from_an_older_model_are_not_served(client, auth_headers, monkeypatch) -> None:
+    monkeypatch.setattr(prediction_service, "load_predictor", lambda: None)
+    old = [{k: v for k, v in d.items() if k != "target"} for d in stored_docs()]
+    client.portal.call(prediction_repository.replace_predictions, old)
+    url = "/api/v1/instruments/stock-TCS.NS/prediction?amount=7"
+    assert client.get(url, headers=auth_headers).status_code == 404

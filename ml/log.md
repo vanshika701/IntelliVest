@@ -509,6 +509,29 @@ Baseline: the same range from recent volatility alone.
 - Hindsight: the 20 stocks are today's large caps, so long horizons lean
   optimistic.
 
+### Run 3 — against the Nifty 50, shipped model 2.0.0 (2026-11-27)
+
+Same data, inputs and model settings as Run 2; only the label changed: the
+stock's log return minus the Nifty's over the same days. Reason: 1.0.0
+nearly always said "up" (on 48 random NSE stocks, under 50% for 3 at 1
+month and none at 1 year) and never beat guessing "up".
+
+| Horizon | Range hit | Baseline | Beat share | Call right | Majority call | Rank corr (baseline) |
+|---|---|---|---|---|---|---|
+| Up to 1 week | 82.5% | 81.2% | 48.4% | 50.1% | 51.6% | 0.026 (−0.005) |
+| 1 week to 1 month | 80.7% | 79.5% | 49.4% | 50.1% | 50.6% | 0.027 (−0.008) |
+| 1 to 6 months | 79.2% | 78.6% | 50.2% | 50.6% | 50.2% | 0.014 (0.023) |
+| 6 months to 2 years | 77.5% | 78.1% | 52.5% | 52.0% | 52.5% | 0.004 (0.131) |
+
+- Balanced: the stocks beat the Nifty about half the time, and the model
+  now calls some to lag (5 of 20 at 1 week on 2026-11-27).
+- No skill on the beat/lag call; slightly overconfident (Brier worse than
+  the baseline by 0.003–0.010).
+- Still learned "dips recover" from 20 large caps: Sterlite Technologies
+  (−36% in a month) got 81% chance of beating the Nifty.
+- Problem: the shell mangled a long inline Python edit script; edits now
+  go through script files.
+
 ---
 
 ## Phase 5 — Financial Sentiment Analysis
