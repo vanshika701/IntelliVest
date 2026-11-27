@@ -58,9 +58,18 @@ def test_routes_are_404_when_off(client, auth_headers):
     )
 
 
-def test_status_when_on(enabled):
+def test_status_when_on(enabled, monkeypatch):
+    monkeypatch.setattr(settings, "blockchain_stock_model_version", "1.0.0")
+    monkeypatch.setattr(settings, "blockchain_sentiment_model_version", None)
     body = enabled.get(f"{API}/status").json()
     assert body["enabled"] is True and body["chain_id"] == settings.blockchain_chain_id
+    # Only versions that are set; the advisor is the mock and says so.
+    assert [m["step"] for m in body["models"]] == ["stock_prediction", "advisor"]
+    from app.services.blockchain import hashing
+
+    stock = body["models"][0]
+    expected = hashing.model_key(hashing.model_id(stock["name"]), hashing.model_id("1.0.0"))
+    assert stock["key"] == "0x" + expected.hex() and body["models"][1]["mock"] is True
 
 
 def test_link_wallet(enabled, auth_headers):

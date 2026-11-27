@@ -344,3 +344,26 @@ async def test_sentiment_and_stock_evidence_both_count(events_from_now, monkeypa
     assert doc["evidence"][0]["score"] == 4000 and doc["evidence"][0]["status"] == 0
     await sync_events(chain.client)
     assert (await _doc(task))["state"] == "executed"
+
+
+async def test_due_sip_runs_once_with_the_runner_key(events_from_now, monkeypatch):
+    from app.services.blockchain.sip_runner import run_due_sips
+
+    chain = await _setup(monkeypatch)
+    w3, c, admin = chain.client.w3, chain.client.contract, _hardhat(0)
+    fund = chain.client.config.contracts["tDebtFund"]
+    vault = chain.client.vault(chain.vault)
+    end = await chain.client.now() + 400 * 86400
+    await _send_as(w3, chain.user, vault.functions.setSip(fund, 500 * U, 1, 100, end))
+    assert await run_due_sips(chain.client) == 0  # not due yet
+
+    await w3.provider.make_request("evm_increaseTime", [32 * 86400])
+    await w3.provider.make_request("evm_mine", [])
+    price, _ = await c("MockPriceFeed").functions.price(fund).call()
+    await _send_as(w3, admin, c("MockPriceFeed").functions.setPrice(fund, price))  # fresh again
+    before = await c("tDebtFund").functions.balanceOf(chain.vault).call()
+    assert await run_due_sips(chain.client) >= 1
+    assert await c("tDebtFund").functions.balanceOf(chain.vault).call() > before
+    # The vault moved its next date on, so it doesn't run twice.
+    _, _, _, _, next_run, _ = await vault.functions.sip().call()
+    assert next_run > await chain.client.now()

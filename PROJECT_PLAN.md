@@ -284,7 +284,7 @@ direction doesn't beat "always up". See `docs/PHASE_4_PREDICTION.md`.
 
 ## Phase 10 — Blockchain: Mode 2 AI Trading with a User-Owned Vault
 
-> **Status: resumed 2026-11-27 (branch `phase-10-b10`): contracts, settings, signing, chain client, advisor interface, mock advisor and real Phase 4 stock evidence built and tested locally (B1-B10); API, worker, frontend and the real advisor not started.** Replaces the earlier hash-only audit layer. Full spec, formats, rules and tasks: `checklist.md`, Phase 10. Infrastructure may start now with mocks; real integrations wait for Phases 4, 7 and 9.
+> **Status (2026-11-27, branch `phase-10`): B1-B17 and B19 built and tested locally: contracts, backend (signing, API, worker, event reader, SIP runner, sentiment and real Phase 4 stock evidence) and the `/vault` page. Left: real advisor (B20, Phase 9), attack tests and comparison (B21-B22), Sepolia (B23).**
 
 **Owner:** _unassigned_
 

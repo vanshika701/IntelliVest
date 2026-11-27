@@ -85,6 +85,20 @@ reader copies `AITaskManager` events into `chain_events`.
   from `metrics.json`, sha256 of the model file) and the mock advisor, and prints the
   `BLOCKCHAIN_*_MODEL_VERSION` settings. A step without a version setting is skipped.
 
+### Frontend (`/vault`, B14-B16, B19)
+
+Shown in the sidebar only when the server has the flag on; the page and ethers load only when opened.
+Needs MetaMask (or any EIP-1193 wallet); on the local chain it offers to add Hardhat (chain 31337).
+
+- **Wallet:** connect, then link by signing the one-time challenge. A warning shows if the connected
+  account is not the linked one.
+- **Vault:** create, get test tINR from the faucet, deposit, withdraw. All are wallet-to-contract.
+- **Mandate:** prefilled from the first saved goal (monthly amount, end date) and the latest portfolio
+  plan (equity limit; loss limit by risk profile). The model versions to accept come from `/status`.
+- **AI trades:** ask the AI for a fund (optional stock for evidence), approve or decline pending
+  trades, see evidence, and "Revoke AI" (pauses AI trading; withdrawals still work). Polls every 5 s.
+- **Vault SIP:** amount, day 1-28, slippage and length. The backend SIP runner calls `runSip()` when due.
+
 End-to-end test on a local chain (skipped otherwise):
 
 ```bash

@@ -9,11 +9,20 @@ Address = Field(pattern=r"^0x[0-9a-fA-F]{40}$")
 FundLabel = Literal["tEquityFund", "tDebtFund", "tGoldFund"]
 
 
+class ModelVersion(BaseModel):
+    step: str
+    name: str
+    version: str
+    key: str  # ModelRegistry key to accept in the mandate
+    mock: bool = False
+
+
 class BlockchainStatus(BaseModel):
     enabled: bool
     chain_id: int | None = None
     network: str | None = None
     contracts: dict[str, str] = {}
+    models: list[ModelVersion] = []
     privacy_notice: str
 
 

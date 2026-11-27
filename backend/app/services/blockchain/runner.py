@@ -1,8 +1,8 @@
-"""Scheduled entry point for the worker and event reader (Phase 10, B12).
+"""Scheduled entry point for the worker, SIP runner and event reader (Phase 10).
 
-Runs only when BLOCKCHAIN_ENABLED is true. One cycle: advance due tasks,
-then read new events. If the chain is down, the cycle logs and the next one
-tries again; tasks keep their place.
+Runs only when BLOCKCHAIN_ENABLED is true. One cycle: advance due tasks, run
+due vault SIPs, then read new events. If the chain is down, the cycle logs
+and the next one tries again; tasks keep their place.
 """
 
 import logging
@@ -26,12 +26,14 @@ def _get_client():
 
 async def run_cycle() -> None:
     from app.services.blockchain.events import sync_events
+    from app.services.blockchain.sip_runner import run_due_sips
     from app.services.blockchain.worker import Worker, safe_error
 
     client = _get_client()
     try:
         await client.check_network()
         await Worker(client).run_due()
+        await run_due_sips(client)
         await sync_events(client)
     except Exception as exc:  # noqa: BLE001 - chain or RPC down: try again next cycle
         logger.warning("Blockchain cycle skipped: %s", safe_error(exc, client.config.rpc_url))

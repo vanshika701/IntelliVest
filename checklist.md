@@ -249,17 +249,22 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
       window; under 3 articles is `NO_DATA`; any non-FinBERT score (e.g. `lexicon`) is `FALLBACK`.
 
 ### D. Frontend
-- [ ] **B14.** Connect wallet, vault, deposit/withdraw and mandate form (goal values prefilled).
-      Withdrawal goes wallet-to-contract directly, with no backend call.
-- [ ] **B15.** Pending trades with approve/reject, evidence view, "Revoke AI", privacy notice.
-- [ ] **B16.** Vault SIP, triggered by any permitted runner; the vault enforces date and amount.
-- [ ] **B17.** With the flag off, the existing invest flow and tests are unchanged.
+- [x] **B14.** Connect wallet, vault, deposit/withdraw and mandate form (goal values prefilled).
+      Withdrawal goes wallet-to-contract directly, with no backend call. `/vault` page, ethers 6.17.0
+      (loaded only on that page).
+- [x] **B15.** Pending trades with approve/reject, evidence view, "Revoke AI", privacy notice.
+      Approve, decline and revoke go from the wallet to the contracts; the mock advisor is labelled.
+- [x] **B16.** Vault SIP, triggered by any permitted runner; the vault enforces date and amount.
+      The backend's SIP runner uses its own key and only calls `runSip()`.
+- [x] **B17.** With the flag off, the existing invest flow and tests are unchanged. No sidebar link,
+      routes 404, web3 not imported; all 563 backend and 111 frontend tests pass.
 
 ### E. Connect later
 - [ ] **B18.** Phase 4: evidence already uses the real model, version and artifact hash (B10).
       Left: register each retrained version (owners must accept it) and store the evidence
       record in MongoDB (B11-B12).
-- [ ] **B19.** Phase 7: prefill mandate limits from the risk profile.
+- [x] **B19.** Phase 7: prefill mandate limits from the risk profile. Equity limit from the latest
+      portfolio plan, loss limit by risk profile; only suggestions, the owner signs the final terms.
 - [ ] **B20.** Phase 9: replace the mock advisor; include contributions per module.
 
 ### F. Evaluate

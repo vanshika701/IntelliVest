@@ -153,10 +153,13 @@ class ChainClient:
 
     # --- Transactions ---
 
-    async def sign_tx(self, call) -> tuple[str, bytes, int]:
-        """Signs `call` from the relayer without sending it, so the caller
-        can save the hash first and never lose track of a sent transaction."""
-        sender = self._relayer.address
+    async def sign_tx(self, call, role: str = "relayer") -> tuple[str, bytes, int]:
+        """Signs `call` from the relayer (or the SIP runner) without sending
+        it, so the caller can save the hash first and never lose track of it."""
+        if role not in ("relayer", "sip_runner"):
+            raise ValueError(f"{role} does not send transactions")
+        account = self.config.accounts[role]
+        sender = account.address
         tx = await call.build_transaction(
             {
                 "from": sender,
@@ -165,7 +168,7 @@ class ChainClient:
             }
         )
         tx["gas"] = tx["gas"] * (100 + GAS_MARGIN_PERCENT) // 100
-        signed = self._relayer.sign_transaction(tx)
+        signed = account.sign_transaction(tx)
         return "0x" + bytes(signed.hash).hex(), bytes(signed.raw_transaction), tx["nonce"]
 
     async def mined_nonce(self) -> int:
@@ -204,8 +207,8 @@ class ChainClient:
             raise ChainError("openTask emitted no TaskOpened event")
         return bytes(events[0]["args"]["taskId"])
 
-    async def send(self, call) -> dict:
-        """Sends `call` from the relayer and waits for it. Raises on revert."""
-        tx_hash, raw, _ = await self.sign_tx(call)
+    async def send(self, call, role: str = "relayer") -> dict:
+        """Sends `call` and waits for it. Raises on revert."""
+        tx_hash, raw, _ = await self.sign_tx(call, role)
         await self.broadcast(raw)
         return await self.wait(tx_hash)
