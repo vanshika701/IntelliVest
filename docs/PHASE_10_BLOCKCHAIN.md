@@ -47,6 +47,21 @@ The relayer is a fifth role: it pays gas to submit signed messages, so the signe
   registered and each owner accepts it.
 - The proposal nonce is the task ID, so a task can only ever get one proposal.
 
+### API (`/api/v1/blockchain`, B11)
+
+All routes but `/status` need a login and return 404 while `BLOCKCHAIN_ENABLED=false`.
+
+| Route | Does |
+|---|---|
+| `GET /status` | On/off, chain, public contract addresses, privacy notice |
+| `POST /wallet/challenge` | One-time message to sign (`personal_sign`); expires in 10 minutes, newest only |
+| `POST /wallet/verify` | Checks the signature and links the wallet. One wallet per user, one user per wallet |
+| `GET` / `DELETE /wallet` | Show or remove the link. Unlinking never touches the vault |
+| `POST /tasks` | Queues an AI trade for a fund (202). The worker does the chain work |
+| `GET /tasks`, `GET /tasks/{id}` | The user's tasks with evidence and proposal records (no salt) |
+
+Collections: `wallet_links`, `wallet_challenges` (TTL), `chain_tasks`, `chain_events`, `chain_state`.
+
 End-to-end test on a local chain (skipped otherwise):
 
 ```bash

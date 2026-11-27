@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 import pymongo
 import pytest
@@ -12,7 +13,8 @@ from app.main import app
 from app.services import fund_aum_provider, fund_meta_provider, quote_service
 from app.services.auth_service import reset_limiter
 
-TEST_DB_NAME = "intellivest_test"
+# Override to run two checkouts' tests at once without sharing a database.
+TEST_DB_NAME = os.environ.get("TEST_MONGODB_DB", "intellivest_test")
 
 
 @pytest.fixture(autouse=True)

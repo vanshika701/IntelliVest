@@ -237,8 +237,9 @@ so evidence can't be swapped later. Any advisor (LLM, trained model, mock) retur
       mock advisor, and stock evidence from the **real** Phase 4 predictions (no mock predictor).
       `web3.py` imported only here. A mock-advisor trade with stock evidence runs end to end on
       Hardhat (`tests/test_blockchain_chain.py`).
-- [ ] **B11.** Wallet linking (one-time nonce), repositories, indexes and `/api/v1/blockchain/...`.
-      Follow routes -> services -> data.
+- [x] **B11.** Wallet linking (one-time nonce), repositories, indexes and `/api/v1/blockchain/...`.
+      Follow routes -> services -> data. Routes 404 while the flag is off (except `/status`);
+      creating a task only queues it, one unfinished task per user and fund.
 - [ ] **B12.** Background worker and event reader: retry, timeout, no double submission, resume
       after restart, handle reorganized blocks. Requests never wait for the chain.
 - [ ] **B13.** Sentiment adapter. Add evidence details without changing existing responses.

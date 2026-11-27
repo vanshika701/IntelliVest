@@ -68,3 +68,26 @@ def get_market_stats_collection() -> AsyncIOMotorCollection:
 
 def get_recommendations_collection() -> AsyncIOMotorCollection:
     return get_database()["recommendations"]
+
+
+# --- Phase 10 (blockchain) ---
+
+
+def get_wallet_links_collection() -> AsyncIOMotorCollection:
+    return get_database()["wallet_links"]
+
+
+def get_wallet_challenges_collection() -> AsyncIOMotorCollection:
+    return get_database()["wallet_challenges"]
+
+
+def get_chain_tasks_collection() -> AsyncIOMotorCollection:
+    return get_database()["chain_tasks"]
+
+
+def get_chain_events_collection() -> AsyncIOMotorCollection:
+    return get_database()["chain_events"]
+
+
+def get_chain_state_collection() -> AsyncIOMotorCollection:
+    return get_database()["chain_state"]
