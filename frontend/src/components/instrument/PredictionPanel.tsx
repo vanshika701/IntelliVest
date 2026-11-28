@@ -3,10 +3,12 @@ import { RefreshCw } from 'lucide-react'
 import { instrumentsApi, type HorizonUnit, type InstrumentDetail, type StockPrediction } from '../../api/instruments'
 import { useApi } from '../../hooks/useApi'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue'
+import { useModelChoice } from '../../hooks/useModelChoice'
 import { formatDate, formatINR, formatSignedPct } from '../../lib/format'
 import { ordinal } from '../../lib/ordinal'
 import { describeHorizon, HORIZON_LIMITS, HORIZON_PRESETS, validateHorizon } from '../../lib/predictionHorizon'
 import { cn } from '../../lib/utils'
+import { ModelSelect } from '../ui/ModelSelect'
 import { NumberInput } from '../ui/NumberInput'
 import { Skeleton } from '../ui/Skeleton'
 
@@ -116,7 +118,9 @@ function Result({ p, name }: { p: StockPrediction; name: string }) {
           every size the model was trained and tested on, not for {name} alone.
         </p>
       )}
-      <p className="text-[11px] text-[var(--color-text-muted)]">Model {p.model_version}</p>
+      <p className="text-[11px] text-[var(--color-text-muted)]">
+        Model: {p.model_label} {p.model_version}
+      </p>
     </div>
   )
 }
@@ -127,13 +131,15 @@ export function PredictionPanel({ instrument }: { instrument: InstrumentDetail }
   const [unit, setUnit] = useState<HorizonUnit>('days')
   const error = validateHorizon(amount, unit)
   const query = useDebouncedValue(error ? null : `${amount}|${unit}`, 300)
-  const prediction = useApi(query ? `prediction-${instrument.id}-${query}` : null, () => {
+  const [model, setModel] = useModelChoice('prediction')
+  const prediction = useApi(query ? `prediction-${instrument.id}-${query}-${model}` : null, () => {
     const [value, chosenUnit] = (query ?? '').split('|')
-    return instrumentsApi.prediction(instrument.id, Number(value), chosenUnit as HorizonUnit)
+    return instrumentsApi.prediction(instrument.id, Number(value), chosenUnit as HorizonUnit, model)
   })
 
   return (
     <div className="space-y-4">
+      <ModelSelect kind="prediction" label="Prediction model" value={model} onChange={setModel} />
       <div>
         <label htmlFor={`${idPrefix}-amount`} className="mb-1.5 block text-xs font-medium text-[var(--color-text-secondary)]">
           How far ahead

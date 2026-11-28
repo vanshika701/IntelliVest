@@ -211,7 +211,7 @@ def pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path):
                  "https://a.example/3": ("Infosys hires freshers", "headline")}
         return [kinds[a["url"]] for a in batch]
 
-    def fake_scores(texts: list[str]):
+    def fake_scores(texts: list[str], model: str | None = None):
         return [{"positive": 0.8, "negative": 0.1, "neutral": 0.1} for _ in texts], "fake-finbert"
 
     async def fake_move(instrument_id: str):
@@ -221,7 +221,7 @@ def pipeline(monkeypatch: pytest.MonkeyPatch, tmp_path):
     monkeypatch.setattr(news_summary_service, "_gather_candidates", fake_candidates)
     monkeypatch.setattr(news_summary_service, "_article_inputs", fake_inputs)
     monkeypatch.setattr(news_summary_service, "score_texts", fake_scores)
-    monkeypatch.setattr(news_summary_service, "get_summarizer", lambda: state["summarizer"])
+    monkeypatch.setattr(news_summary_service, "get_summarizer", lambda *_: state["summarizer"])
     monkeypatch.setattr(settings, "summary_log_path", str(state["log"]))
     monkeypatch.setattr(settings, "log_summaries", False)
     return state
@@ -484,3 +484,21 @@ async def test_digest_carries_the_price_move(pipeline, monkeypatch: pytest.Monke
 
     monkeypatch.setattr(news_summary_service, "get_price_move", move)
     assert (await get_news_digest("stock-INFY.NS"))["price_move"]["text"].startswith("Infosys: up")
+
+
+def test_endpoint_rejects_unknown_models(client, auth_headers) -> None:
+    url = "/api/v1/instruments/stock-TCS.NS/news-summary"
+    assert client.get(f"{url}?model=gpt-9", headers=auth_headers).status_code == 422
+    assert client.get(f"{url}?sentiment_model=not/offered", headers=auth_headers).status_code == 422
+    sentiment = client.get("/api/v1/instruments/stock-TCS.NS/sentiment?model=not/offered", headers=auth_headers)
+    assert sentiment.status_code == 422
+
+
+def test_hugging_face_summarizers_are_offered_by_key() -> None:
+    from app.services.summarization.factory import SUMMARIZERS, available_summarizers
+    from app.services.summarization.huggingface import HuggingFaceSummarizer
+
+    keys = [m["key"] for m in available_summarizers()]
+    assert keys == list(SUMMARIZERS) and sum(m["default"] for m in available_summarizers()) == 1
+    t5 = news_summary_service.get_summarizer("t5-small")
+    assert isinstance(t5, HuggingFaceSummarizer) and t5.method == "hf:Falconsai/text_summarization"

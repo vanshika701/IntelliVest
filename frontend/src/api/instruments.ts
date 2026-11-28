@@ -82,6 +82,9 @@ export interface InstrumentSentiment {
   min_articles: number
   window_days: number
   engine: string
+  /** The sentiment model asked for (the default unless one was picked). */
+  model: string
+  model_label: string
   articles: SentimentArticle[]
   generated_at: string
 }
@@ -116,6 +119,8 @@ export interface NewsDigest {
   price_move: PriceMove | null
   provider: string
   method: string
+  /** Summarizer key, see GET /api/v1/models. */
+  summarizer: string
   max_words: number
   summary: string | null
   word_count: number
@@ -163,6 +168,9 @@ export interface StockPrediction {
   rank_of: number
   /** False: not one of the 20 stocks the model was tested on. */
   tracked: boolean
+  /** Prediction model key, e.g. 'lstm_lgbm'. */
+  model: string
+  model_label: string
   model_version: string
   artifact_hash: string
   test_result: PredictionTestResult | null
@@ -170,16 +178,26 @@ export interface StockPrediction {
 
 const base = (id: string) => `/api/v1/instruments/${encodeURIComponent(id)}`
 
+/** Query string for optional model picks; omitted params mean the server default. */
+function query(params: Record<string, string | number | null | undefined>): string {
+  const parts = Object.entries(params)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+  return parts.length ? `?${parts.join('&')}` : ''
+}
+
 export const instrumentsApi = {
   search: (query: string, signal?: AbortSignal, limit = 12) =>
     apiGet<InstrumentSearchResponse>(`/api/v1/instruments/search?q=${encodeURIComponent(query)}&limit=${limit}`, { signal }),
   detail: (id: string) => apiGet<InstrumentDetail>(base(id)),
   history: (id: string) => apiGet<PriceHistory>(`${base(id)}/history`),
   intraday: (id: string) => apiGet<PriceHistory>(`${base(id)}/intraday`),
-  sentiment: (id: string) => apiGet<InstrumentSentiment>(`${base(id)}/sentiment`),
-  newsDigest: (id: string) => apiGet<NewsDigest>(`${base(id)}/news-summary`),
-  prediction: (id: string, amount: number, unit: HorizonUnit) =>
-    apiGet<StockPrediction>(`${base(id)}/prediction?amount=${amount}&unit=${unit}`),
+  sentiment: (id: string, model?: string | null) =>
+    apiGet<InstrumentSentiment>(`${base(id)}/sentiment${query({ model })}`),
+  newsDigest: (id: string, model?: string | null, sentimentModel?: string | null) =>
+    apiGet<NewsDigest>(`${base(id)}/news-summary${query({ model, sentiment_model: sentimentModel })}`),
+  prediction: (id: string, amount: number, unit: HorizonUnit, model?: string | null) =>
+    apiGet<StockPrediction>(`${base(id)}/prediction${query({ amount, unit, model })}`),
 }
 
 export const TYPE_LABEL: Record<InstrumentType, string> = { STOCK: 'Stock', MF: 'MF', ETF: 'ETF' }

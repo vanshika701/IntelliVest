@@ -32,14 +32,20 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60 * 24  # 24 hours for dev convenience
 
-    # Phase 5 sentiment model: a Hugging Face model id, or a local path to
-    # a fine-tuned checkpoint. Changing it makes the scoring job re-score
-    # every article with the new model.
-    sentiment_model: str = "ProsusAI/finbert"
+    # Phase 5 sentiment model (the default): a Hugging Face model id, or a
+    # local path to a fine-tuned checkpoint. Changing it makes the scoring
+    # job re-score every article with the new model. DistilRoBERTa won the
+    # 2026-11-28 comparison (ml/compare_sentiment_models.py, ml/log.md).
+    sentiment_model: str = "mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis"
+    # Other models users can pick on the instrument page, comma-separated.
+    # Each is loaded and scores every article too, so each costs memory and time.
+    sentiment_extra_models: str = "ProsusAI/finbert"
 
-    # Phase 5 news summaries. "extractive" = classical baseline; "ml" = our
-    # trained model (placeholder until it exists, see summarization/ml.py).
-    summarizer_provider: str = "extractive"
+    # Phase 5 news summaries: the default summarizer (users can pick any in
+    # summarization/factory.py SUMMARIZERS). T5-small won the 2026-11-28
+    # comparison (ml/compare_summarizers.py); "extractive" is the classical
+    # baseline; "ml" = our own model server (placeholder, see summarization/ml.py).
+    summarizer_provider: str = "t5-small"
     summarizer_max_words: int = 100
     summarizer_cache_ttl_min: int = 60
     ml_summarizer_url: str | None = None
@@ -52,6 +58,10 @@ class Settings(BaseSettings):
     # Phase 4 stock predictor, made by ml/train_stock_predictor.py; its
     # metrics.json sits next to it. Relative paths resolve against the repo root.
     stock_predictor_path: str = "ml/models/stock_predictor/model.joblib"
+    # The LSTM + LightGBM ensemble (4.0.0), made by ml/train_hybrid_lstm_lightgbm.py --final.
+    stock_predictor_ensemble_path: str = "ml/models/stock_predictor_hybrid/model.joblib"
+    # Which one users get unless they pick the other: "lstm_lgbm" or "lgbm".
+    prediction_model: str = "lstm_lgbm"
 
     # Phase 8 budget explanations. "template" (default) = the engine's own
     # sentences; "groq" or "gemini" = a free-tier LLM rephrases them, if its key

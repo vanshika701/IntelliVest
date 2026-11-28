@@ -7,8 +7,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from app.core.config import settings
 from app.data import prediction_repository
+from app.data.collections import get_stock_predictions_collection
 from app.services import prediction_service
+from app.services.prediction import sequence
 from app.services.prediction.distribution import Buckets, chance_above_zero, quantiles
 from app.services.prediction.features import FEATURE_COLUMNS, MIN_HISTORY, compute_features
 from app.services.prediction.horizon import (
@@ -148,7 +151,7 @@ class FlatModel:
         return np.full((len(rows), 4), 0.25)
 
 
-def fake_predictor() -> prediction_service.Predictor:
+def fake_predictor(model: str | None = None) -> prediction_service.Predictor:
     artifact = {
         "model": FlatModel(),
         "bucket_edges": [-1.0, 0.0, 1.0],
@@ -159,7 +162,7 @@ def fake_predictor() -> prediction_service.Predictor:
         "version": "test",
         "target": prediction_service.TARGET,
     }
-    return prediction_service.Predictor(artifact, "hash", None)
+    return prediction_service.Predictor(artifact, "hash", None, model or settings.prediction_model)
 
 
 def test_build_predictions_covers_every_stock_and_horizon() -> None:
@@ -175,12 +178,13 @@ def test_build_predictions_covers_every_stock_and_horizon() -> None:
     assert docs[0]["as_of"] == datetime(*prices["date"].max().timetuple()[:3], tzinfo=UTC)
 
 
-def stored_docs() -> list[dict]:
+def stored_docs(model: str | None = None) -> list[dict]:
     return [
         {
             "ticker": "TCS.NS",
             "as_of": AS_OF,
             "horizon_days": h,
+            "model": model or settings.prediction_model,
             "close": 4000.0,
             "chance_beat": 0.5 + h / 1000,
             "target": prediction_service.TARGET,
@@ -198,7 +202,7 @@ def stored_docs() -> list[dict]:
 
 
 def test_prediction_route(client, auth_headers, monkeypatch) -> None:
-    monkeypatch.setattr(prediction_service, "load_predictor", lambda: None)
+    monkeypatch.setattr(prediction_service, "load_predictor", lambda *_: None)
     url = "/api/v1/instruments/stock-TCS.NS/prediction"
     assert client.get(f"{url}?amount=7", headers=auth_headers).status_code == 404  # nothing stored
     client.portal.call(prediction_repository.replace_predictions, stored_docs())
@@ -220,7 +224,7 @@ def test_prediction_route(client, auth_headers, monkeypatch) -> None:
 
 
 async def test_refresh_without_a_model_does_nothing(mongo_test_db, monkeypatch) -> None:
-    monkeypatch.setattr(prediction_service, "load_predictor", lambda: None)
+    monkeypatch.setattr(prediction_service, "load_predictor", lambda *_: None)
     assert await prediction_service.refresh_predictions() == 0
     assert await prediction_service.refresh_predictions_if_stale() is False
     assert await prediction_repository.latest_as_of() is None
@@ -267,7 +271,7 @@ def test_untracked_prediction_is_made_on_demand_and_then_read(
 
 
 def test_rows_from_an_older_model_are_not_served(client, auth_headers, monkeypatch) -> None:
-    monkeypatch.setattr(prediction_service, "load_predictor", lambda: None)
+    monkeypatch.setattr(prediction_service, "load_predictor", lambda *_: None)
     old = [{k: v for k, v in d.items() if k != "target"} for d in stored_docs()]
     client.portal.call(prediction_repository.replace_predictions, old)
     url = "/api/v1/instruments/stock-TCS.NS/prediction?amount=7"
@@ -301,3 +305,68 @@ def test_test_results_come_from_the_matching_stock_pool() -> None:
         173,
     )
     assert predictor.test_result(504, tracked=True) is None  # no results for that horizon
+
+
+# --- choosing a model -----------------------------------------------------------
+
+
+def test_ensemble_averages_the_tree_and_lstm_forecasts() -> None:
+    """With an LSTM, each forecast is the mean of the tree model's and the
+    LSTM's (a zeroed LSTM says: median 0, low/high -/+softplus(0), 50%)."""
+    import torch
+
+    prices, market = synthetic(tickers=("TCS.NS", "INFY.NS", "WIPRO.NS"))
+    features = compute_features(prices, market)
+    latest = features[features["date"] == features["date"].max()]
+    predictor = fake_predictor("lstm_lgbm")
+    trees = predictor.forecast_all(latest, features)
+    net = sequence.build_net()
+    with torch.no_grad():
+        for param in net.parameters():
+            param.zero_()
+    predictor.lstm = net
+    both = predictor.forecast_all(latest, features)
+    edge = float(np.log(2))  # softplus(0)
+    for h in (1, 21):
+        s = (latest["vol_63"] * np.sqrt(h)).to_numpy()
+        np.testing.assert_allclose(both[h]["low"], (trees[h]["low"] - edge * s) / 2, rtol=1e-5)
+        np.testing.assert_allclose(both[h]["mid"], trees[h]["mid"] / 2, rtol=1e-5, atol=1e-9)
+        np.testing.assert_allclose(both[h]["chance_beat"], (trees[h]["chance_beat"] + 0.5) / 2, rtol=1e-5)
+
+
+def test_prediction_route_serves_the_chosen_model(client, auth_headers, monkeypatch) -> None:
+    monkeypatch.setattr(prediction_service, "load_predictor", lambda *_: None)
+    lgbm = [{**d, "chance_beat": 0.9} for d in stored_docs("lgbm")]
+    client.portal.call(prediction_repository.replace_predictions, stored_docs() + lgbm)
+    url = "/api/v1/instruments/stock-TCS.NS/prediction?amount=7"
+
+    default = client.get(url, headers=auth_headers).json()
+    chosen = client.get(f"{url}&model=lgbm", headers=auth_headers).json()
+    assert (default["model"], default["model_label"]) == ("lstm_lgbm", "LSTM + LightGBM")
+    assert (chosen["model"], chosen["chance_beat"]) == ("lgbm", 0.9)
+    assert client.get(f"{url}&model=nope", headers=auth_headers).status_code == 422
+
+    catalog = client.get("/api/v1/models", headers=auth_headers).json()
+    assert [m["key"] for m in catalog["prediction"]] == ["lstm_lgbm", "lgbm"]
+    assert [m["default"] for m in catalog["prediction"]] == [True, False]
+    assert sum(m["default"] for m in catalog["sentiment"]) == 1
+    assert sum(m["default"] for m in catalog["summarizer"]) == 1
+
+
+async def test_rows_from_before_model_choice_become_lightgbm_rows(mongo_test_db) -> None:
+    """Old rows (no `model`, old unique index) are labelled LightGBM's, and
+    the new index lets both models store the same stock, day and horizon."""
+    from app.data.indexes import ensure_indexes
+
+    collection = get_stock_predictions_collection()
+    await collection.create_index(
+        [("ticker", 1), ("as_of", -1), ("horizon_days", 1)], name="uniq_ticker_asof_horizon", unique=True
+    )
+    await collection.insert_many([{k: v for k, v in d.items() if k != "model"} for d in stored_docs()])
+
+    await ensure_indexes()
+
+    assert "uniq_ticker_asof_horizon" not in await collection.index_information()
+    assert len(await prediction_repository.get_latest_for_ticker("TCS.NS", "lgbm")) == len(HORIZON_GRID)
+    await prediction_repository.replace_predictions(stored_docs("lstm_lgbm"))
+    assert len(await prediction_repository.get_latest_for_ticker("TCS.NS", "lstm_lgbm")) == len(HORIZON_GRID)

@@ -41,6 +41,8 @@ class NewsDigest(BaseModel):
     price_move: PriceMove | None = None
     provider: str
     method: str
+    # Summarizer key (see GET /models), e.g. "extractive".
+    summarizer: str
     max_words: int
     # One summary of the top articles; None when there's no news or the
     # summarizer failed (see summary_failed).

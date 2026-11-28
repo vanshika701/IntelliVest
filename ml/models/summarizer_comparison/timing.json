@@ -1,0 +1,37 @@
+{
+  "measured_at": "2026-11-27T23:33:51+00:00",
+  "torch_threads": 6,
+  "cpu_note": "AMD Ryzen 5 5500U laptop, nothing else running",
+  "results": {
+    "extractive": {
+      "median_seconds": 0.018172550000599585,
+      "mean_seconds": 0.018599320002249443,
+      "max_seconds": 0.02708349999738857,
+      "articles": 10
+    },
+    "distilbart": {
+      "median_seconds": 13.23327650000283,
+      "mean_seconds": 13.660431239995523,
+      "max_seconds": 21.942022300005192,
+      "articles": 10
+    },
+    "bart-large-cnn": {
+      "median_seconds": 18.357810500005144,
+      "mean_seconds": 18.987423270000725,
+      "max_seconds": 25.216440199990757,
+      "articles": 10
+    },
+    "pegasus-financial": {
+      "median_seconds": 14.540641649989993,
+      "mean_seconds": 14.270021319994703,
+      "max_seconds": 15.384086200007005,
+      "articles": 10
+    },
+    "t5-small": {
+      "median_seconds": 5.583417699977872,
+      "mean_seconds": 5.385561089997646,
+      "max_seconds": 7.210123299999395,
+      "articles": 10
+    }
+  }
+}

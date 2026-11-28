@@ -14,8 +14,13 @@ Untracked NSE stocks (outside the 20) are predicted on their first request
 from Yahoo prices, compared with the tracked stocks on the same day, and
 stored the same way, so later requests that day only read.
 
-The model comes from ml/train_stock_predictor.py. Without it the app still
-runs; the prediction route just reports that no prediction exists yet.
+Two models can be served side by side (PREDICTION_MODELS). Each stores its
+own rows, tagged with its key, and users pick one per request:
+- "lstm_lgbm" (default, 4.0.0): the average of LightGBM and an LSTM over
+  the last 64 days, from ml/train_hybrid_lstm_lightgbm.py --final.
+- "lgbm" (3.0.0): gradient-boosted trees alone, from ml/train_stock_predictor.py.
+Without a model file the app still runs; the prediction route just reports
+that no prediction exists yet.
 """
 
 import asyncio
@@ -38,6 +43,7 @@ from app.data import prediction_repository as repo
 from app.data.prices_repository import get_daily_bars, get_newest_date
 from app.services import stock_listing
 from app.services.instrument_service import get_untracked_bars, parse_instrument_id
+from app.services.prediction import sequence
 from app.services.prediction.distribution import (
     HIGH_Q,
     LOW_Q,
@@ -49,6 +55,7 @@ from app.services.prediction.distribution import (
 )
 from app.services.prediction.features import compute_features, scale, with_horizon
 from app.services.prediction.horizon import (
+    HORIZON_GRID,
     Forecast,
     Unit,
     horizon_group,
@@ -68,14 +75,33 @@ _market_cache = TTLCache(ttl_seconds=60 * 60, max_items=1)
 # are never served; the next refresh replaces them.
 TARGET = "excess_log_return_vs_nifty"
 
+# key -> (label, description, settings attribute holding the model path)
+PREDICTION_MODELS: dict[str, tuple[str, str, str]] = {
+    "lstm_lgbm": (
+        "LSTM + LightGBM",
+        "Average of gradient-boosted trees (27 price and market inputs) and an LSTM reading the last 64 days",
+        "stock_predictor_ensemble_path",
+    ),
+    "lgbm": (
+        "LightGBM",
+        "Gradient-boosted trees over 27 price and market inputs",
+        "stock_predictor_path",
+    ),
+}
+
 
 class PredictionUnavailable(Exception):
     """No stored prediction for this instrument (not a tracked stock, or
     the model or the daily job hasn't run yet)."""
 
 
+class UnknownModel(ValueError):
+    """A model key that isn't in PREDICTION_MODELS."""
+
+
 class Predictor:
-    def __init__(self, artifact: dict, artifact_hash: str, metrics: dict | None) -> None:
+    def __init__(self, artifact: dict, artifact_hash: str, metrics: dict | None, key: str = "lgbm") -> None:
+        self.key = key
         self.model = artifact["model"]
         self.buckets = Buckets(
             edges=np.asarray(artifact["bucket_edges"]),
@@ -88,6 +114,45 @@ class Predictor:
         self.target: str = artifact.get("target", "log_return")
         self.artifact_hash = artifact_hash
         self.metrics = metrics if metrics and metrics.get("model_version") == self.version else None
+        self.lstm = None
+        if "lstm_state" in artifact:
+            config = artifact.get("lstm_config", {})
+            self.lstm = sequence.build_net(config.get("hidden", 48), config.get("dropout", 0.2))
+            self.lstm.load_state_dict(artifact["lstm_state"])
+            self.lstm.eval()
+
+    def forecast_all(self, latest: pd.DataFrame, features: pd.DataFrame) -> dict[int, pd.DataFrame]:
+        """Forecasts for every horizon. `latest` rows come from `features`
+        (compute_features output) and keep its index, which the LSTM uses
+        to find each row's last 64 days. Rows with too short a history for
+        the LSTM get the tree model's forecast alone."""
+        trees = {h: self.forecast(latest, h) for h in self.horizons}
+        if self.lstm is None:
+            return trees
+        x, valid = sequence.sequence_inputs(features)
+        pos = features.index.get_indexer(latest.index)
+        ok = valid[pos]
+        if not ok.any():
+            return trees
+        seq = sequence.predict(self.lstm, x, pos[ok])
+        out = {}
+        for h in self.horizons:
+            k = HORIZON_GRID.index(h)  # the LSTM's output order
+            tree = trees[h]
+            s = scale(latest[ok], h).to_numpy()
+            lstm = pd.DataFrame(
+                {
+                    "low": seq[:, k, 0] * s,
+                    "mid": seq[:, k, 1] * s,
+                    "high": seq[:, k, 2] * s,
+                    "chance_beat": seq[:, k, 3],
+                },
+                index=latest.index[ok],
+            )
+            both = tree.copy()
+            both.loc[lstm.index] = (tree.loc[lstm.index] + lstm) / 2
+            out[h] = both
+        return out
 
     def forecast(self, rows: pd.DataFrame, horizon_days: int) -> pd.DataFrame:
         """Excess-return percentiles and chance of beating the Nifty per row."""
@@ -125,33 +190,60 @@ class Predictor:
         }
 
 
-_predictor: Predictor | None = None
-_predictor_mtime: float | None = None
+_predictors: dict[str, tuple[Predictor, float]] = {}
 
 
-def _model_path() -> Path:
-    path = Path(settings.stock_predictor_path)
+def resolve_model(model: str | None) -> str:
+    """The model key to use: `model` if given (must be known), else the default."""
+    key = model or settings.prediction_model
+    if key not in PREDICTION_MODELS:
+        raise UnknownModel(f"Unknown prediction model {key!r}; choose {', '.join(PREDICTION_MODELS)}")
+    return key
+
+
+def _model_path(model: str | None = None) -> Path:
+    path = Path(getattr(settings, PREDICTION_MODELS[resolve_model(model)][2]))
     return path if path.is_absolute() else _REPO_ROOT / path
 
 
-def load_predictor() -> Predictor | None:
-    """The trained model, reloaded when the file changes; None if missing."""
-    global _predictor, _predictor_mtime
-    path = _model_path()
+def load_predictor(model: str | None = None) -> Predictor | None:
+    """The trained model for `model` (default: the configured default),
+    reloaded when its file changes; None if the file is missing."""
+    key = resolve_model(model)
+    path = _model_path(key)
     if not path.exists():
         return None
     mtime = path.stat().st_mtime
-    if _predictor is None or mtime != _predictor_mtime:
+    cached = _predictors.get(key)
+    if cached is None or cached[1] != mtime:
         data = path.read_bytes()
         artifact = joblib.load(path)
         metrics_path = path.with_name("metrics.json")
         metrics = json.loads(metrics_path.read_text()) if metrics_path.exists() else None
-        _predictor = Predictor(artifact, hashlib.sha256(data).hexdigest(), metrics)
-        _predictor_mtime = mtime
-        logger.info(
-            "Loaded stock predictor %s (%s)", _predictor.version, _predictor.artifact_hash[:12]
+        predictor = Predictor(artifact, hashlib.sha256(data).hexdigest(), metrics, key)
+        _predictors[key] = (predictor, mtime)
+        logger.info("Loaded stock predictor %s %s (%s)", key, predictor.version, predictor.artifact_hash[:12])
+    return _predictors[key][0]
+
+
+def available_models() -> list[dict]:
+    """Every prediction model, for the model picker: whether its file is
+    present and which one is the default."""
+    default = settings.prediction_model
+    out = []
+    for key, (label, description, _) in PREDICTION_MODELS.items():
+        predictor = load_predictor(key)
+        out.append(
+            {
+                "key": key,
+                "label": label,
+                "description": description,
+                "version": predictor.version if predictor else None,
+                "available": predictor is not None,
+                "default": key == default,
+            }
         )
-    return _predictor
+    return out
 
 
 def _fetch_market() -> pd.DataFrame:
@@ -186,16 +278,18 @@ def build_predictions(
     features = compute_features(prices, market)
     if features.empty or (focus and focus not in set(features["ticker"])):
         return []
-    latest = features.loc[features.groupby("ticker")["date"].idxmax()].reset_index(drop=True)
+    # `latest` keeps the index of `features`: the LSTM finds each row's history by it.
+    latest = features.loc[features.groupby("ticker")["date"].idxmax()]
     # Cross-sectional ranks must compare stocks on the same day.
     if focus:
         day = latest.loc[latest["ticker"] == focus, "date"].iloc[0]
-        latest = features[features["date"] == day].reset_index(drop=True)
+        latest = features[features["date"] == day]
     else:
-        latest = latest[latest["date"] == latest["date"].max()].reset_index(drop=True)
+        latest = latest[latest["date"] == latest["date"].max()]
+    forecasts = predictor.forecast_all(latest, features)
     docs = []
     for h in predictor.horizons:
-        result = predictor.forecast(latest, h)
+        result = forecasts[h]
         order = result["mid"].rank(ascending=False, method="first").astype(int)
         for i, row in latest.iterrows():
             docs.append(
@@ -205,6 +299,7 @@ def build_predictions(
                         row["date"].year, row["date"].month, row["date"].day, tzinfo=UTC
                     ),
                     "horizon_days": int(h),
+                    "model": predictor.key,
                     "close": float(row["close"]),
                     "chance_beat": float(result.at[i, "chance_beat"]),
                     "low": float(result.at[i, "low"]),
@@ -222,10 +317,11 @@ def build_predictions(
     return [d for d in docs if d["ticker"] == focus] if focus else docs
 
 
-async def refresh_predictions(now: datetime | None = None) -> int:
-    """Predict every tracked stock from stored prices; returns rows stored."""
-    predictor = load_predictor()
-    if predictor is None:
+async def refresh_predictions(now: datetime | None = None, models: list[str] | None = None) -> int:
+    """Predict every tracked stock from stored prices with each model
+    (default: all that are present); returns rows stored."""
+    predictors = [p for p in (load_predictor(k) for k in models or PREDICTION_MODELS) if p]
+    if not predictors:
         logger.warning("No stock predictor at %s; run ml/train_stock_predictor.py", _model_path())
         return 0
     bars = await get_daily_bars(STOCK_UNIVERSE)
@@ -234,30 +330,40 @@ async def refresh_predictions(now: datetime | None = None) -> int:
     except Exception:
         logger.exception("Stock predictions skipped: market data unavailable")
         return 0
-    docs = await asyncio.to_thread(
-        build_predictions, predictor, bars, market, now or datetime.now(UTC)
-    )
-    await repo.replace_predictions(docs)
-    logger.info("Stored %d stock predictions", len(docs))
-    return len(docs)
+    now = now or datetime.now(UTC)
+    total = 0
+    for predictor in predictors:
+        try:
+            docs = await asyncio.to_thread(build_predictions, predictor, bars, market, now)
+            await repo.replace_predictions(docs)
+        except Exception:
+            # One broken model must not stop the other from being refreshed.
+            logger.exception("Stock predictions failed for model %s", predictor.key)
+            continue
+        logger.info("Stored %d stock predictions (%s)", len(docs), predictor.key)
+        total += len(docs)
+    return total
 
 
 async def refresh_predictions_if_stale() -> bool:
-    """Run when stored predictions are older than the newest prices, or
-    were made by a different model file. Cheap to call often."""
-    predictor = load_predictor()
-    if predictor is None:
-        return False
-    run, newest_price = await repo.get_latest_run(), await get_newest_date(STOCK_UNIVERSE)
+    """Refresh each model whose stored predictions are older than the newest
+    prices, or were made by a different model file. Cheap to call often."""
+    newest_price = await get_newest_date(STOCK_UNIVERSE)
     if newest_price is None:
         return False
-    if (
-        run
-        and run["artifact_hash"] == predictor.artifact_hash
-        and run["as_of"].date() >= newest_price.date()
-    ):
-        return False
-    return await refresh_predictions() > 0
+    stale = []
+    for key in PREDICTION_MODELS:
+        predictor = load_predictor(key)
+        if predictor is None:
+            continue
+        run = await repo.get_latest_run(key)
+        if not (
+            run
+            and run["artifact_hash"] == predictor.artifact_hash
+            and run["as_of"].date() >= newest_price.date()
+        ):
+            stale.append(key)
+    return bool(stale) and await refresh_predictions(models=stale) > 0
 
 
 async def _market() -> pd.DataFrame:
@@ -268,14 +374,14 @@ async def _market() -> pd.DataFrame:
     return cached
 
 
-async def _predict_untracked(ticker: str) -> None:
+async def _predict_untracked(ticker: str, model: str) -> None:
     """Store today's prediction for an untracked stock if it isn't stored yet.
     Raises PredictionUnavailable when there is no model or too little history."""
-    predictor = load_predictor()
+    predictor = load_predictor(model)
     if predictor is None:
         raise PredictionUnavailable(ticker)
     bars = await get_untracked_bars(ticker)
-    stored = await repo.get_latest_for_ticker(ticker)
+    stored = await repo.get_latest_for_ticker(ticker, model)
     if (
         stored
         and stored[0]["artifact_hash"] == predictor.artifact_hash
@@ -300,16 +406,18 @@ def _pct(log_return: float) -> float:
     return round(math.expm1(log_return) * 100, 2)
 
 
-async def get_prediction(instrument_id: str, amount: int, unit: Unit) -> dict:
+async def get_prediction(instrument_id: str, amount: int, unit: Unit, model: str | None = None) -> dict:
     """The stored prediction for any horizon, interpolated between the
-    stored ones. Raises ValueError for an out-of-range horizon."""
+    stored ones, from `model` (default: the configured default). Raises
+    ValueError for an out-of-range horizon or an unknown model."""
+    key = resolve_model(model)
     kind, ticker = parse_instrument_id(instrument_id)
     if kind != "stock":
         raise PredictionUnavailable(instrument_id)
     trading_days = to_trading_days(amount, unit)
     if not stock_listing.is_tracked(ticker):
-        await _predict_untracked(ticker)
-    docs = await repo.get_latest_for_ticker(ticker)
+        await _predict_untracked(ticker, key)
+    docs = await repo.get_latest_for_ticker(ticker, key)
     if not docs or docs[0].get("target") != TARGET:
         raise PredictionUnavailable(instrument_id)
 
@@ -322,7 +430,7 @@ async def get_prediction(instrument_id: str, amount: int, unit: Unit) -> dict:
     first = docs[0]
     close = first["close"]
     as_of = first["as_of"].date()
-    predictor = load_predictor()
+    predictor = load_predictor(key)
     test_result = (
         predictor.test_result(trading_days, stock_listing.is_tracked(ticker))
         if predictor and predictor.artifact_hash == first["artifact_hash"]
@@ -344,6 +452,8 @@ async def get_prediction(instrument_id: str, amount: int, unit: Unit) -> dict:
         "rank": nearest["rank"],
         "rank_of": nearest["rank_of"],
         "tracked": stock_listing.is_tracked(ticker),
+        "model": key,
+        "model_label": PREDICTION_MODELS[key][0],
         "model_version": first["model_version"],
         "artifact_hash": first["artifact_hash"],
         "test_result": test_result,

@@ -20,7 +20,8 @@ from app.services.instrument_service import (
 )
 from app.services.news_summary_service import get_news_digest
 from app.services.prediction_service import PredictionUnavailable, get_prediction
-from app.services.sentiment_service import get_instrument_sentiment
+from app.services.sentiment_service import UnknownSentimentModel, get_instrument_sentiment
+from app.services.summarization.factory import UnknownSummarizer
 
 router = APIRouter(prefix="/instruments", tags=["instruments"], dependencies=[Depends(get_current_user_id)])
 
@@ -58,10 +59,15 @@ async def history(instrument_id: str):
         raise _provider_down(exc) from None
 
 
+_MODEL_QUERY = Query(default=None, max_length=120, description="Model key from GET /models; default if omitted")
+
+
 @router.get("/{instrument_id}/sentiment", response_model=InstrumentSentiment)
-async def sentiment(instrument_id: str):
+async def sentiment(instrument_id: str, model: str | None = _MODEL_QUERY):
     try:
-        return await get_instrument_sentiment(instrument_id)
+        return await get_instrument_sentiment(instrument_id, model)
+    except UnknownSentimentModel as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
     except InstrumentNotFound:
         raise _not_found() from None
     except DataProviderError as exc:
@@ -86,10 +92,17 @@ def _rate_limit_summaries(user_id: str = Depends(get_current_user_id)) -> None:
     response_model=NewsDigest,
     dependencies=[Depends(_rate_limit_summaries)],
 )
-async def news_summary(instrument_id: str):
-    """One combined summary of the top 5 recent articles, plus the articles."""
+async def news_summary(
+    instrument_id: str,
+    model: str | None = _MODEL_QUERY,
+    sentiment_model: str | None = Query(default=None, max_length=120),
+):
+    """One combined summary of the top 5 recent articles, plus the articles.
+    `model` picks the summarizer, `sentiment_model` the article tags."""
     try:
-        return await get_news_digest(instrument_id)
+        return await get_news_digest(instrument_id, model, sentiment_model)
+    except (UnknownSummarizer, UnknownSentimentModel) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
     except InstrumentNotFound:
         raise _not_found() from None
     except DataProviderError as exc:
@@ -111,10 +124,11 @@ async def prediction(
     instrument_id: str,
     amount: int = Query(ge=1, le=730),
     unit: Literal["days", "months", "years"] = "days",
+    model: str | None = _MODEL_QUERY,
 ):
     """Phase 4: the stored prediction for a horizon of `amount` `unit`."""
     try:
-        return await get_prediction(instrument_id, amount, unit)
+        return await get_prediction(instrument_id, amount, unit, model)
     except InstrumentNotFound:
         raise _not_found() from None
     except ValueError as exc:

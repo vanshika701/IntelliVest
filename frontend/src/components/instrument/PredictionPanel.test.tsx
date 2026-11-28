@@ -24,6 +24,8 @@ function prediction(overrides: Partial<StockPrediction> = {}): StockPrediction {
     rank: 4,
     rank_of: 20,
     tracked: true,
+    model: 'lgbm',
+    model_label: 'LightGBM',
     model_version: '1.0.0',
     artifact_hash: 'abc',
     test_result: {
@@ -51,7 +53,7 @@ describe('PredictionPanel', () => {
     expect(screen.getByText('-0.60% behind')).toBeInTheDocument()
     expect(screen.getByText('+3.10% ahead')).toBeInTheDocument()
     expect(screen.getByText(/always "lag": 52%/)).toBeInTheDocument()
-    expect(spy).toHaveBeenCalledWith('stock-TCS.NS', 7, 'days')
+    expect(spy).toHaveBeenCalledWith('stock-TCS.NS', 7, 'days', null)
     expect(screen.getByText(/By 3 Dec 2026/)).toBeInTheDocument()
     expect(screen.getByText('4th of 20 tracked stocks')).toBeInTheDocument()
     expect(screen.getByText(/inside the range 82% of the time/)).toBeInTheDocument()
@@ -67,8 +69,8 @@ describe('PredictionPanel', () => {
     const input = screen.getByLabelText('How far ahead')
     await user.clear(input)
     await user.type(input, '2')
-    await waitFor(() => expect(spy).toHaveBeenLastCalledWith('stock-TCS.NS', 2, 'years'))
-    expect(spy).not.toHaveBeenCalledWith('stock-TCS.NS', 7, 'years')
+    await waitFor(() => expect(spy).toHaveBeenLastCalledWith('stock-TCS.NS', 2, 'years', null))
+    expect(spy).not.toHaveBeenCalledWith('stock-TCS.NS', 7, 'years', null)
   })
 
   it('flags stocks the model was not tested on', async () => {

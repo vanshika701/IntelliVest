@@ -38,7 +38,7 @@ def test_overall_label_uses_neutral_band() -> None:
     assert overall_label(None) is None
 
 
-def _fake_classify(texts: list[str]) -> list[dict[str, float]]:
+def _fake_classify(texts: list[str], model: str | None = None) -> list[dict[str, float]]:
     return [
         {"positive": 0.9, "negative": 0.05, "neutral": 0.05}
         if "beats" in t
@@ -50,8 +50,9 @@ def _fake_classify(texts: list[str]) -> list[dict[str, float]]:
 async def test_score_pending_articles_scores_once_and_rescores_on_model_change(
     mongo_test_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(sentiment_service, "_load_model", lambda: True)
+    monkeypatch.setattr(sentiment_service, "_load_model", lambda *_: True)
     monkeypatch.setattr(sentiment_service, "classify", _fake_classify)
+    monkeypatch.setattr(settings, "sentiment_extra_models", "")
     now = datetime.now(UTC)
     await get_news_collection().insert_many(
         [
@@ -73,10 +74,45 @@ async def test_score_pending_articles_scores_once_and_rescores_on_model_change(
     assert await score_pending_articles() == 2
 
 
+async def test_extra_models_score_into_their_own_field(mongo_test_db, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The default model keeps writing `sentiment` (what other modules read);
+    an extra model writes `sentiments.<key>`, and each is read back by name."""
+    calls = []
+
+    def fake_classify(texts: list[str], model: str | None = None) -> list[dict[str, float]]:
+        calls.append(model)
+        neutral = {"positive": 0.1, "negative": 0.1, "neutral": 0.8}
+        return _fake_classify(texts) if model == "default/model" else [neutral for _ in texts]
+
+    monkeypatch.setattr(sentiment_service, "_load_model", lambda *_: True)
+    monkeypatch.setattr(sentiment_service, "classify", fake_classify)
+    monkeypatch.setattr(settings, "sentiment_model", "default/model")
+    monkeypatch.setattr(settings, "sentiment_extra_models", "other/model-v1.0")
+    now = datetime.now(UTC)
+    await get_news_collection().insert_one(
+        {"url": "u1", "title": "TCS beats estimates", "published_at": now, "tickers": ["TCS.NS"]}
+    )
+
+    assert await score_pending_articles() == 2  # one article, two models
+    assert calls == ["default/model", "other/model-v1.0"]
+    stored = await get_news_collection().find_one({"url": "u1"})
+    assert stored["sentiment"]["label"] == "positive"
+    assert stored["sentiments"]["other_model_v1_0"]["label"] == "neutral"
+    assert await score_pending_articles() == 0
+
+    sentiment_service._instrument_sentiment_cache.clear()
+    default = await sentiment_service.get_instrument_sentiment("stock-TCS.NS")
+    other = await sentiment_service.get_instrument_sentiment("stock-TCS.NS", "other/model-v1.0")
+    assert (default["model"], default["articles"][0]["label"]) == ("default/model", "positive")
+    assert (other["model"], other["articles"][0]["label"]) == ("other/model-v1.0", "neutral")
+    with pytest.raises(sentiment_service.UnknownSentimentModel):
+        await sentiment_service.get_instrument_sentiment("stock-TCS.NS", "not/offered")
+
+
 async def test_score_pending_articles_skips_run_when_model_unavailable(
     mongo_test_db, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(sentiment_service, "_load_model", lambda: False)
+    monkeypatch.setattr(sentiment_service, "_load_model", lambda *_: False)
     await get_news_collection().insert_one(
         {"url": "u1", "title": "TCS beats", "published_at": datetime.now(UTC), "tickers": ["TCS.NS"]}
     )

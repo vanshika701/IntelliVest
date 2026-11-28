@@ -1,7 +1,12 @@
-"""Service layer for FinBERT news sentiment (Phase 5).
+"""Service layer for news sentiment (Phase 5).
 
-Uses the pretrained ProsusAI/finbert model as-is (inference only — no
-training happens here). The model is downloaded once into
+Uses pretrained Hugging Face models as-is (inference only — no training
+happens here). The default is settings.sentiment_model (DistilRoBERTa
+fine-tuned on financial news, which won the 2026-11-28 comparison, see
+ml/log.md); settings.sentiment_extra_models (FinBERT) can be picked per
+request. The default model's score is stored in each article's
+`sentiment` field, which every other module reads; each extra model's in
+`sentiments.<key>`. The model is downloaded once into
 ml/models/hf_cache/ on first use and loaded lazily, so the API starts
 fast and tests never load it.
 
@@ -49,60 +54,113 @@ SCORE_RUN_LIMIT = 500
 # has to clear this margin to be called positive/negative overall.
 OVERALL_LABEL_THRESHOLD = 0.15
 
-_tokenizer = None
-_model = None
+# Model name -> (tokenizer, model), loaded on first use.
+_loaded: dict[str, tuple] = {}
 # The scheduler job, the startup warm-up and on-demand fund sentiment can
-# all ask for the model at once; only one of them should load it.
+# all ask for a model at once; only one of them should load it.
 _load_lock = threading.Lock()
 
+# Labels for the model picker; other ids are shown as they are.
+KNOWN_MODELS: dict[str, tuple[str, str]] = {
+    "mrm8488/distilroberta-finetuned-financial-news-sentiment-analysis": (
+        "DistilRoBERTa (financial news)",
+        "86.7% on 30 Indian market headlines, 75.7% on 1,000 financial tweets; 2x faster",
+    ),
+    "ProsusAI/finbert": (
+        "FinBERT",
+        "83.3% on 30 Indian market headlines, 72.7% on 1,000 financial tweets",
+    ),
+}
 
-def _load_model() -> bool:
-    """Load FinBERT once. Returns False (and logs) if it can't be loaded —
-    e.g. no internet on the very first run — so the caller can skip this
-    run and retry next time instead of crashing the job."""
+
+class UnknownSentimentModel(ValueError):
+    """A sentiment model that isn't offered (settings.sentiment_model or
+    settings.sentiment_extra_models)."""
+
+
+def sentiment_models() -> list[str]:
+    """Every model offered, the default first."""
+    extras = [m.strip() for m in settings.sentiment_extra_models.split(",") if m.strip()]
+    return list(dict.fromkeys([settings.sentiment_model, *extras]))
+
+
+def resolve_sentiment_model(model: str | None) -> str:
+    if not model:
+        return settings.sentiment_model
+    if model not in sentiment_models():
+        raise UnknownSentimentModel(f"Unknown sentiment model {model!r}; choose {', '.join(sentiment_models())}")
+    return model
+
+
+def storage_field(model: str) -> str:
+    """Where an article keeps this model's score: `sentiment` for the
+    default model (what every other module reads), else `sentiments.<key>`."""
+    if model == settings.sentiment_model:
+        return "sentiment"
+    return "sentiments." + re.sub(r"[^A-Za-z0-9]+", "_", model).strip("_")
+
+
+def available_sentiment_models() -> list[dict]:
+    return [
+        {
+            "key": name,
+            "label": KNOWN_MODELS.get(name, (name, ""))[0],
+            "description": KNOWN_MODELS.get(name, ("", "Hugging Face model"))[1],
+            "version": None,
+            "available": True,
+            "default": name == settings.sentiment_model,
+        }
+        for name in sentiment_models()
+    ]
+
+
+def _load_model(model: str | None = None) -> bool:
+    """Load a model once (default: the default model). Returns False (and
+    logs) if it can't be loaded — e.g. no internet on the very first run —
+    so the caller can skip this run and retry next time instead of crashing."""
     with _load_lock:
-        return _load_model_locked()
+        return _load_model_locked(model or settings.sentiment_model)
 
 
-def _load_model_locked() -> bool:
-    global _tokenizer, _model
-    if _model is not None:
+def _load_model_locked(name: str) -> bool:
+    if name in _loaded:
         return True
     try:
         from transformers import AutoModelForSequenceClassification, AutoTokenizer
         from transformers.utils import logging as hf_logging
 
         hf_logging.disable_progress_bar()
-        _tokenizer = AutoTokenizer.from_pretrained(settings.sentiment_model, cache_dir=_MODEL_CACHE_DIR)
-        _model = AutoModelForSequenceClassification.from_pretrained(
-            settings.sentiment_model, cache_dir=_MODEL_CACHE_DIR
-        ).eval()
+        tokenizer = AutoTokenizer.from_pretrained(name, cache_dir=_MODEL_CACHE_DIR)
+        model = AutoModelForSequenceClassification.from_pretrained(name, cache_dir=_MODEL_CACHE_DIR).eval()
     except Exception:
-        logger.exception("Could not load sentiment model %s — skipping scoring", settings.sentiment_model)
-        _tokenizer = _model = None
+        logger.exception("Could not load sentiment model %s — skipping scoring", name)
         return False
-    logger.info("Sentiment model %s loaded", settings.sentiment_model)
+    _loaded[name] = (tokenizer, model)
+    logger.info("Sentiment model %s loaded", name)
     return True
 
 
-def model_revision() -> str | None:
+def model_revision(model: str | None = None) -> str | None:
     """The exact Hugging Face commit of the loaded model, if known."""
-    return getattr(getattr(_model, "config", None), "_commit_hash", None)
+    loaded = _loaded.get(model or settings.sentiment_model)
+    return getattr(getattr(loaded[1], "config", None), "_commit_hash", None) if loaded else None
 
 
-def classify(texts: list[str]) -> list[dict[str, float]]:
+def classify(texts: list[str], model: str | None = None) -> list[dict[str, float]]:
     """Class probabilities per text, e.g. {"positive": 0.9, "negative": 0.05,
-    "neutral": 0.05}. Label names come from the model's own config, so a
-    fine-tuned replacement with a different label order still works."""
+    "neutral": 0.05}, from a loaded model (default: the default model).
+    Label names come from the model's own config, so models with different
+    label orders all work."""
     import torch
 
-    id2label = _model.config.id2label
+    tokenizer, net = _loaded[model or settings.sentiment_model]
+    id2label = net.config.id2label
     results = []
     with torch.inference_mode():
         for start in range(0, len(texts), BATCH_SIZE):
             batch = texts[start : start + BATCH_SIZE]
-            inputs = _tokenizer(batch, padding=True, truncation=True, max_length=MAX_TOKENS, return_tensors="pt")
-            probs = torch.softmax(_model(**inputs).logits, dim=-1).tolist()
+            inputs = tokenizer(batch, padding=True, truncation=True, max_length=MAX_TOKENS, return_tensors="pt")
+            probs = torch.softmax(net(**inputs).logits, dim=-1).tolist()
             results += [{id2label[i].lower(): p for i, p in enumerate(row)} for row in probs]
     return results
 
@@ -136,12 +194,14 @@ def lexicon_classify(texts: list[str]) -> list[dict[str, float]]:
     return results
 
 
-def score_texts(texts: list[str]) -> tuple[list[dict[str, float]], str]:
-    """The one entry point for scoring arbitrary text: FinBERT if it can be
-    loaded, else the lexicon. Returns (probabilities per text, engine).
-    Blocking — call it via asyncio.to_thread from async code."""
-    if _load_model():
-        return classify(texts), settings.sentiment_model
+def score_texts(texts: list[str], model: str | None = None) -> tuple[list[dict[str, float]], str]:
+    """The one entry point for scoring arbitrary text: `model` (default:
+    the default model) if it can be loaded, else the lexicon. Returns
+    (probabilities per text, engine). Blocking — call it via
+    asyncio.to_thread from async code."""
+    name = model or settings.sentiment_model
+    if _load_model(name):
+        return classify(texts, name), name
     return lexicon_classify(texts), "lexicon"
 
 
@@ -160,19 +220,25 @@ def article_text(article: dict) -> str:
 
 
 async def score_pending_articles() -> int:
-    """Score every article not yet scored by the current model, newest
-    first, SCORE_RUN_LIMIT at a time. Returns how many were scored."""
-    if not await asyncio.to_thread(_load_model):
-        return 0
+    """Score every article not yet scored by each offered model, newest
+    first, SCORE_RUN_LIMIT at a time. Returns how many scores were stored
+    (an article scored by two models counts twice)."""
+    total = 0
+    for model_name in sentiment_models():
+        if await asyncio.to_thread(_load_model, model_name):
+            total += await _score_pending_with(model_name)
+    return total
 
-    model_name = settings.sentiment_model
+
+async def _score_pending_with(model_name: str) -> int:
+    field = storage_field(model_name)
     total = 0
     while True:
-        articles = await find_articles_needing_sentiment(model_name, SCORE_RUN_LIMIT)
+        articles = await find_articles_needing_sentiment(model_name, SCORE_RUN_LIMIT, field)
         if not articles:
             break
 
-        probabilities = await asyncio.to_thread(classify, [article_text(a) for a in articles])
+        probabilities = await asyncio.to_thread(classify, [article_text(a) for a in articles], model_name)
         scored_at = datetime.now(UTC)
         updates = [
             (
@@ -181,13 +247,13 @@ async def score_pending_articles() -> int:
                     **sentiment_from_probabilities(p),
                     "model": model_name,
                     # Phase 10 records which exact weights scored the evidence.
-                    "revision": model_revision(),
+                    "revision": model_revision(model_name),
                     "scored_at": scored_at,
                 },
             )
             for a, p in zip(articles, probabilities, strict=True)
         ]
-        total += await set_article_sentiments(updates)
+        total += await set_article_sentiments(updates, field)
         if len(articles) < SCORE_RUN_LIMIT:
             break
 
@@ -267,10 +333,12 @@ def _aggregate(articles: list[dict], engine: str, window_days: int, instrument_i
     }
 
 
-async def _stock_articles(ticker: str) -> tuple[list[dict], str, int]:
-    """Stored FinBERT-scored articles: last 7 days, widened to 30 if thin."""
+async def _stock_articles(ticker: str, model: str) -> tuple[list[dict], str, int]:
+    """Stored articles scored by `model`: last 7 days, widened to 30 if thin."""
     for days in (7, 30):
-        stored = await get_scored_articles_for_ticker(ticker, datetime.now(UTC) - timedelta(days=days))
+        stored = await get_scored_articles_for_ticker(
+            ticker, datetime.now(UTC) - timedelta(days=days), storage_field(model)
+        )
         if len(stored) >= MIN_ARTICLES_FOR_LABEL or days == 30:
             break
     articles = [
@@ -284,11 +352,11 @@ async def _stock_articles(ticker: str) -> tuple[list[dict], str, int]:
         }
         for a in stored
     ]
-    engine = stored[0]["sentiment"].get("model", settings.sentiment_model) if stored else settings.sentiment_model
+    engine = stored[0]["sentiment"].get("model", model) if stored else model
     return articles, engine, days
 
 
-async def _fund_articles(scheme_name: str) -> tuple[list[dict], str, int]:
+async def _fund_articles(scheme_name: str, model: str) -> tuple[list[dict], str, int]:
     """Fresh Google News search for the fund's name, scored on the spot."""
     days = 30
     try:
@@ -296,9 +364,9 @@ async def _fund_articles(scheme_name: str) -> tuple[list[dict], str, int]:
     except httpx.HTTPError as exc:
         raise DataProviderError("News is unavailable right now") from exc
     if not news:
-        return [], settings.sentiment_model, days
+        return [], model, days
 
-    probabilities, engine = await asyncio.to_thread(score_texts, [article_text(n) for n in news])
+    probabilities, engine = await asyncio.to_thread(score_texts, [article_text(n) for n in news], model)
     articles = []
     for item, probs in zip(news, probabilities, strict=True):
         sentiment = sentiment_from_probabilities(probs)
@@ -315,27 +383,35 @@ async def _fund_articles(scheme_name: str) -> tuple[list[dict], str, int]:
     return articles, engine, days
 
 
-async def get_instrument_sentiment(instrument_id: str) -> dict:
-    """Overall Negative/Neutral/Positive label plus the headlines behind it.
-    `label` is None when there are fewer than MIN_ARTICLES_FOR_LABEL
-    headlines. Cached for 20 minutes per instrument; failures aren't cached."""
-    cached = _instrument_sentiment_cache.get(instrument_id)
+async def get_instrument_sentiment(instrument_id: str, model: str | None = None) -> dict:
+    """Overall Negative/Neutral/Positive label plus the headlines behind it,
+    from `model` (default: the default model). `label` is None when there
+    are fewer than MIN_ARTICLES_FOR_LABEL headlines. Cached for 20 minutes
+    per instrument and model; failures aren't cached. Raises
+    UnknownSentimentModel for a model that isn't offered."""
+    name = resolve_sentiment_model(model)
+    cache_key = f"{instrument_id}|{name}"
+    cached = _instrument_sentiment_cache.get(cache_key)
     if cached is not MISSING:
         return cached
 
     kind, ref = parse_instrument_id(instrument_id)
     if kind == "stock":
-        articles, engine, days = await _stock_articles(ref)
+        articles, engine, days = await _stock_articles(ref, name)
     else:
         instrument = await get_instrument(instrument_id)
-        articles, engine, days = await _fund_articles(instrument["name"])
+        articles, engine, days = await _fund_articles(instrument["name"], name)
 
-    result = _aggregate(articles, engine, days, instrument_id)
-    _instrument_sentiment_cache.set(instrument_id, result)
+    result = {
+        **_aggregate(articles, engine, days, instrument_id),
+        "model": name,
+        "model_label": KNOWN_MODELS.get(name, (name, ""))[0],
+    }
+    _instrument_sentiment_cache.set(cache_key, result)
     return result
 
 
 def warm_up_model() -> None:
-    """Load FinBERT in the background at startup so the first on-demand
-    fund sentiment request doesn't wait ~20 s for it."""
+    """Load the default sentiment model in the background at startup so
+    the first on-demand fund sentiment request doesn't wait ~20 s for it."""
     _load_model()

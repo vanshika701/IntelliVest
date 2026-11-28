@@ -25,6 +25,7 @@ function digest(overrides: Partial<NewsDigestData> = {}): NewsDigestData {
     price_move: null,
     provider: 'extractive',
     method: 'tfidf-extractive@1.2.0',
+    summarizer: 'extractive',
     max_words: 100,
     summary: 'Infosys signed a large deal with a European bank. Shares slid 2.5% on Thursday.',
     word_count: 14,

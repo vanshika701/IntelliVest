@@ -34,8 +34,11 @@ HARDHAT_DEPLOYER_KEY = (
 
 
 def stock_model() -> tuple[str, bytes]:
-    """(version, sha256 of the model file), as Phase 4 stores them."""
-    path = Path(settings.stock_predictor_path)
+    """(version, sha256 of the model file), as Phase 4 stores them, for the
+    default prediction model (PREDICTION_MODEL), whose rows the vault reads."""
+    from app.services.prediction_service import PREDICTION_MODELS
+
+    path = Path(getattr(settings, PREDICTION_MODELS[settings.prediction_model][2]))
     path = path if path.is_absolute() else REPO_ROOT / path
     metrics = json.loads(path.with_name("metrics.json").read_text(encoding="utf-8"))
     return metrics["model_version"], hashlib.sha256(path.read_bytes()).digest()
